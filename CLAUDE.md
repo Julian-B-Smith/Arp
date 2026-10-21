@@ -100,6 +100,10 @@ headless by plain Node oracles in `tools/`. Oracle: `./verify fast|full`.
   than forwarding it (D-000 Open 3).
 - **The scale is read, never owned:** root + 12-bit mask from horde's global
   scale; quantized output is always in the scale.
+- **The pattern bank is data** (D-004): order styles and step patterns load
+  from the bank format, and every entry passes the full invariant suite.
+  Clean-room: generic algorithms under our own names; nothing copied from
+  another arp's names, presets or UI text.
 - Tempo divisions are stored **by name** from horde's list
   (`intake/tempo-divisions.md`); nearest division by ratio, not by difference.
 - Every detector has a must-fail planted control before it gates anything.

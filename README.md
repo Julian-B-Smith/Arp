@@ -17,6 +17,8 @@ in [`ROADMAP.md`](ROADMAP.md).
 - **Holding:** latch. The sustain pedal holds the arp's input notes.
 - **Scale:** optional quantize to horde's global scale.
 - **Restart:** a setting with three values: on a new chord, on the bar, or free-running.
+- **Pattern bank:** a starter set of extra note-order styles and preset step patterns (rhythm, rests, accents, gate,
+  octave jumps). More entries after 1.0.
 - **Morph:** every setting morphs with horde's corners.
 
 The output is sample-accurate and identical at any block size or sample rate, and every note it plays ends exactly
