@@ -111,3 +111,32 @@ changes; it is now a protected path. In the same poll batch:
   (Echo's D-003 precedent). Rejected: commit locally only.
 - The spin-up filings stay drafts until ROADMAP T-002. Rejected: filing both
   now from this session.
+
+## D-004 — A pattern bank joins 1.0 (RATIFIED by poll, 2026-10-21)
+
+The human asked for "a bank of patterns for the arpeggiation, like Ableton's
+arpeggiator". This partly supersedes D-000 Open 1, which kept the brief's six
+modes and rejected extra modes for the cutoff. Settled by poll the same day:
+- **Contents: both kinds.** (a) Note-ORDER styles beyond the six modes, and
+  (b) preset STEP patterns (per-step rhythm, rests, ties, accent, gate, octave
+  jump) that play over an order style. Rejected:
+  - order styles only (Ableton's shape, which has no step bank);
+  - step patterns only.
+- **Timing: a starter bank in 1.0, more after.** About 12–16 curated entries
+  on a DATA-DRIVEN bank format, so growth after 1.0 needs no core change.
+  Rejected:
+  - the full bank in 1.0 (the biggest cutoff risk);
+  - after 1.0 only.
+- **Consequences:**
+  - Every bank entry passes the same invariant suite (one terminal per note,
+    grid, determinism).
+  - Bank selection is a discrete setting, so it morphs under the Q-A1 rule.
+  - Phase 0 now also surveys pattern banks.
+  - Which entries ship is ROADMAP Q-A3.
+- **Clean-room:** styles are specified as generic algorithms under our own
+  names. Screenshots of other arps that the human shares are inspiration only:
+  no names, preset names or UI text copied.
+- The manifest's `scope_1_0.pattern_bank` records this. Editing a protected
+  path is covered by this poll.
+- Same poll: the spin-up filings are filed now (T-002), superseding D-003's
+  "drafts until T-002". The horde notice states the bank.

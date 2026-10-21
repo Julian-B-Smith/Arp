@@ -22,7 +22,9 @@ Arpeggiator and step-sequencer design: published literature and the public
 feature sets of hardware and software arps (mode sets, latch and hold, pedal
 handling, restart and retrigger rules, swing, gate, velocity accent); known
 failure modes (stuck notes on transport stop, double note-offs, block-boundary
-jitter); and a first name-collision check. "Arp" is generic and certainly
+jitter); **pattern banks** (order-style taxonomies and step-pattern banks,
+D-004), including any screenshots the human shares as inspiration; and a first
+name-collision check. "Arp" is generic and certainly
 collides, so the check feeds horde's B433 clearance rather than clearing it.
 Clean-room: public documentation and listening only; never borrow another arp's
 mode names, presets or UI text.
@@ -42,6 +44,9 @@ mode names, presets or UI text.
   - **the morph rule for discrete settings**: where the threshold sits, when a
     switch lands relative to the grid, and that no switch strands a note
     without its terminal;
+  - **the pattern bank format** (D-004): order styles as generic algorithms and
+    step patterns as data (rest/tie, accent, gate, octave jump per step); how a
+    step pattern combines with an order style; the starter bank's entries (Q-A3);
   - the random mode's seed and stream rules;
   - the quantize rule (nearest in-scale pitch, and the tie-break);
   - the transport rules (stop, jump, loop, tempo change).
@@ -74,12 +79,16 @@ mode names, presets or UI text.
 - Swing; velocity (as played / fixed / accented by step); quantize to the
   global scale; the restart parameter's three values; every setting a morph
   target, discrete ones switching per the Phase A rule.
+- **The starter pattern bank** (D-004): the order styles and step patterns that
+  Q-A3 chose, loaded from the bank format.
 - **Gate:** each item's invariants are in the suite with planted controls:
   - quantize keeps every note in the scale;
   - swing displaces only the off-steps, by the spec'd fraction, sample-exact;
   - each restart value meets its own rule;
   - a full-range morph sweep in mid-pattern leaves no note without exactly one
-    terminal.
+    terminal;
+  - every starter-bank entry passes the whole M1 suite, and a bank switch
+    mid-note is a terminal-path row.
 
 ### M3 — horde admission
 - The horde-facing surface: parameter table, presets, undo of every control,
@@ -116,7 +125,8 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 - **Out of scope:** any spec or code.
 
 ### T-002 — Spin-up filings
-- **Status:** open (drafts in `docs/filings/`)
+- **Status:** filed 2026-10-21 (horde PR #1179, autonomous PR #60), awaiting
+  their residents' merges; then the balls are theirs (respond-by 11-13 / 11-04)
 - **Scope:** horde's `integrations/arp/notice-spinup.md` (carries Q-H1, Q-H2);
   autonomous's `integrations/arp/brief.md` (ecosystem-track registration).
 - **Acceptance criteria:** each is filed by a PR in the provider's repo,
@@ -137,18 +147,21 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   Phase A by playing in the lab, then an ADR (survey Open 5).
 - **Q-A2 — Restart × morph.** Does a morph that changes the restart value act
   at once or at the next restart point? Same venue as Q-A1.
+- **Q-A3 — The starter bank's entries** (about 12–16 order styles and step
+  patterns). Decided in Phase A from the Phase 0 landscape and by playing in
+  the lab (D-004).
 - **Q-P1 — Where the step sequencer begins** (an extension of the arp's grid,
   or its own lab/module here). Decided at the post-1.0 gate (survey Open 6).
 
 ## Deferred / demoted
 
 - **Free rate in Hz:** after 1.0 (survey Open 2).
-- **Extra modes** (converge/diverge, pinky/thumb): after 1.0, each by poll
-  (survey Open 1 kept the brief's list).
+- **Bank growth beyond the starter set:** after 1.0, as data on the bank
+  format (D-004 supersedes the survey's "extra modes after 1.0").
 - **Standalone plugin:** no (survey Q1); any change is a later, logged decision.
 
 ## Graduation criteria
 
 Arp graduates from interactive design to autonomous queue work when the
 remaining open questions are infrastructure, not playing. Still in the
-judgment column: Q-A1, Q-A2, the factory patterns, the lab's feel.
+judgment column: Q-A1, Q-A2, Q-A3 (the starter bank), the lab's feel.

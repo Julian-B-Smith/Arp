@@ -3,11 +3,11 @@ id: arp-notice-spinup
 from: Arp
 to: HYPERSAW
 thread: arp-note-generation-consumer
-status: draft
+status: filed
 ball: HYPERSAW
 seq: 1
-filed: —
-respond-by: —
+filed: 2026-10-21
+respond-by: 2026-11-13
 cites: none
 ---
 
@@ -42,6 +42,12 @@ cites: none
     a threshold, which our Phase A specifies. Your preset and morph surface
     needs a row for each.
   - **The step sequencer's home** is decided at our post-1.0 gate.
+- **Added the same day (our D-004): a pattern bank in 1.0.** It holds extra
+  note-order styles and preset step patterns (rhythm, rests, ties, accent,
+  gate, octave jump). 1.0 ships a starter set of about 12–16 entries on a
+  data-driven format, and the bank grows after 1.0 without core changes. Bank
+  selection is one more morph target. It is one more preset field on your
+  side.
 - **Your contract is imported, not re-derived** (our DECISIONS "Settled
   elsewhere"). `intake/` is hash-pinned and read-only here.
 

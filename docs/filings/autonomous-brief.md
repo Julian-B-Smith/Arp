@@ -2,11 +2,11 @@
 id: arp-001
 from: Arp
 to: autonomous
-status: draft
+status: filed
 ball: autonomous
 seq: 1
-filed: —
-respond-by: —
+filed: 2026-10-21
+respond-by: 2026-11-04
 cites: HYPERSAW, FOUNDATIONS
 ---
 

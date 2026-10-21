@@ -23,7 +23,8 @@
       "sustain_pedal": "The pedal holds the arp's INPUT: keys released while CC 64 is down stay in the pattern until pedal-up, as if held. Arp consumes CC 64 and does not forward it to the engine, so its own emitted notes never pile up as tails. Composes with latch. Open 3, by poll.",
       "restart": "A PARAMETER with three values: on a new chord from silence (step 1 at the next grid tick); on the bar (step index from song position); free-running. Step TIMING is always the transport grid; restart decides only which step plays next. Each value carries its own invariants. Open 4, by poll (the human chose all three over the single recommended rule).",
       "morph": "ALL Arp settings are morph targets with horde's corners. Continuous settings blend; discrete settings (mode, rate, octaves, restart, velocity mode, latch) switch at a threshold — the threshold rule, where a switch lands relative to the grid, and that no switch strands a note without its terminal are Phase A spec items. Open 5, by poll (the human chose all over global).",
-      "presets_undo": "Every setting is part of a horde preset and undoable."
+      "presets_undo": "Every setting is part of a horde preset and undoable.",
+      "pattern_bank": "Added 2026-10-21 by poll (D-004), 'like Ableton's arpeggiator'. Two kinds of entry: (a) note-ORDER styles beyond the six modes above (converge/diverge, thumb/pinky families, random variants…), and (b) preset STEP patterns (per-step rhythm, rests, ties, accent, gate, octave jump) that play over an order style. 1.0 ships a curated STARTER bank (~12–16 entries) on a data-driven bank format, so the bank grows after 1.0 without core changes. Every entry runs through the same invariant suite. Clean-room: generic algorithms, our own names; screenshots of other arps are inspiration only. Bank selection is a discrete setting, so it morphs per Q-A1."
     },
     "oracle_shape": {
       "goldens": "INVARIANTS FIRST, then pinned goldens. Each detector proven with a must-fail (planted) control: every note on gets exactly one terminal on every path (pattern change, held-chord change, switch-off, transport stop/jump/loop, panic, morph switch); the grid is sample-exact against the transport; output identical across block sizes and sample rates; same seed gives the same output; quantize keeps every note in the scale; no allocation on the process path. Per-pattern goldens pinned once the C++ exists, never before (horde ADR-142: parity must not enshrine a defect).",
@@ -67,7 +68,8 @@
   "open_at_survey": {
     "step_sequencer_home": "After 1.0: an extension of the arp's pattern grid, or its own lab/module here — decided at the post-1.0 gate (Open 6, by poll). Phase A designs the core as a pattern grid so extension stays possible.",
     "free_rate_hz": "Deferred past 1.0 (Open 2).",
-    "morph_discrete_rule": "Threshold, grid alignment and terminal safety for discrete-setting switches under morph — Phase A spec (Open 5)."
+    "starter_bank_contents": "Which ~12–16 entries ship in 1.0 — chosen in Phase A from the Phase 0 landscape and by playing in the lab (ROADMAP Q-A3).",
+    "morph_discrete_rule":"Threshold, grid alignment and terminal safety for discrete-setting switches under morph — Phase A spec (Open 5)."
   },
   "model_routing": {
     "note": "doctrine: pin explicitly, never inherit; cap at latest Opus.",

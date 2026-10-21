@@ -27,8 +27,8 @@ move; `status:` is lifecycle; neither does the other's job.
 
 | provider | file in THEIR tree | what |
 |---|---|---|
-| HYPERSAW (repo `horde`) | `integrations/arp/notice-spinup.md` | we exist; the survey's answers; asks Q-H1 (which MUST rows bind Arp) and Q-H2 (how horde consumes the core) — draft in `docs/filings/`, **not yet filed** (ROADMAP T-002) |
-| autonomous | `integrations/arp/brief.md` | register Arp in the ecosystem tracks — draft in `docs/filings/`, **not yet filed** (T-002) |
+| HYPERSAW (repo `horde`) | `integrations/arp/notice-spinup.md` | we exist; the survey's answers; states the pattern bank (D-004); asks Q-H1 (which MUST rows bind Arp) and Q-H2 (how horde consumes the core). **Filed 2026-10-21** as horde PR #1179 (path-only); ball HYPERSAW, respond-by 2026-11-13 |
+| autonomous | `integrations/arp/brief.md` | brief `arp-001`: register Arp in the ecosystem tracks. **Filed 2026-10-21** as autonomous PR #60 (path-only); ball autonomous, respond-by 2026-11-04 |
 | FOUNDATIONS | — | deferred until the C++ first touches NoteRef/HeldStack (survey Q6) |
 
-Drafts are kept in `docs/filings/`; the copy in the correspondent's tree is the record.
+Working copies are kept in `docs/filings/`; the copy in the correspondent's tree is the record (once their resident merges the PR).
