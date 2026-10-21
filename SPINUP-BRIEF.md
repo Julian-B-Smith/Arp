@@ -23,6 +23,9 @@ as a pattern in time. After 1.0 the same project grows into step sequencing and 
 - **Velocity:** as played, fixed, or accented by step.
 - **The scale:** optional quantize of the output to horde's global scale (`intake/quantizer.md`).
 - **Sync:** to host tempo and transport; what happens when the transport stops or jumps, and on loop.
+- **Trigger output** (horde ADR-267 A1): steps can be flagged to fire **triggers**, horde's performance events, which
+  route to declared module actions (Sluice's clear, for example) and to impulses on parameters. A trigger never
+  creates a history node. Which steps can carry one, and how they are marked, is a survey question.
 
 ## What horde needs from Arp (the contract)
 

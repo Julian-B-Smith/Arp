@@ -12,7 +12,8 @@ Where things are. Update in the same change that moves them.
 | `docs/filings/` | Working copies of outbound filings |
 | `docs/prior-art.md` | Phase 0 landscape, failure-mode rules, grid recipe, name check |
 | `traces/` | One provenance entry per merged change |
-| `spec/` | _planned, Phase A_ — scope list, parameter manifest, terminal-path table, held-set state machine |
-| `lab/` | _planned, Phase A_ — single-file listening twin |
-| `tools/` | _planned_ — headless Node oracles |
+| `spec/` | SPEC.md (draft r2.1), params.json (settings + division ticks), bank/starter.json (step patterns as data) |
+| `lab/arp-lab.html` | Single-file twin: CORE (pure; sliced by the smoke) / UI (adapter) banners |
+| `tools/lab_smoke.mjs` | Headless lab smoke: SPEC §11 invariants with planted controls |
+| `.claude/launch.json` | `lab` preview server (python http.server on localhost) |
 | `core/` | _planned, M1_ — C++20 library (CMake, Unix Makefiles) |

@@ -216,3 +216,48 @@ ratification. ROADMAP now says which of them yields first if the cutoff
 tightens. Proposed: ratchets, then probability, since both live in bank data,
 can ship as entries after 1.0, and need no core-format change if the format
 reserves their fields now.
+
+## D-007 — horde's trigger amendment kept; trigger output in 1.0 (RATIFIED by poll, 2026-10-21)
+
+- **Provenance.** At 19:06 on 2026-10-21, horde's lead wrote a new bullet
+  straight into this repo's uncommitted `SPINUP-BRIEF.md`, outside our
+  mailbox (`integrations/hypersaw/`). The bullet is trigger output, per horde
+  ADR-267 A1 (on horde's `lead-records-311`; read there, not copied). The
+  human chose to **keep it**. It is committed here as horde's amendment to
+  its own brief, attributed in this entry. The next notice to horde asks that
+  later requests come through the mailbox (INTEGRATIONS §3, rule zero).
+  Rejected: reverting and asking horde to re-file (the content is real, so
+  only the route was wrong).
+- **Trigger output joins 1.0** (the human chose this over the lead's
+  "reserve the field, build after 1.0").
+  - Step patterns carry a `trig` lane, 0–8. A firing step emits
+    `Trigger{lane}` at its on-time, and trigger-only steps exist (SPEC §4.3,
+    §8).
+  - A trigger is a performance event: it has no history and no terminal.
+  - Lane → action/impulse routing is horde's. The handoff shape is asked as
+    **Q-H3**, the third question to horde.
+- **Cutoff:** the third widening of 1.0 today. The ROADMAP's yield order
+  becomes **ratchets, then probability, then triggers**. Triggers are last
+  because horde's lead asked for them, so they serve the consumer directly.
+- The manifest's `scope_1_0.trigger_output` records this (a protected path,
+  covered by this poll).
+
+## D-008 — Spec r2 after the independent critic review (recorded 2026-10-21; the position policy PROPOSED)
+
+The Opus critic, sourced separately from the author, rated draft r1 **REWORK**
+(13 HIGH). All findings are folded into DRAFT r2. The disposition of each is
+in `docs/spec-review-r1.md`.
+
+**Position policy (the critic's open question, answered by the lead,
+PROPOSED).** When the host's reported position differs from Arp's prediction:
+- within 1/16 beat, Arp **silently follows the host**. No notes are cut, and
+  a once-guard keeps every grid step exactly-once.
+- beyond that, it is a jump: release-all and re-anchor.
+
+Rejected:
+- r1's "keep our own count" (it drifts and causes false jumps about every
+  12 s at a fractional tempo);
+- "always follow, never jump" (a seek would double or skip steps
+  unboundedly).
+
+The human confirms this at spec ratification.

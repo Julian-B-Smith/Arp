@@ -62,6 +62,8 @@ structure_gate() {
            SPINUP-BRIEF.md project.manifest.json integrations/README.md traces/README.md \
            intake/MANIFEST intake/note-vocabulary.md intake/engine-note-interface.md \
            intake/quantizer.md intake/tempo-divisions.md \
+           docs/prior-art.md spec/SPEC.md spec/params.json spec/bank/starter.json \
+           lab/arp-lab.html tools/lab_smoke.mjs \
            .gitattributes .github/workflows/ci.yml; do
     [ -e "$f" ] || { echo "verify: structure — missing $f" >&2; ok=1; }
   done
@@ -113,6 +115,28 @@ intake_gate() {
   return $ok
 }
 
+# The lab smoke needs Node. A missing interpreter is RED, never a skip: a
+# skipped invariant suite reads green while proving nothing (CI's ubuntu
+# runner ships Node, so this only bites a bare machine).
+need_node() {
+  command -v node >/dev/null 2>&1 && return 0
+  echo "verify: lab — node not found; the lab smoke cannot run (install Node LTS)" >&2
+  return 1
+}
+
+# Lab smoke (Phase A gate, ROADMAP): the listening twin's CORE run headless
+# against SPEC §11 — N1, G1–G5, D1, Q1, R1, P1, T1, K1, C1 and the order-style
+# table — each detector proven on its planted fault first, plus the embedded
+# params/bank deep-equal to spec/. It does NOT prove the C++ (M1 does); it
+# proves the lab is faithful enough to decide Q-A1–Q-A5 by playing. ~0.3 s.
+lab_smoke_gate() {
+  need_node || return 1
+  node tools/lab_smoke.mjs >"$HARNESS_DIR/lab_smoke.out" 2>&1 && return 0
+  echo "verify: lab smoke RED — full output in $HARNESS_DIR/lab_smoke.out:" >&2
+  grep -E 'FAIL|Error' "$HARNESS_DIR/lab_smoke.out" | head -20 | sed 's/^/    /' >&2
+  return 1
+}
+
 fast() {
   # ---- Layer-0: seconds, not minutes. CI-blocking. -------------------------
   local ok=0
@@ -122,7 +146,8 @@ fast() {
   structure_gate    || ok=1
   manifest_gate     || ok=1
   intake_gate       || ok=1  # intake/ is read-only: pinned bytes
-  # Grows per ROADMAP: the lab smoke (Phase A), the C++ invariant suite (M1).
+  lab_smoke_gate    || ok=1  # Phase A: the lab twin's invariants, each proven on a plant
+  # Grows per ROADMAP: the C++ invariant suite (M1).
   return $ok
 }
 
