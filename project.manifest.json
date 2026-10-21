@@ -1,0 +1,82 @@
+{
+  "schema": "project-manifest.0 (draft — kit v2 will formalize)",
+  "kit_version": "2.10.0",
+  "status": "RATIFIED 2026-10-21 (human, by poll, in the spin-up session; D-003). Phase state: see ROADMAP.",
+  "name": "Arp",
+  "naming_note": "Working name (HYPERSAW spin-out, 2026-10-21; chosen by poll in horde the same day). Any user-visible name passes horde's B433 clearance screen before 1.0; the Phase 0 prior-art pass runs the collision check. Directory `synthetic-worlds/Arp`; remote github.com/Julian-B-Smith/Arp (PUBLIC). Mailbox slots are `integrations/arp/` in providers' trees. No plugin ids minted (Q1).",
+  "survey": {
+    "what_is_it": "library/engine — Arp, horde's source of generated notes: a C++ note-generation library (the simple arpeggiator for horde 1.0 first; step sequencing and generative MIDI after 1.0) that horde hosts ahead of its engine, plus a browser lab twin for playing and listening. NOT a standalone plugin (Q1).",
+    "architecture_rung": {
+      "choice": 2,
+      "menu": [
+        "1: single thread",
+        "2: thread + subagents/verifier",
+        "3: organ fleet"
+      ],
+      "earned_by": "Note-lifecycle invariants (exactly one terminal per emitted note on every path, a sample-exact grid against the transport, identical output across block sizes and sample rates, seed determinism) give a fresh-context verifier mechanical ground truth. Rung 1 rejected: horde's 1.0 depends on a core only its author would have checked. Rung 3 rejected: one small core, no independent seams, no demonstrated bottleneck."
+    },
+    "domain_core_llm_must_not_own": "A pure note processor: notes in, notes out, with transport and tempo arriving as data. Held-note set (NoteRef identity, never a bare key), latch/hold, the sustain pedal as input hold, pattern modes, the step grid derived from the transport (never from block boundaries), sample offsets per emitted event, gate length, swing, octave range, velocity modes, scale quantize (root + 12-bit mask, read, never owned), restart rules, and the terminal for every emitted note on every path. Deterministic code only: seeded mulberry32 streams, no wall-clock reads, no allocation/locks/syscalls on the audio thread (buffers sized at prepare), framework-free; UI, host and horde glue are thin adapters. No engine assumed downstream (horde's FX device after 1.0 may run it on MIDI sidechain notes). AI proposes and judges at design time only.",
+    "scope_1_0": {
+      "modes": "up, down, up-down (with and without repeated ends), as played, chord, random (seeded mulberry32; same input + seed repeats exactly). Open 1, by poll.",
+      "rate": "tempo-synced only, by horde's division names (intake/tempo-divisions.md), stored by name, dotted and triplet included. Free rate in Hz deferred past 1.0. Open 2, by poll.",
+      "controls": "octave range, gate length, swing, latch/hold, velocity (as played / fixed / accented by step), optional quantize to horde's global scale.",
+      "sustain_pedal": "The pedal holds the arp's INPUT: keys released while CC 64 is down stay in the pattern until pedal-up, as if held. Arp consumes CC 64 and does not forward it to the engine, so its own emitted notes never pile up as tails. Composes with latch. Open 3, by poll.",
+      "restart": "A PARAMETER with three values: on a new chord from silence (step 1 at the next grid tick); on the bar (step index from song position); free-running. Step TIMING is always the transport grid; restart decides only which step plays next. Each value carries its own invariants. Open 4, by poll (the human chose all three over the single recommended rule).",
+      "morph": "ALL Arp settings are morph targets with horde's corners. Continuous settings blend; discrete settings (mode, rate, octaves, restart, velocity mode, latch) switch at a threshold — the threshold rule, where a switch lands relative to the grid, and that no switch strands a note without its terminal are Phase A spec items. Open 5, by poll (the human chose all over global).",
+      "presets_undo": "Every setting is part of a horde preset and undoable."
+    },
+    "oracle_shape": {
+      "goldens": "INVARIANTS FIRST, then pinned goldens. Each detector proven with a must-fail (planted) control: every note on gets exactly one terminal on every path (pattern change, held-chord change, switch-off, transport stop/jump/loop, panic, morph switch); the grid is sample-exact against the transport; output identical across block sizes and sample rates; same seed gives the same output; quantize keeps every note in the scale; no allocation on the process path. Per-pattern goldens pinned once the C++ exists, never before (horde ADR-142: parity must not enshrine a defect).",
+      "layer_0": "./verify fast — kit gates (integrity, leak) + structure/manifest sanity from day zero; grows the C++ invariant tests and the lab smoke as they land.",
+      "layer_e": "./verify full — fast + goldens + sweeps; CPU in Release reported, NEVER a gate.",
+      "ci": "fast only (Linux runner; public repo, so no minutes budget); full is local."
+    },
+    "second_implementation": {
+      "port_pin": false,
+      "note": "The lab is a listening twin, never a parity target. The C++ core is the reference from day one, judged by its invariants."
+    },
+    "consumers_and_providers": {
+      "consumed_by": [
+        "HYPERSAW / horde — runs Arp ahead of its engine on the instrument's note input (intake/engine-note-interface.md: IF-1, IF-2, IF-11, VO-6, VO-12); after 1.0 possibly on the FX device's MIDI sidechain (ADR-254). Module cutoff 2026-12-11. Spin-up notice filed in horde's mailbox at integrations/arp/."
+      ],
+      "consumes": [
+        "FOUNDATIONS — the note vocabulary (NoteRef, HeldStack) if it fits. Brief filed when the C++ first touches it, not at spin-up. Until then a local NoteRef-compatible type is the visibly-degraded placeholder behind the same surface.",
+        "horde — the shared scale quantizer's shape (root + 12-bit mask; the global scale, read-only) and the tempo-division list (by name).",
+        "autonomous — doctrine, harness kit (vendored gates, kit_sync), INTEGRATIONS policy, ecosystem-track registration (brief filed at spin-up)."
+      ],
+      "integrations_channel": "inbound: integrations/<sender>/ in THIS repo; outbound filings go in the provider's tree under integrations/arp/ via a PR touching only that path (writes stay home; the mailbox exception)."
+    },
+    "parallel_audit_thread": {
+      "earned": false,
+      "note": "No legacy arpeggiator to port, so nothing to audit ahead of the build; the rung-2 verifier is the independent eye."
+    },
+    "knowledge_loop_tags": [
+      "note-lifecycle",
+      "timing-transport",
+      "determinism",
+      "sr-blocksize-independence",
+      "held-note-logic"
+    ],
+    "lifespan_autonomy": {
+      "lifespan": "long-lived — the arpeggiator for horde 1.0 (module cutoff 2026-12-11), then step sequencing and generators after 1.0",
+      "autonomy_tier": "medium — PR per batch on the resident's own branch; the human merges, never the resident; interactive at every phase gate and decision.",
+      "protected_paths": "`./verify` and `.kit/`; `project.manifest.json`; `intake/` (horde's copies, read-only here — annotate in docs/); `spec/` and `lab/` once the human ratifies them; goldens once cut.",
+      "repo_layout": "mono-repo: core/ (C++) + lab/ + spec/ + tools/ here."
+    }
+  },
+  "open_at_survey": {
+    "step_sequencer_home": "After 1.0: an extension of the arp's pattern grid, or its own lab/module here — decided at the post-1.0 gate (Open 6, by poll). Phase A designs the core as a pattern grid so extension stays possible.",
+    "free_rate_hz": "Deferred past 1.0 (Open 2).",
+    "morph_discrete_rule": "Threshold, grid alignment and terminal safety for discrete-setting switches under morph — Phase A spec (Open 5)."
+  },
+  "model_routing": {
+    "note": "doctrine: pin explicitly, never inherit; cap at latest Opus.",
+    "lead": "opus",
+    "critic": "opus (effort: high)",
+    "verifier": "haiku (verbatim gate reporting; judges nothing)",
+    "implementer": "sonnet (scoped execution from a self-contained brief)"
+  },
+  "dev_machine": {
+    "note": "Apple Silicon Mac, Command Line Tools only: CMake -G \"Unix Makefiles\", absolute build paths, Release for any perf number. Node LTS for the lab oracles. Identity-free by design."
+  }
+}

@@ -1,0 +1,7 @@
+# LIBRARY — Arp durable lessons
+
+Entry format: `[Lxxxx] title | tier | added | tags | lesson | evidence | falsifier | supersedes`.
+New lessons enter as `candidate`. Never edit INDEX without LIBRARY, or vice versa.
+
+<a id="L0001"></a>
+[L0001] Derive the terminal-path list from the parameter list, not from a prose brief | candidate | added: 2026-10-21 | tags: note-lifecycle, held-note-logic | lesson: "Every emitted note ends exactly once on every path" is only as strong as the list of paths. A prose list of paths (pattern change, chord change, switch-off, transport stop, panic) silently misses every path that a later scope choice opens: here, making ALL settings morph targets means a corner morph can switch mode, octave range, rate, latch or restart mid-note, and each switch is a new way a sounding note must end. Build the terminal-path table mechanically: one row per setting that can change while a note sounds, plus one per transport and held-set event, and make each row an M1 test with a planted control. | evidence: SPINUP-BRIEF.md "What horde needs" lists five paths; the survey's Open 5 poll (2026-10-21, DECISIONS D-000) chose "All morph", which none of the five covers; ROADMAP Phase A now requires the table. | falsifier: the Phase A spec rules that every discrete switch applies only at a step boundary after the sounding note's own gate has ended it, so no switch ever meets a sounding note (then morph adds no terminal path, only a scheduling rule). | supersedes: —
