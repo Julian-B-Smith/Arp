@@ -45,6 +45,11 @@
   .black.mapped { box-shadow:inset 0 3px 0 var(--acc); }
   .kbinfo { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; }
   .kbinfo b { color:var(--acc); font-weight:600; }
+  .roll { display:block; width:100%; border:1px solid var(--line); border-radius:4px; background:var(--bg); margin:4px 0 2px; }
+  .rollhead { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; align-items:baseline; }
+  .rollhead h3 { font-size:11px; font-weight:600; color:var(--text); margin:6px 0 0; }
+  .legend { display:flex; flex-wrap:wrap; gap:4px 12px; font-size:10.5px; color:var(--dim); }
+  .legend i { display:inline-block; width:14px; height:8px; border-radius:2px; vertical-align:middle; margin-right:4px; font-style:normal; }
   .kbinfo kbd { border:1px solid var(--line); border-bottom-width:2px; border-radius:3px; padding:0 4px; font:inherit; font-size:11px; }
   #grid { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
   .cell { width:64px; border:1px solid var(--line); border-radius:4px; padding:3px 4px; font-size:10.5px; } .cell b { color:var(--dim); margin-right:4px; }
@@ -75,6 +80,16 @@
   <div class="q">Computer keys, laid out as in Ableton Live: <kbd>A</kbd>–<kbd>'</kbd> on the home row are the white keys, <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd> <kbd>O</kbd> <kbd>P</kbd> the black keys. <kbd>Z</kbd> / <kbd>X</kbd> shift the octave, <kbd>C</kbd> / <kbd>V</kbd> step the velocity, <kbd>Space</kbd> plays or stops. Note names follow Live (middle C, MIDI 60, is C3). Mouse and touch work on the keys above.</div>
   <div class="q" id="status"></div>
   <div class="q" id="coreStatus"></div>
+</div>
+<div class="card"><h2>Pattern</h2>
+  <div class="rollhead"><h3>One full cycle, as the core plays it</h3><span class="q" id="pvNote" style="margin:0"></span></div>
+  <canvas id="pvRoll" class="roll" height="190" aria-label="Piano roll of one full pattern cycle"></canvas>
+  <div class="rollhead"><h3>Live</h3><span class="legend">
+    <span><i style="background:var(--acc)"></i>note (brighter = louder)</span>
+    <span><i style="background:var(--line)"></i>rest</span>
+    <span><i style="border:1px dashed var(--dim)"></i>tie</span>
+    <span><i style="background:var(--hot)"></i>trigger</span></span></div>
+  <canvas id="liveRoll" class="roll" height="150" aria-label="Scrolling piano roll of what the arp is playing now"></canvas>
 </div>
 <div class="cols">
   <div>
@@ -1261,8 +1276,7 @@ class ArpCore {
     eng.host = simHost({ sr: eng.sr, bpm: state.bpm, startBeats: 0, playing: false });
     eng.master = eng.ctx.createGain(); eng.master.gain.value = 0.7; eng.master.connect(eng.ctx.destination);
     eng.t0 = eng.ctx.currentTime + 0.1; eng.next = 0;
-    eng.timer = setInterval(pump, PUMP_MS);
-    requestAnimationFrame(frame);
+    eng.timer = setInterval(pump, PUMP_MS);   // the paint loop already runs from init()
     status("Audio running at " + eng.sr + " Hz.");
     return true;
   }
@@ -1280,14 +1294,17 @@ class ArpCore {
     const evs = eng.core.process({ n: BLOCK, transport: eng.host.at(at), settings: effective(), scale: state.scale, in: ins });
     const base = eng.t0 + at / eng.sr;
     for (const e of evs) schedule(e, base + e.s / eng.sr);
-    for (const s of eng.core.lastSteps) eng.stepQ.push({ time: base + s.s / eng.sr, j: s.j, kind: s.kind, pat: eng.core.active.pattern });
+    for (const s of eng.core.lastSteps) {
+      eng.stepQ.push({ time: base + s.s / eng.sr, j: s.j, kind: s.kind, pat: eng.core.active.pattern });
+      roll.steps.push({ time: base + s.s / eng.sr, j: s.j, kind: s.kind });
+    }
     eng.next += BLOCK;
   }
   function schedule(e, when) {
     const rel = (when - eng.t0).toFixed(3);
-    if (e.t === "on") { synthOn(e.ref, e.key, e.vel, when); log(rel + "  on   " + e.key + "  v" + e.vel + "  #" + e.ref.id); }
-    else if (e.t === "off") { synthOff(e.ref, when); log(rel + "  off  " + e.ref.key + "  #" + e.ref.id); }
-    else if (e.t === "trig") { log(rel + "  TRIG lane " + e.lane); flashLane(e.lane, when); }
+    if (e.t === "on") { rollOn(e, when); synthOn(e.ref, e.key, e.vel, when); log(rel + "  on   " + e.key + "  v" + e.vel + "  #" + e.ref.id); }
+    else if (e.t === "off") { rollOff(e, when); synthOff(e.ref, when); log(rel + "  off  " + e.ref.key + "  #" + e.ref.id); }
+    else if (e.t === "trig") { roll.trigs.push({ time: when, lane: e.lane }); log(rel + "  TRIG lane " + e.lane); flashLane(e.lane, when); }
     else if (e.t === "panic") { log(rel + "  panic forwarded"); for (const [id, v] of eng.voices) { v.g.gain.cancelScheduledValues(when); v.g.gain.setTargetAtTime(0.0001, when, 0.01); v.osc.stop(when + 0.1); } eng.voices.clear(); }
   }
   function log(line) { eng.logLines.push(line); if (eng.logLines.length > 400) eng.logLines.splice(0, 200); eng.logDirty = true; }
@@ -1501,6 +1518,156 @@ class ArpCore {
     $("clearLog").addEventListener("click", () => { eng.logLines.length = 0; eng.logDirty = true; });
   }
 
+  // ---- pattern view: one full cycle (offline) + a live scrolling roll ---------------
+  // The preview runs a SEPARATE ArpCore — the same code the smoke checks — on a simulated
+  // playing host at 120 bpm with the current settings, fed the held keys (or an example
+  // chord). So it shows what the core WOULD play, never a hand-drawn approximation, and it
+  // never touches the live engine. The live roll just records what the scheduler sends.
+  const roll = { notes: [], byId: new Map(), steps: [], trigs: [] };
+  const LIVE_SPAN = 4;                       // seconds of history in the live roll
+  function rollOn(e, when) { const n = { key: e.key, vel: e.vel, on: when, off: null }; roll.notes.push(n); roll.byId.set(e.ref.id, n); }
+  function rollOff(e, when) { const n = roll.byId.get(e.ref.id); if (n) { n.off = when; roll.byId.delete(e.ref.id); } }
+  const EXAMPLE_CHORD = [60, 63, 67];        // C3 minor in Live's naming, used when nothing is held
+  const gcd = (a, b) => b ? gcd(b, a % b) : a;
+  const rateTicks = name => { const r = ARP_PARAMS.rate.find(x => x.name === name || x.alias === name); return r ? r.ticks : 3840; };
+  // SPEC 4.2 periods. Because rests do not consume a note (R1), the joint cycle in steps is
+  // the pattern length times however many pattern passes it takes the order to come round.
+  function orderPeriod(order, held, oct) {
+    const E = new Set(); for (const k of held) for (let o = 0; o < oct; o++) E.add(k + 12 * o);
+    const e = E.size;
+    if (!e) return 1;
+    if (order === "bounce") return e === 1 ? 1 : 2 * e - 2;
+    if (order === "bounce2") return 2 * e;
+    if (order === "pedal_low" || order === "pedal_high") return e === 1 ? 1 : 2 * (e - 1);
+    if (order === "chord") return oct;
+    if (order === "played") return held.length * oct;
+    return e;                                // up, down, converge, diverge, random, shuffle
+  }
+  function heldForPreview() {
+    let H = [];
+    try { H = eng.core._held().slice().sort((a, b) => a.abs - b.abs); } catch (err) { H = []; }   // press order
+    if (!H.length) H = [...pressed.keys()].sort((a, b) => a - b).map(k => ({ key: k, vel: 100 }));
+    return H.length ? { keys: H, example: false } : { keys: EXAMPLE_CHORD.map(k => ({ key: k, vel: 100 })), example: true };
+  }
+  function computePreview(S, held) {
+    const pat = ARP_BANK.patterns.find(p => p.id === S.pattern) || ARP_BANK.patterns[0];
+    const steps = pat.steps.map(raw => Object.assign({}, ARP_BANK.step_defaults, raw));
+    const plays = steps.filter(st => st.on && !st.tie).length;
+    const P = orderPeriod(S.order, held.keys.map(h => h.key), S.octaves);
+    const L = rateTicks(S.rate), Ls = steps.length;
+    const full = plays ? Ls * (P / gcd(P, plays)) : Ls;
+    const n = Math.max(1, Math.min(full, 64, Math.floor(64 * TPQ / L)));   // at most 64 steps / 64 beats
+    const sr = 48000, core = new ArpCore(); core.prepare(sr, 4096);
+    core.lab.opts = Object.assign({}, eng.core.lab.opts);
+    // Start half a step before tick 0 and press the keys one sample apart, in press order: the
+    // gesture then sits mid-step, so step 0 lands at tick 0 under every restart value, and
+    // `played` sees the real press order.
+    const host = simHost({ sr, bpm: 120, startBeats: -L / (2 * TPQ), playing: true });
+    const settings = Object.assign({}, S, { enabled: true });
+    const ins = held.keys.map((h, i) => ({ t: "on", s: i, ref: "pv:" + h.key, key: h.key, vel: h.vel || 100, ch: 0 }));
+    const endTick = (n + 1) * L, samplesPerTick = 60 * sr / (120 * TPQ);
+    const total = Math.ceil((endTick + L) * samplesPerTick) + 4096;
+    const notes = [], byId = new Map(), trigs = [], stepKinds = new Map();
+    for (let at = 0; at < total; at += 4096) {
+      const evs = core.process({ n: 4096, transport: host.at(at), settings, scale: state.scale, in: at ? [] : ins });
+      for (const e of evs) {
+        if (e.t === "on") { const x = { key: e.key, vel: e.vel, on: e.tick, off: null }; notes.push(x); byId.set(e.ref.id, x); }
+        else if (e.t === "off") { const x = byId.get(e.ref.id); if (x) { x.off = e.tick !== undefined ? e.tick : x.on + 1; byId.delete(e.ref.id); } }
+        else if (e.t === "trig") trigs.push({ tick: e.tick, lane: e.lane });
+      }
+      for (const st of core.lastSteps) if (st.kAbs >= 0 && st.kAbs < n) stepKinds.set(st.kAbs, { j: st.j, kind: st.kind });
+    }
+    const win = n * L;
+    return { L, n, full, win, example: held.example, held: held.keys.map(h => h.key),
+             notes: notes.filter(x => x.on >= 0 && x.on < win), trigs: trigs.filter(t => t.tick >= 0 && t.tick < win), stepKinds };
+  }
+  let pvKey = "", pvData = null, pvAt = 0;
+  function maybePreview(now) {
+    const S = effective(), held = heldForPreview();
+    const key = JSON.stringify([S, held.keys.map(h => h.key), state.scale, eng.core.lab.opts]);
+    if (key === pvKey || now - pvAt < 0.12) return;   // recompute only on change, at most ~8x a second
+    pvKey = key; pvAt = now;
+    try { pvData = computePreview(S, held); } catch (err) { pvData = null; $("pvNote").textContent = "preview failed: " + err.message; return; }
+    const d = pvData;
+    $("pvNote").textContent = (d.example ? "Example chord C3 E♭3 G3 (hold keys to use yours). " : "Your held keys. ") +
+      (d.full > d.n ? "The cycle is " + d.full + " steps; showing the first " + d.n + ". " : d.n + " steps per cycle. ") +
+      (S.order === "random" || S.order === "shuffle" || ARP_BANK.patterns.some(p => p.id === S.pattern && p.steps.some(x => x.prob !== undefined)) ? "Random draws are seeded, but not the live ones." : "");
+    drawPreview();
+  }
+  function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function fitCanvas(cv) {
+    // The CSS height lives in data-h: the backing store's `height` attribute is scaled by dpr,
+    // so reading it back as the CSS height would grow the canvas on every redraw (seen at dpr 2).
+    if (!cv.dataset.h) cv.dataset.h = cv.getAttribute("height");
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, hgt = Number(cv.dataset.h);
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(hgt * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(hgt * dpr); cv.style.height = hgt + "px"; }
+    const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); return { g, w, hgt };
+  }
+  // Shared painter: x is a function of time (ticks or seconds); rows span the notes' range.
+  function paintRoll(cv, notes, trigs, steps, xOf, x0, x1, opts) {
+    const { g, w, hgt } = fitCanvas(cv);
+    const C = { bg: cssVar("--bg"), line: cssVar("--line"), dim: cssVar("--dim"), acc: cssVar("--acc"), hot: cssVar("--hot"), text: cssVar("--text") };
+    const GUT = 34, TOP = 16, BOT = 12, plotW = w - GUT - 4, plotH = hgt - TOP - BOT;
+    g.clearRect(0, 0, w, hgt);
+    let lo = Infinity, hi = -Infinity; for (const n of notes) { lo = Math.min(lo, n.key); hi = Math.max(hi, n.key); }
+    if (!isFinite(lo)) { lo = 60; hi = 72; }
+    if (hi - lo < 12) { const mid = Math.round((lo + hi) / 2); lo = mid - 6; hi = mid + 6; }
+    lo -= 1; hi += 1;
+    const rows = hi - lo + 1, rh = plotH / rows;
+    const X = t => GUT + (xOf(t) - x0) / (x1 - x0) * plotW, Y = k => TOP + (hi - k) * rh;
+    // rows: black-key rows shaded, C rows labelled
+    for (let k = lo; k <= hi; k++) {
+      if (isBlack(k)) { g.fillStyle = C.line; g.globalAlpha = 0.35; g.fillRect(GUT, Y(k), plotW, rh); g.globalAlpha = 1; }
+      if (k % 12 === 0) { g.fillStyle = C.dim; g.font = "10px ui-monospace,Menlo,monospace"; g.fillText(noteName(k), 2, Y(k) + rh - 1); }
+    }
+    // step columns: rests shaded, ties dashed, step numbers on top
+    for (const st of steps) {
+      const a = X(st.t0), b = X(st.t1);
+      if (b < GUT || a > GUT + plotW) continue;
+      if (st.kind === "rest") { g.fillStyle = C.line; g.globalAlpha = 0.45; g.fillRect(a, TOP, b - a, plotH); g.globalAlpha = 1; }
+      g.strokeStyle = C.line; g.lineWidth = st.beat ? 1.2 : 0.5; g.beginPath(); g.moveTo(a + 0.5, TOP); g.lineTo(a + 0.5, TOP + plotH); g.stroke();
+      if (st.kind === "tie") { g.setLineDash([3, 3]); g.strokeStyle = C.dim; g.strokeRect(a + 1, TOP + 1, b - a - 2, plotH - 2); g.setLineDash([]); }
+      if (st.label && b - a > 9) { g.fillStyle = st.now ? C.acc : C.dim; g.font = "9.5px ui-monospace,Menlo,monospace"; g.fillText(st.label, a + 2, 11); }
+    }
+    // notes: brighter = louder; a thin outline so ratchets and repeats read as separate notes
+    for (const n of notes) {
+      const a = X(n.on), b = X(n.off === null ? x1 : n.off);
+      if (b < GUT || a > GUT + plotW) continue;
+      g.globalAlpha = 0.35 + 0.65 * (n.vel / 127); g.fillStyle = C.acc;
+      g.fillRect(Math.max(a, GUT), Y(n.key) + 1, Math.max(2, b - Math.max(a, GUT) - 1), Math.max(2, rh - 2));
+      g.globalAlpha = 1; g.strokeStyle = C.bg; g.lineWidth = 1; g.strokeRect(Math.max(a, GUT) + 0.5, Y(n.key) + 1.5, Math.max(1, b - Math.max(a, GUT) - 2), Math.max(1, rh - 3));
+    }
+    // triggers: a marker on the bottom strip, with its lane
+    for (const t of trigs) {
+      const a = X(t.at); if (a < GUT || a > GUT + plotW) continue;
+      g.fillStyle = C.hot; g.beginPath(); g.moveTo(a, hgt - BOT + 1); g.lineTo(a + 5, hgt - 1); g.lineTo(a - 5, hgt - 1); g.closePath(); g.fill();
+      g.font = "9px ui-monospace,Menlo,monospace"; g.fillText(String(t.lane), a + 6, hgt - 2);
+    }
+    if (opts && opts.playhead !== undefined) { const a = X(opts.playhead); g.strokeStyle = C.hot; g.lineWidth = 1.5; g.beginPath(); g.moveTo(a, TOP); g.lineTo(a, TOP + plotH); g.stroke(); }
+    if (opts && opts.empty) { g.fillStyle = C.dim; g.font = "11px ui-monospace,Menlo,monospace"; g.fillText(opts.empty, GUT + 8, TOP + plotH / 2); }
+  }
+  function drawPreview() {
+    const d = pvData; if (!d) return;
+    const steps = [];
+    for (let k = 0; k < d.n; k++) {
+      const st = d.stepKinds.get(k) || { j: k, kind: "rest" };
+      steps.push({ t0: k * d.L, t1: (k + 1) * d.L, kind: st.kind, label: String(st.j + 1), beat: (k * d.L) % TPQ === 0 });
+    }
+    paintRoll($("pvRoll"), d.notes, d.trigs.map(t => ({ at: t.tick, lane: t.lane })), steps, t => t, 0, d.win,
+      d.notes.length || d.trigs.length ? {} : { empty: "nothing plays (no notes and no triggers in this cycle)" });
+  }
+  function drawLive(now) {
+    const x0 = now - LIVE_SPAN, x1 = now + LOOKAHEAD;
+    const cut = x0 - 1;   // prune what has scrolled out
+    while (roll.notes.length && roll.notes[0].off !== null && roll.notes[0].off < cut) roll.notes.shift();
+    while (roll.steps.length && roll.steps[0].time < cut) roll.steps.shift();
+    while (roll.trigs.length && roll.trigs[0].time < cut) roll.trigs.shift();
+    const steps = roll.steps.map((s, i) => ({ t0: s.time, t1: i + 1 < roll.steps.length ? roll.steps[i + 1].time : s.time + 0.125, kind: s.kind, label: String(s.j + 1), now: s.time <= now && (i + 1 >= roll.steps.length || roll.steps[i + 1].time > now) }));
+    paintRoll($("liveRoll"), roll.notes, roll.trigs.map(t => ({ at: t.time, lane: t.lane })), steps, t => t, x0, x1,
+      { playhead: now, empty: roll.notes.length || roll.trigs.length ? undefined : (eng.ctx ? "hold keys to play" : "press Start audio, then hold keys") });
+  }
+  window.addEventListener("resize", () => { pvKey = ""; });   // redraw at the new width
+
   // ---- per-frame paint ------------------------------------------------------------
   function frame() {
     requestAnimationFrame(frame);
@@ -1509,6 +1676,7 @@ class ArpCore {
     let cur = null;
     while (eng.stepQ.length && eng.stepQ[0].time <= now) cur = eng.stepQ.shift();
     if (cur) for (const el of document.querySelectorAll(".cell")) el.classList.toggle("now", Number(el.getAttribute("data-j")) === cur.j);
+    maybePreview(performance.now() / 1000); drawLive(now);
     if (eng.logDirty) { eng.logDirty = false; $("log").textContent = eng.logLines.slice(-160).reverse().join("\n"); }
     const eff = effective();
     for (const p of ARP_PARAMS.params) { const e = controls[p.key].eff; if (e) e.textContent = (state.morph.on && eff[p.key] !== state.cur[p.key]) ? "-> " + eff[p.key] : ""; }
@@ -1521,6 +1689,7 @@ class ArpCore {
 
   function init() {
     buildKeyboard(); buildSettings(); buildScale(); buildLamps(); buildMorph(); buildLab(); renderGrid(); initMidi();
+    requestAnimationFrame(frame);   // paint from load, so the pattern preview shows before audio starts
     status("Press Start audio (or any key / Play) - browsers need a gesture before they will make sound.");
   }
   init();
