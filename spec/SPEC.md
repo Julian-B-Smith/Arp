@@ -1,4 +1,4 @@
-# Arp — 1.0 specification (DRAFT r2.3, Phase A)
+# Arp — 1.0 specification (DRAFT r2.7, Phase A)
 
 > **Status: DRAFT r2.1, 2026-10-21.** r1 was reviewed by an independent Opus
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -6,7 +6,11 @@
 > r2.1 adds §13, which settles the 17 gaps the lab build surfaced. §13 is
 > normative and outranks the section it clarifies. r2.2 adds the output
 > stream tag (D-009, horde ADR-270). r2.3 rewrites §6 in horde's scale schema
-> (D-010).
+> (D-010). r2.4 adds four chord + note order styles, the per-step `pick`, and
+> the user pattern (§4.6) (D-011). r2.5 added `landed` (D-012); r2.7 defers it past 1.0
+> (`docs/deferred/landed.md`) and replaces `octaves` with Ableton-style **steps** (§4.7, D-014).
+> r2.6 folded in the second independent review
+> (5 HIGH, 8 MED, 4 LOW; `docs/spec-review-r2.md`, D-013).
 >
 > - This file becomes a protected path once the human ratifies it (the
 >   ROADMAP Phase A gate).
@@ -281,14 +285,11 @@ Arp on with a chord already held plays it (H13).
 - On a jump, `lastEvaluated` is reset to the step before the new position.
 
 ### 4.2 Order styles
-**The sorted list** (no duplicates):
+**The sorted list:** `E` = the held keys in pitch order (H, §3); `e = |E|`.
+There are no octave copies. Range comes from **transposition steps**
+(§4.7), which repeat the whole pattern shifted.
 
-    E = sorted(unique(H ∪ (H+12) ∪ … ∪ (H+12·(oct−1))))
-
-`e = |E|`, and `oct` is the `octaves` setting (1–4).
-
-**The press-order list:** `Pp` = the held keys in press order, followed by the
-same list +12, +24 and so on, for `oct` blocks. Duplicates are kept.
+**The press-order list:** `Pp` = the held keys in press order.
 
 **Order position:** `p = mod(m, period)`. With `e = 0`, no note plays (§4.3).
 
@@ -299,18 +300,30 @@ same list +12, +24 and so on, for `oct` blocks. Duplicates are kept.
 | `bounce` | e = 1: 1; else 2e−2 | p < e ? E[p] : E[2e−2−p] |
 | `bounce2` | 2e | p < e ? E[p] : E[2e−1−p] |
 | `played` | \|Pp\| | Pp[p] |
-| `chord` | oct | every key of H, +12·p; collisions after quantize resolve per §6 |
+| `chord` | 1 | every key of H; collisions after quantize resolve per §6 |
 | `random` | — | E[ draw(seed, kAbs, 0, epoch) mod e ] |
-| `shuffle` | e | P_c[p], c = fdiv(m, e); P_c = Fisher–Yates of E using draw(seed, c·256 + i, 1, epoch) for i = e−1 … 1 |
+| `shuffle` | e | P_c[p], c = fdiv(m, e); P_c = Fisher–Yates of E using draw(seed, c·256 + i, 1, epoch) for i = e−1 … 1; **no back-to-back repeat**: for c > 0, e ≥ 2, if P_c[0] = P_{c−1}[e−1], swap P_c[0] and P_c[1] (deterministic). This is "random without repeats" (D-012a) |
 | `converge` | e | E[0], E[e−1], E[1], E[e−2], … (q-th = q even ? E[q/2] : E[e−1−(q−1)/2]) |
 | `diverge` | e | converge read backwards: q-th = converge[e−1−q] |
 | `pedal_low` | e = 1: 1; else 2(e−1) | p even → E[0]; p odd → E[1 + (p−1)/2] |
 | `pedal_high` | e = 1: 1; else 2(e−1) | p even → E[e−1]; p odd → E[e−2 − (p−1)/2] |
+| `chord_walk` | e + 1 | p = 0 → every key of H (the chord); p ≥ 1 → E[p−1] |
+| `stride` | 2 | p = 0 → H[0] (the bass, lowest held); p = 1 → the **rest** of H, as a chord. With one key held, the rest is that key +12. A step's `oct` offset and the transposition (§4.7) apply to every key of the step, the bass included |
+| `chord_between` | 2e | p even → every key of H; p odd → E[(p−1)/2] |
+| `pairs` | e = 1: 1; else e − 1 | e = 1: {E[0]}; else {E[p], E[p+1]}, a dyad |
+
+**Chord + note styles (D-011).** These four mix chords and single notes. In
+each of them, a step that plays several keys behaves as a `chord` step does:
+- every key gets its own note;
+- collisions resolve after quantize (§6);
+- `m` advances by 1 per step, whatever number of keys it plays.
+
+`H` is in **pitch order** (ascending key) wherever §4 uses it, including the `chord` style and the `chord` pick, so `H[0]` is the lowest. A multi-key step's keys are processed in ascending pre-quantize key order (§6).
 
 **Which key is "source"** for channel and velocity: for an octave copy, the
 held key it was copied from.
 
-**PROPOSED (Q-A3):** the lab exposes all twelve; the starter bank is chosen
+**PROPOSED (Q-A3):** the lab exposes all seventeen; the starter bank is chosen
 by playing.
 
 ### 4.3 Step patterns (data)
@@ -322,7 +335,16 @@ A pattern is `length` steps (1–64). Each step carries:
 - `oct` (−2…+2);
 - `prob` (0–100 %);
 - `ratchet` (1–4);
-- `trig` (0–8).
+- `trig` (0–8);
+- `pick` (D-011): **which held note(s)** the step plays:
+  - `order` (the default): the next note(s) of the order style, at
+    `p = mod(m, period)`;
+  - `1`…`8`: the k-th lowest key of E, cyclic: `E[mod(k−1, e)]`;
+  - `low` or `high`: E[0] or E[e−1];
+  - `chord`: every key of H.
+
+  **Only `order` picks advance `m`.** An explicit pick plays its note without
+  consuming the order stream, so the order style resumes where it left off.
 
 Pattern `none` is a single plain step.
 
@@ -332,10 +354,13 @@ grid tick, using **that block's settings snapshot** (H6). For step `s = steps[j]
 2. **If `s.tie`**: no new note and no change to `m`. The tie was already
    honoured by look-ahead (§5). Fire the trigger if `fires ∧ s.trig ≠ 0`.
 3. **Else if `s.on ∧ fires ∧ e > 0`**: **play**.
-   - Take the note(s) at `p`.
-   - Apply `s.oct·12`, then quantize (§6).
-   - **Drop** any key outside 0–127 (counted; H10).
-   - Schedule the ons (§5). `m += 1`, even if every key was dropped.
+   - Take the note(s) at `p` (`pick = order`), or the step's explicit pick.
+   - Apply `s.oct·12` and the pass transposition `t` (§4.7, in semitones;
+     in degrees, §4.7's own order applies).
+   - **Drop** any key outside 0–127 (counted; H10, T16), **before** quantize.
+   - Quantize the kept keys (§6).
+   - Schedule the ons (§5). If `pick = order`, `m += 1`, even if every key
+     was dropped. An explicit pick leaves `m` unchanged.
    - Fire the trigger if `s.trig ≠ 0`.
 4. **Else if `fires ∧ s.trig ≠ 0`** (a rest, or `e = 0`): fire the trigger.
    This is the trigger-only case, consistent across patterns (H11).
@@ -357,6 +382,84 @@ grid tick, using **that block's settings snapshot** (H6). For step `s = steps[j]
 At every anchor `m := 0` (H8).
 
 ---
+
+### 4.6 The user pattern: build your own (D-011)
+- **Shape.** The pattern id `user` names the player's own step pattern:
+  - `length` 1–16;
+  - each step has every §4.3 field, `pick` included;
+  - it is selected like any bank pattern (`pattern = user`).
+- **The default** is 8 plain steps with `pick = order`.
+- **Storage.** It is **preset data**: a small structured blob saved with the
+  preset. It is not host-automatable parameters, because 16 steps × 9 fields
+  is no parameter surface. horde is asked how presets carry it (Q-H6).
+- **Storage lives with the instance, not with `prepare`** (r2 H3). The
+  pattern's slots are fixed members sized at **construction**. `prepare` and
+  `reset` never touch them, because the pattern is preset data, not runtime
+  state. Hosts load state before `prepare` and re-`prepare` on a rate change.
+- **Setting it** (r2 H4):
+  - `setUserPattern(p)` is called **off the audio thread** (UI edit or preset
+    load). Calls are serialised on that side.
+  - It validates `p`. Numeric fields clamp to their ranges; an invalid `pick`
+    or field becomes its default.
+  - It writes into a **triple buffer**: one writer, one reader, latest write
+    wins, published by an atomic index exchange. So it never blocks and
+    never tears, however many calls land between steps.
+  - The audio thread reads the "new" flag **once per `process`**. A new
+    pattern applies from the first step evaluated in that block, never
+    mid-step.
+  - `getUserPattern()` returns the writer side's latest copy, which is what a
+    preset saves.
+  - `process` never allocates or locks for it.
+- **Morph.** Choosing `pattern = user` morphs like any discrete setting. The
+  user pattern's content does not morph; it is one pattern per preset.
+- **Ties and look-ahead (§5.2)** read the user pattern exactly as they read a
+  bank pattern.
+- **The `pick` encoding:** the JSON string `"order"`, `"low"`, `"high"` or
+  `"chord"`, or an integer 1–8. Anything else is read as `"order"`.
+
+### 4.7 Transposition steps (Ableton-style; D-014)
+These replace r2.6's `octaves`. They follow Ableton's arpeggiator
+Transposition: the **whole pattern repeats, shifted**, rather than one merged
+range.
+
+**Settings:**
+- `steps`: 0–8, default 0 (no transposition);
+- `step_size`: −48…+48, default **+12**;
+- `step_unit`: `semitones` (the default) or `degrees`.
+
+**The pass index.** A **pass** is one full cycle of the order style:
+`period` positions, or `e` for `random`, which has no period of its own. The
+transposition of a step is
+
+    t = mod(fdiv(m, P), steps + 1)
+
+- `P` is the order style's period, recomputed from the live H at each step,
+  as `p` is.
+- Pass 0 is untransposed. Pass t shifts by `t · step_size` units. After
+  `steps` shifted passes, it returns to pass 0.
+- So `up` over C E G with 2 steps of +7 semitones plays
+  `C E G | G B D | D F♯ A | C E G …`.
+- With `steps = 0` the pattern never transposes, and `t` is always 0.
+- An explicit `pick` (§4.3) takes the **current** pass's `t`, so a picked
+  bass note shifts with its pass.
+- Because `t` derives from `m`, it resets wherever `m` does (every anchor,
+  §4.5).
+
+**Applying t**, in the play rule (§4.3), to every key of the step:
+- **`semitones`:** `key + t · step_size`, together with the step's
+  `oct·12`, **before** the out-of-range drop and before quantize. So
+  quantize can pull a shifted note into the scale.
+- **`degrees`:** the key is first quantized to the effective scale (§6).
+  It then moves `t · step_size` **in-scale keys** up or down that scale,
+  counting only keys in the scale. Then the step's `oct·12` is added, and
+  keys outside 0–127 are dropped.
+  - With quantize `off`, or a zero mask, a degree is one semitone (the
+    chromatic scale).
+  - A degree-transposed key is in the scale by construction, and it sets
+    `lastQ` like any quantized key.
+
+**Morph:** `steps`, `step_size` and `step_unit` are discrete settings (§9),
+applied from the next evaluated step.
 
 ## 5. Note timing
 
@@ -420,7 +523,8 @@ horde's shape: `scaleRoot` (0–11) and `scaleDeg0..11`, legacy host ids
   - `scale`: snap to the scale anchored at its root;
   - `chord_root`: horde's movable-do "scale (offset)" mode for an arp. The
     scale **shape** is anchored on the **lowest held key**, so the root
-    setting is ignored (horde ADR-112). With nothing held, the root applies.
+    setting is ignored (horde ADR-112). As in horde, the anchor's own pitch
+    class is **always admitted**, even when degree 0 is off (r2 M4).
 - `scale_source`, one of:
   - `global`: horde's scale, from the block input. Read, never owned. This
     is the default.
@@ -428,18 +532,33 @@ horde's shape: `scaleRoot` (0–11) and `scaleDeg0..11`, legacy host ids
     The default own scale is C major.
 
 All of these are discrete settings and morph targets, so they apply at the
-next step (§9).
+next step (§9). `quantize`, `scale_source`, `scale_root` and `scale_deg0..11`
+form one **morph group**, resolved by a single leading-corner decision. A
+morph between two scales therefore never passes through an unintended
+hybrid, such as C major's root with A minor's degrees (r2 M2).
 
 **The rule:**
-- Each output key moves to the nearest in-scale key **within 0–127**. A key
-  already in the scale is unchanged. A zero mask disables quantize.
+- Keys outside 0–127 were already dropped (§4.3). Each kept key moves to
+  the nearest in-scale key within 0–127. A key already in the scale is
+  unchanged. A zero mask disables quantize.
 - **A tie goes toward the previous quantized output** of this instance,
   `lastQ`. This is horde's rule, from Tonality: the output line is the melody
   heard, so continuity is owed to it.
   - With no `lastQ`, or with both candidates equally near it, the tie goes
     to the **lower** key.
-  - `lastQ` is set by every key that passes through quantize, including chord
-    steps, in their emission order. It resets only at `prepare` and `reset`.
+  - **When `lastQ` updates** (r2 H1). It updates at **step evaluation**, not
+    at emission, so the block partition cannot change it.
+    - Each kept key of the step is processed in ascending pre-quantize key
+      order, and each sets `lastQ` to its own output key before the next key
+      is quantized.
+    - A refused or capped on still counts, because `lastQ` follows
+      evaluation.
+    - With quantize `off`, or a zero mask, `lastQ` is not touched.
+  - **When `lastQ` resets, PROPOSED (r2 H2).** It resets to "none" at every
+    release-all (T4, T6, T7, T10: switch-off, any transport edge, panic,
+    reset, prepare, deactivate). Every play-from-here then sounds the same,
+    and a bounce matches what was auditioned. The human confirms this at
+    spec ratification.
 - **Collisions:** when two keys of one step land on one key, it is emitted
   once, with the channel and velocity of the earliest source in the style's
   order.
@@ -477,6 +596,7 @@ table **and clears the pending queue**.
 | T14 | a free-clock re-base | none; pending positions shift exactly |
 | T15 | a rate change | none; offs keep their ticks; re-anchor per §4.5 |
 | T16 | a key dropped outside 0–127 | none emitted, so nothing to end |
+| T17 | the user pattern is replaced (`setUserPattern`) | none: it applies from the first step evaluated in the next `process`; a note already tied keeps its scheduled off |
 
 T3, T8, T9, T12, T14, T15 and T16 are rows on purpose: each must be shown to
 produce no extra and no missing terminal (LIBRARY L0001).
@@ -527,7 +647,8 @@ produce no extra and no missing terminal (LIBRARY L0001).
 - the same input events at the same absolute samples;
 - the same transport;
 - the same settings;
-- the same seed.
+- the same seed;
+- the same user pattern, delivered before the same block.
 
 ---
 
@@ -542,11 +663,15 @@ produce no extra and no missing terminal (LIBRARY L0001).
 | G4 | the **tick** of every event is identical at 44.1, 48, 96 and 192 kHz (samples differ by rate) | read a sample-rate-dependent value into tick math |
 | G5 | under re-base jitter (the host position perturbed by ±1/32 beat), every grid step is evaluated exactly once | drop the once-guard |
 | D1 | same seed → same stream; a different seed changes `random` / `shuffle` / `prob` output | put a time-varying value in the draw |
-| Q1 | every quantized key is in the (global) scale and in 0–127 | skip quantize on chord steps |
+| Q1 | every quantized key is in the **effective** scale (source, mode, anchor) and in 0–127 | skip quantize on chord steps |
 | Q2 | a tie resolves toward the previous quantized output (lower when there is none) | always resolve downward |
 | Q3 | with `scale_source = own`, keys follow Arp's own scale, not the global one | ignore the own scale |
 | Q4 | `chord_root` anchors the scale shape on the lowest held key | anchor on the root setting |
-| R1 | rest, miss, tie and trigger-only steps don't advance `m` | advance `m` on rests |
+| R1 | rest, miss, tie, trigger-only and explicit-`pick` steps don't advance `m` | advance `m` on rests; advance `m` on explicit picks |
+| N2 | `shuffle` never plays the same key twice in a row (e ≥ 2), and every key once per cycle | skip the boundary swap |
+| Q5 | with ties toward a previous note above the tie, ties resolve UP; G1 holds with quantize ties in play; `lastQ` resets at release-all | always down; update `lastQ` at emission; never reset `lastQ` |
+| X1 | transposition steps: pass t of every style is the base pass shifted by t·step_size (semitones), or moved t·step_size in-scale keys (degrees); `steps = 0` never shifts; the pass returns to 0 after `steps` | merge copies into one range (r2.6 octaves); count degrees as semitones while a scale is on |
+| U1 | the user pattern plays its steps' picks (k-th, low, high, chord) and rhythm exactly; a `setUserPattern` takes effect at the next step | ignore `pick`; swap mid-step |
 | P1 | `prob` 0 never fires and 100 always fires (exact); 30 and 50 are within ±2 % over 10,000 steps | use `<=` (caught at the exact endpoints, since a ±2 % band cannot see it) |
 | T1 | triggers fire once per firing step, at its first on | fire on every ratchet |
 | S1 | every emitted NoteOn carries `stream = arp` | drop the tag on some ons |
@@ -560,9 +685,13 @@ produce no extra and no missing terminal (LIBRARY L0001).
 - **Q-A1:** the discrete morph rule, with hysteresis (§9).
 - **Q-A2:** restart under morph (§9).
 - **Q-A3:** the starter bank (§4.2 orders; `bank/starter.json` patterns).
+- **Q-A7:** which pass an explicit pick takes (§13b item 7; PROPOSED: the next
+  order note's pass).
 - **Q-A5:** pre-roll (**PROPOSED:** played; the grid extends to negative
   ticks). The tie direction is settled by D-010.
 - **Q-H3** (horde): the trigger-lane handoff.
+- **Q-H6** (horde): how a preset carries Arp's user pattern (a structured
+  blob, not parameters).
 - **Q-H4** (horde, after 1.0): per-channel and MPE pedals; mapping per-note
   expressions onto Arp's output notes.
 
@@ -620,3 +749,31 @@ says otherwise.
 16. **The step bound** (§1.3) is asserted in C++ only (M1).
 17. **Enable with keys held under the free clock** starts the clock at offset
     0 of that block, as a clock switch would (§2.4 H7b).
+
+**A listening note (Layer-E, not a gate; r2 L3).** Under the D-010 tie rule,
+`up` over C♯ D♯ F♯ G♯ A♯ in C major plays 60 62 65 67 69, then **62 62** 65
+67 69: whole-tone black-key pairs can collapse. Listen to this in the lab
+before ratifying.
+
+### 13b. Clarifications from the r2.6 lab build (normative)
+1. **`chord_root`'s always-admitted anchor** applies only when the mask is
+   non-zero. A zero mask still disables quantize.
+2. **The lab's "clear"** restores the default user pattern (8 plain steps).
+3. **There is no plant for "`lastQ` updated at emission".** In the lab,
+   evaluation and emission interleave in time order at every block size, so
+   G1 cannot diverge on it. The rule is enforced by construction (`_quant`
+   runs inside step evaluation). The C++ M1 suite revisits this.
+4. **`lastQ` under degree transposition** is the final output key, after the
+   degree move and the octave shift. It is set only while quantize is on
+   with a non-zero mask. A key dropped as out of range leaves `lastQ` at its
+   first quantize result.
+5. **A degree move that runs off 0–127** drops the key (counted, T16).
+6. **Pass 0 in degrees mode** takes the ordinary path. Quantizing first
+   changes nothing there.
+7. **Which pass an explicit pick takes, PROPOSED (Q-A7, decided by
+   playing).** A pick reads `t` from `m` at its own step: the pass of the
+   **next** order note. A pick that *leads* a pass shifts with it, while a
+   pick right after a pass's last order note already belongs to the next
+   pass. The smoke pins it: `60 60 64 60 67 | 72 72 72 76 72 79 | 60 60 60`.
+   The alternative, the pass of the *previous* order note, gets the opposite
+   case wrong.
