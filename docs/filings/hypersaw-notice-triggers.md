@@ -3,11 +3,11 @@ id: arp-notice-triggers
 from: Arp
 to: HYPERSAW
 thread: arp-note-generation-consumer
-status: draft
+status: filed
 ball: HYPERSAW
 seq: 2
-filed: —
-respond-by: —
+filed: 2026-10-21
+respond-by: 2026-11-13
 cites: none
 ---
 
