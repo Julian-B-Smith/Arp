@@ -12,7 +12,7 @@ To play it:
 python3 -m http.server 59531 --bind 127.0.0.1
 ```
 
-Run that from the repo root, then open http://localhost:59531/lab/arp-lab.html (or use the Browser pane's "lab" preview).
+Run that from the repo root, then open http://localhost:59531 (it goes straight to the lab), or use the Browser pane's "lab" preview.
 The C++ core is next (M1). horde's module cutoff is **2026-12-11**. Phase state lives
 in [`ROADMAP.md`](ROADMAP.md).
 
