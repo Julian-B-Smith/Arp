@@ -50,6 +50,15 @@
   .rollhead h3 { font-size:11px; font-weight:600; color:var(--text); margin:6px 0 0; }
   .legend { display:flex; flex-wrap:wrap; gap:4px 12px; font-size:10.5px; color:var(--dim); }
   .legend i { display:inline-block; width:14px; height:8px; border-radius:2px; vertical-align:middle; margin-right:4px; font-style:normal; }
+  .mxwrap { overflow-x:auto; margin-top:4px; }
+  .mx { display:grid; grid-template-columns:78px repeat(var(--cols), minmax(64px, 1fr)); gap:3px; min-width:780px; }
+  .mx .mh { font-size:9.5px; color:var(--dim); text-align:center; align-self:end; line-height:1.15; padding-bottom:2px; }
+  .mx .ml { font-size:10.5px; color:var(--dim); align-self:center; text-align:right; padding-right:4px; }
+  .mx .mh.sel, .mx .ml.sel { color:var(--acc); }
+  .mx canvas { display:block; width:100%; height:34px; border:1px solid var(--line); border-radius:3px; background:var(--bg); cursor:pointer; }
+  .mx canvas:hover { border-color:var(--dim); }
+  .mx canvas.sel { border-color:var(--acc); box-shadow:0 0 0 1px var(--acc); }
+  .mx canvas:focus-visible { outline:2px solid var(--acc); outline-offset:1px; }
   .kbinfo kbd { border:1px solid var(--line); border-bottom-width:2px; border-radius:3px; padding:0 4px; font:inherit; font-size:11px; }
   #grid { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
   .cell { width:64px; border:1px solid var(--line); border-radius:4px; padding:3px 4px; font-size:10.5px; } .cell b { color:var(--dim); margin-right:4px; }
@@ -90,6 +99,10 @@
     <span><i style="border:1px dashed var(--dim)"></i>tie</span>
     <span><i style="background:var(--hot)"></i>trigger</span></span></div>
   <canvas id="liveRoll" class="roll" height="150" aria-label="Scrolling piano roll of what the arp is playing now"></canvas>
+</div>
+<div class="card"><h2>Order × pattern</h2>
+  <div class="rollhead"><span class="q" style="margin:0">Every order with every step pattern, as the core plays them over your held keys (or the example chord) with your other settings. Click one to select it.</span><span class="q" id="mxNote" style="margin:0"></span></div>
+  <div class="mxwrap"><div class="mx" id="matrix"></div></div>
 </div>
 <div class="cols">
   <div>
@@ -1552,14 +1565,14 @@ class ArpCore {
     if (!H.length) H = [...pressed.keys()].sort((a, b) => a - b).map(k => ({ key: k, vel: 100 }));
     return H.length ? { keys: H, example: false } : { keys: EXAMPLE_CHORD.map(k => ({ key: k, vel: 100 })), example: true };
   }
-  function computePreview(S, held) {
+  function computePreview(S, held, cap = 64) {
     const pat = ARP_BANK.patterns.find(p => p.id === S.pattern) || ARP_BANK.patterns[0];
     const steps = pat.steps.map(raw => Object.assign({}, ARP_BANK.step_defaults, raw));
     const plays = steps.filter(st => st.on && !st.tie).length;
     const P = orderPeriod(S.order, held.keys.map(h => h.key), S.octaves);
     const L = rateTicks(S.rate), Ls = steps.length;
     const full = plays ? Ls * (P / gcd(P, plays)) : Ls;
-    const n = Math.max(1, Math.min(full, 64, Math.floor(64 * TPQ / L)));   // at most 64 steps / 64 beats
+    const n = Math.max(1, Math.min(full, cap, Math.floor(64 * TPQ / L)));   // at most `cap` steps / 64 beats
     const sr = 48000, core = new ArpCore(); core.prepare(sr, 4096);
     core.lab.opts = Object.assign({}, eng.core.lab.opts);
     // Start half a step before tick 0 and press the keys one sample apart, in press order: the
@@ -1669,7 +1682,76 @@ class ArpCore {
     paintRoll($("liveRoll"), roll.notes, roll.trigs.map(t => ({ at: t.time, lane: t.lane })), steps, t => t, x0, x1,
       { playhead: now, empty: roll.notes.length || roll.trigs.length ? undefined : (eng.ctx ? "hold keys to play" : "press Start audio, then hold keys") });
   }
-  window.addEventListener("resize", () => { pvKey = ""; });   // redraw at the new width
+  window.addEventListener("resize", () => { pvKey = ""; mxKey = ""; });   // redraw at the new width
+
+  // ---- order × pattern matrix: a thumbnail of every combination ---------------------
+  // Each cell is computePreview() — the real core, offline — for that order and pattern with
+  // every OTHER setting as it is now, so the thumbnails change as you change octaves, gate,
+  // swing, rate or your held keys. 132 renders are spread over frames (a few ms per frame)
+  // so the page stays responsive; a change of inputs restarts the queue.
+  const MX_STEPS = 32;            // a thumbnail shows at most the first 32 steps of its cycle
+  const ORDERS = ARP_PARAMS.params.find(q => q.key === "order").values;
+  let mxKey = "", mxQueue = [], mxCells = new Map(), mxSel = "";
+  function buildMatrix() {
+    const box = $("matrix"); box.textContent = "";
+    box.style.setProperty("--cols", String(ARP_BANK.patterns.length));
+    box.appendChild(h("div", {}));
+    for (const pat of ARP_BANK.patterns) box.appendChild(h("div", { class: "mh", "data-p": pat.id, title: pat.purpose || pat.id }, pat.name || pat.id));
+    for (const ord of ORDERS) {
+      box.appendChild(h("div", { class: "ml", "data-o": ord }, ord));
+      for (const pat of ARP_BANK.patterns) {
+        const cv = h("canvas", { height: "34", tabindex: "0", role: "button", "data-o": ord, "data-p": pat.id, "aria-label": ord + " order with " + (pat.name || pat.id) + " pattern" });
+        const pick = () => { state.cur = Object.assign({}, state.cur, { order: ord, pattern: pat.id }); syncControls(state.cur); };
+        cv.addEventListener("click", pick);
+        cv.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); ev.stopPropagation(); pick(); } });
+        box.appendChild(cv); mxCells.set(ord + "|" + pat.id, cv);
+      }
+    }
+  }
+  function maybeMatrix() {
+    const S = effective(), held = heldForPreview();
+    const base = Object.assign({}, S); delete base.order; delete base.pattern;
+    const key = JSON.stringify([base, held.keys.map(h => h.key), state.scale, eng.core.lab.opts]);
+    if (key !== mxKey) {
+      mxKey = key; mxQueue = [...mxCells.keys()];
+      $("mxNote").textContent = held.example ? "Example chord C3 E♭3 G3." : "Your held keys.";
+    }
+    const t0 = performance.now();
+    while (mxQueue.length && performance.now() - t0 < 6) {
+      const id = mxQueue.shift(), [ord, pid] = id.split("|");
+      let d = null; try { d = computePreview(Object.assign({}, S, { order: ord, pattern: pid }), held, MX_STEPS); } catch (err) { d = null; }
+      drawThumb(mxCells.get(id), d);
+    }
+    const sel = S.order + "|" + S.pattern;   // the selection follows the effective (morphed) settings
+    if (sel !== mxSel) {
+      mxSel = sel;
+      for (const [id, cv] of mxCells) cv.classList.toggle("sel", id === sel);
+      for (const el of document.querySelectorAll(".mx .mh")) el.classList.toggle("sel", el.getAttribute("data-p") === S.pattern);
+      for (const el of document.querySelectorAll(".mx .ml")) el.classList.toggle("sel", el.getAttribute("data-o") === S.order);
+    }
+  }
+  // A thumbnail is the shape only: pitch normalised to the cell's own range, bars by velocity,
+  // rest steps faintly shaded, trigger ticks on the bottom edge. No labels — the axes are the matrix.
+  function drawThumb(cv, d) {
+    const { g, w, hgt } = fitCanvas(cv);
+    const C = { line: cssVar("--line"), acc: cssVar("--acc"), hot: cssVar("--hot"), dim: cssVar("--dim") };
+    g.clearRect(0, 0, w, hgt);
+    if (!d) { g.fillStyle = C.dim; g.fillRect(4, hgt / 2, w - 8, 1); return; }
+    const P = 3, W = w - 2 * P, H = hgt - 2 * P - 3;
+    let lo = Infinity, hi = -Infinity; for (const n of d.notes) { lo = Math.min(lo, n.key); hi = Math.max(hi, n.key); }
+    if (!isFinite(lo)) { lo = 60; hi = 60; }
+    const span = Math.max(1, hi - lo), X = t => P + t / d.win * W, Y = k => P + (hi - k) / span * (H - 2);
+    g.fillStyle = C.line; g.globalAlpha = 0.5;
+    for (let k = 0; k < d.n; k++) { const st = d.stepKinds.get(k); if (!st || st.kind === "rest") g.fillRect(X(k * d.L), P, Math.max(1, X((k + 1) * d.L) - X(k * d.L)), H); }
+    g.globalAlpha = 1;
+    for (const n of d.notes) {
+      const a = X(n.on), b = X(Math.min(n.off === null ? d.win : n.off, d.win));
+      g.globalAlpha = 0.4 + 0.6 * (n.vel / 127); g.fillStyle = C.acc;
+      g.fillRect(a, Y(n.key), Math.max(1.5, b - a - 0.5), 2);
+    }
+    g.globalAlpha = 1; g.fillStyle = C.hot;
+    for (const t of d.trigs) g.fillRect(X(t.tick), hgt - P - 2, 1.5, 3);
+  }
 
   // ---- per-frame paint ------------------------------------------------------------
   function frame() {
@@ -1679,7 +1761,7 @@ class ArpCore {
     let cur = null;
     while (eng.stepQ.length && eng.stepQ[0].time <= now) cur = eng.stepQ.shift();
     if (cur) for (const el of document.querySelectorAll(".cell")) el.classList.toggle("now", Number(el.getAttribute("data-j")) === cur.j);
-    maybePreview(performance.now() / 1000); drawLive(now);
+    maybePreview(performance.now() / 1000); maybeMatrix(); drawLive(now);
     if (eng.logDirty) { eng.logDirty = false; $("log").textContent = eng.logLines.slice(-160).reverse().join("\n"); }
     const eff = effective();
     for (const p of ARP_PARAMS.params) { const e = controls[p.key].eff; if (e) e.textContent = (state.morph.on && eff[p.key] !== state.cur[p.key]) ? "-> " + eff[p.key] : ""; }
@@ -1691,7 +1773,7 @@ class ArpCore {
   function status(msg) { $("status").textContent = msg; }
 
   function init() {
-    buildKeyboard(); buildSettings(); buildScale(); buildLamps(); buildMorph(); buildLab(); renderGrid(); initMidi();
+    buildKeyboard(); buildSettings(); buildScale(); buildLamps(); buildMorph(); buildLab(); renderGrid(); buildMatrix(); initMidi();
     requestAnimationFrame(frame);   // paint from load, so the pattern preview shows before audio starts
     status("Press Start audio (or any key / Play) - browsers need a gesture before they will make sound.");
   }
