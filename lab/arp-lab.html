@@ -653,7 +653,7 @@ const ARP_BANK = {
 // each against a fresh core, to prove its detector can go red.
 const ARP_PLANTS = ["dropRelease", "doubleRelease", "sameSampleOff", "clampOffset", "floatPosition",
   "roundNotCeil", "swingParityK", "srTickMath", "noOnceGuard", "timeInDraw", "skipQuantizeChord",
-  "advanceOnRest", "probLE", "trigEveryRatchet", "tieAtTieStep", "noOffReserve"];
+  "advanceOnRest", "probLE", "trigEveryRatchet", "tieAtTieStep", "noOffReserve", "untaggedOn"];
 const DISCRETE_KEYS = ["order", "pattern", "rate", "octaves", "latch", "vel_mode", "restart", "quantize", "seed"];
 const RATE_TICKS = {};
 for (const r of ARP_PARAMS.rate) { RATE_TICKS[r.name] = r.ticks; if (r.alias) RATE_TICKS[r.alias] = r.ticks; }
@@ -1162,7 +1162,10 @@ class ArpCore {
     if (this.sounding.length >= this.caps.sounding) { this.rows.T11++; this.counters.soundingOverflow++; this._release(this.sounding[0].ref, s); }
     const ref = { port: 0, channel: p.ch, key: p.key, id: this.idCounter++ };
     this.sounding.push({ ref, key: p.key, ch: p.ch, offPos: p.offPos, onAbs: this._absBase + s, dying: false });
-    this._ev.push({ t: "on", s, ref, key: p.key, vel: p.vel, tick: this._tickOf(p.pos), ord: p.ord, _i: this._evI++ });
+    // SPEC §1 (D-009, horde ADR-270): every note Arp emits is on the `arp` stream; held notes reach horde
+    // as `direct` through horde's own tee, never through Arp.
+    const stream = P.untaggedOn && this.idCounter % 7 === 3 ? undefined : "arp";
+    this._ev.push({ t: "on", s, ref, key: p.key, vel: p.vel, stream, tick: this._tickOf(p.pos), ord: p.ord, _i: this._evI++ });
   }
   // release(ref): the ONLY path that emits a NoteOff. Idempotent: a ref no longer in the table is a no-op.
   _release(ref, s) {

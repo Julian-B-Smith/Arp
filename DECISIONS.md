@@ -261,3 +261,33 @@ Rejected:
   unboundedly).
 
 The human confirms this at spec ratification.
+
+## D-009 — Note streams: Arp's notes tagged `arp`; horde tees direct notes; the pedal proposal (RATIFIED by poll, 2026-10-22)
+
+horde filed `notice-note-stream` (seq 3, horde ADR-270) through our mailbox
+(PR #6), from the human's wish "to send the arpeggiator to some oscillators
+but not others". Each horde source gains a Both / Direct / Arp selector.
+
+**By poll, the human ruled:**
+- **Arp tags every NoteOn it emits `stream = arp`.** This is SPEC r2.2 §1,
+  proven by the new lab check S1 with a planted control.
+- **horde's shell tees the player's held notes to the engine as `direct`,
+  before Arp.** Arp never echoes input notes.
+  - Rejected: Arp passing the held notes through. That would make Arp a
+    router, with echoed refs, their terminals, and switch-off rows, and it
+    breaks the pure-note-processor core (Q3) that horde's FX device needs.
+- **Proposed to horde (Q-H5): the engine's pedal (VO-12) sustains `direct`
+  voices only.** Arp keeps consuming CC 64 as its input hold.
+  - Rejected: no engine pedal while Arp is on (a pad cannot ring under the
+    arp).
+  - Rejected: the engine pedal holding everything (Arp's notes smear into
+    tails, the very problem D-000 Open 3 rejected).
+
+Our response, `integrations/hypersaw/response-note-stream.md` (seq 4), sits
+beside the notice. Ball: HYPERSAW.
+
+**A lesson from building it:** the smoke's event normaliser dropped the new
+`stream` field. The S1 plant then "fired" only because every NoteOn looked
+untagged, which is a vacuous pass. The clean run failing exposed it, and the
+fix was to carry the field through the normaliser and the G1/D1 stream
+comparisons. Recorded as LIBRARY L0002.

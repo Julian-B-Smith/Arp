@@ -8,3 +8,6 @@ build*/
 __pycache__/
 node_modules/
 renders/
+
+# Claude Code worktrees of other sessions — never tracked (one was swept in by `git add -A` on 2026-10-22)
+.claude/worktrees/

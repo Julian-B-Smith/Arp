@@ -66,8 +66,8 @@ function mkCore(plants = [], opts) {
   return c;
 }
 const refStr = r => r.port + ":" + r.channel + ":" + r.key + ":" + r.id;
-const norm = (e, base, epoch) => ({ a: base + e.s, t: e.t, key: e.key !== undefined ? e.key : e.ref && e.ref.key, vel: e.vel, lane: e.lane, id: e.ref ? refStr(e.ref) : undefined, tick: e.tick, epoch, pass: e.ev });
-const streamOf = evs => evs.map(e => `${e.a} ${e.t} ${e.key} ${e.vel} ${e.lane} ${e.id}`).join("\n");
+const norm = (e, base, epoch) => ({ a: base + e.s, t: e.t, key: e.key !== undefined ? e.key : e.ref && e.ref.key, vel: e.vel, lane: e.lane, id: e.ref ? refStr(e.ref) : undefined, stream: e.stream, tick: e.tick, epoch, pass: e.ev });   // stream: SPEC §1 / S1 — dropping it here made S1's plant pass vacuously
+const streamOf = evs => evs.map(e => `${e.a} ${e.t} ${e.key} ${e.vel} ${e.lane} ${e.id} ${e.stream}`).join("\n");
 const tickStreamOf = evs => evs.map(e => `${e.t} ${e.key} ${e.vel} ${e.lane} ${e.id} ${e.tick}`).join("\n");
 
 // Drives a core block by block. Blocks are cut at every host edge, settings change and
@@ -304,6 +304,15 @@ function g1Diverges(plants) {
   plant(bad(["trigEveryRatchet"]), "T1 detects a trigger fired on every ratchet");
   const r = sess([]);
   check(!bad([]), `T1: ${r.evs.filter(e => e.t === "trig").length} triggers, exactly one per firing step, at the step's first on, none on the extra ratchets`);
+}
+
+// ---- 13b. S1: every emitted NoteOn is on the `arp` stream (SPEC §1, D-009, horde ADR-270) -------
+// The plant tags most ons and drops the tag on a few, so the detector must check EVERY on, not one.
+{
+  const sess = plants => run({ core: mkCore(plants), block: 64, total: 60000, base: { order: "bounce", octaves: 2, pattern: "roll_end" }, ins: [K(0, "a", 60), K(0, "b", 64), K(0, "c", 67)] });
+  const bad = plants => { const ons = sess(plants).evs.filter(e => e.t === "on"); return ons.length < 20 || ons.some(e => e.stream !== "arp"); };
+  plant(bad(["untaggedOn"]), "S1 detects a NoteOn emitted without the arp stream tag");
+  check(!bad([]), `S1: all ${sess([]).evs.filter(e => e.t === "on").length} NoteOns carry stream "arp" (bounce, 2 octaves, ratchets)`);
 }
 
 // ---- 14. K1: ties engage at gate 80 by look-ahead ----------------------------------------------

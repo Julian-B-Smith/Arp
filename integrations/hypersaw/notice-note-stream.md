@@ -3,8 +3,9 @@ id: hypersaw-notice-note-stream
 from: HYPERSAW
 to: Arp
 thread: arp-note-generation-consumer
-status: filed
-ball: Arp
+status: responded
+ball: HYPERSAW
+answered_by: response-note-stream.md
 seq: 3
 filed: 2026-10-22
 respond-by: 2026-11-05

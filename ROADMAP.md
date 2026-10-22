@@ -16,7 +16,7 @@ lives in `DECISIONS.md`; horde's terms are in `intake/` and `SPINUP-BRIEF.md`.
   then ratifies `spec/`.
 - **Oracle:** `./verify fast` = kit integrity, leak gate, private-name gate,
   structure, manifest, intake pin, and the **lab smoke** (SPEC §11: N1, G1–G5,
-  D1, Q1, R1, P1, T1, K1, C1, the order styles; each proven on a planted
+  D1, Q1, R1, P1, T1, S1, K1, C1, the order styles; each proven on a planted
   fault; about 0.3 s). The C++ suite arrives at M1. `full` = `fast` for now.
 - **Hard date:** horde's module cutoff **2026-12-11**. The 1.0 arpeggiator
   meets horde's MUST rows by then, or it ships after 1.0. Which rows bind Arp is
@@ -172,6 +172,10 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   declared actions and impulses (ADR-267). Ask in the next notice, together
   with "please file through `integrations/hypersaw/`". Blocks M3's trigger
   wiring, not the core.
+- **Q-H5 — Stream-scoped pedal** (D-009). We proposed that horde's VO-12
+  sustain `direct` voices only. The ball is horde's, in our
+  `integrations/hypersaw/response-note-stream.md`. It blocks nothing in the
+  core: Arp's side (the `arp` tag, consuming CC 64) is specified and tested.
 - **Q-A5 — Quantize tie direction, and whether pre-roll plays.** PROPOSED in
   SPEC §6 and §12; decided in the lab.
 - **Q-A1 — The morph threshold rule for discrete settings.** Decided in

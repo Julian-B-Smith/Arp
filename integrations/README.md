@@ -21,7 +21,8 @@ move; `status:` is lifecycle; neither does the other's job.
 
 | from | file here | what |
 |---|---|---|
-| — | — | none yet (horde's spin-up packet arrived as `SPINUP-BRIEF.md` + `intake/`, not as a mailbox brief) |
+| HYPERSAW | `integrations/hypersaw/notice-note-stream.md` (seq 3, 2026-10-22) | tag Arp's notes `arp` (horde ADR-270); held notes as `direct`; the pedal question. **Responded** in `response-note-stream.md` (seq 4): tag accepted, horde tees `direct`, pedal on `direct` only proposed (D-009); ball HYPERSAW |
+| — | (earlier) | horde's spin-up packet arrived as `SPINUP-BRIEF.md` + `intake/`, not as a mailbox brief |
 
 ## Outbound threads
 

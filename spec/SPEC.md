@@ -1,10 +1,11 @@
-# Arp — 1.0 specification (DRAFT r2.1, Phase A)
+# Arp — 1.0 specification (DRAFT r2.2, Phase A)
 
 > **Status: DRAFT r2.1, 2026-10-21.** r1 was reviewed by an independent Opus
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
 > folds in every finding; the per-finding record is `docs/spec-review-r1.md`.
 > r2.1 adds §13, which settles the 17 gaps the lab build surfaced. §13 is
-> normative and outranks the section it clarifies.
+> normative and outranks the section it clarifies. r2.2 adds the output
+> stream tag (D-009, horde ADR-270).
 >
 > - This file becomes a protected path once the human ratifies it (the
 >   ROADMAP Phase A gate).
@@ -58,7 +59,7 @@ reset()                         // T10
 
 ### Block output
 - `outEvents`: sorted by offset, `0 ≤ offset < n`. Capacity: §1.3.
-  - `NoteOn{ref, key, vel}`;
+  - `NoteOn{ref, key, vel, stream = arp}`;
   - `NoteOff{ref, releaseVel = 64}`;
   - `Trigger{lane}`;
   - `Panic` (forwarded, §7 T7);
@@ -71,6 +72,13 @@ reset()                         // T10
 - **While disabled** (§7 T4): Arp emits only its own releases and the
   pass-through. horde routes input notes **around** a disabled Arp; Arp never
   echoes them.
+- **Streams (D-009, horde ADR-270).**
+  - **Every** `NoteOn` Arp emits carries `stream = arp`, whatever produced it
+    (steps, ratchets, chord steps).
+  - The player's held notes reach horde's engine as the `direct` stream
+    through **horde's own tee**, placed before Arp. **Arp never echoes input
+    notes**, enabled or not.
+  - `NoteOff`s and expressions address notes by id, as before.
 
 ### 1.1 Order of events at one offset
 Events at the same offset are emitted in this order:
@@ -238,6 +246,9 @@ start (H12).
     holds Arp's **input** (D-000 Open 3).
   - CC 64 is consumed, never forwarded.
   - Per-channel and MPE-zone pedals are after 1.0 (Q-H4).
+  - The `direct` stream gets its pedal from horde's tee, not from Arp. We
+    proposed to horde (Q-H5) that the engine's pedal holds `direct` voices
+    only, never `arp` voices, so Arp's notes never pile up as tails.
 - **Latch turned off:** every LATCHED ref is removed.
 - **Panic:** all refs and the pedal state are cleared (T7).
 
@@ -498,6 +509,7 @@ produce no extra and no missing terminal (LIBRARY L0001).
 | R1 | rest, miss, tie and trigger-only steps don't advance `m` | advance `m` on rests |
 | P1 | `prob` 0 never fires and 100 always fires (exact); 30 and 50 are within ±2 % over 10,000 steps | use `<=` (caught at the exact endpoints, since a ±2 % band cannot see it) |
 | T1 | triggers fire once per firing step, at its first on | fire on every ratchet |
+| S1 | every emitted NoteOn carries `stream = arp` | drop the tag on some ons |
 | K1 | ties engage at gate 80 (`tied_legato` ≠ `none`) | evaluate ties at the tie step instead of by look-ahead |
 | C1 | at the event cap, no NoteOn is emitted without its NoteOff | drop the off-reserve |
 | A1 | `process` never allocates (C++ only: an allocation hook) | allocate in `process` |
