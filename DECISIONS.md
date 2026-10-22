@@ -140,3 +140,79 @@ modes and rejected extra modes for the cutoff. Settled by poll the same day:
   path is covered by this poll.
 - Same poll: the spin-up filings are filed now (T-002), superseding D-003's
   "drafts until T-002". The horde notice states the bank.
+
+## D-005 — What Phase 0 changes (recorded 2026-10-21; design rules PROPOSED for the Phase A spec)
+
+The findings are in `docs/prior-art.md`, dated and cited.
+
+**Reuse:**
+- **Order and rhythm are orthogonal.** The order style yields a note stream,
+  and the step pattern gates it. A rest does not consume a note. Pattern
+  length is independent of the held-note count.
+- **The two bounce variants are defined by period:** 2n−2 for ends once, 2n
+  for ends twice.
+- **Starter-bank candidates for Q-A3:**
+  - order styles: ascend, descend, both bounces, as played, chord, random
+    free, random no-repeat, converge, diverge;
+  - about 8–10 step patterns that differ in kind (straight, off-beat, gallop,
+    syncopated, accent-on-one, tie-legato, octave-jump, ratchet roll, sparse)
+    rather than escalating one idea.
+- **The integer-tick grid:**
+  - 15,360 ticks per quarter makes every horde division exact (checked by the
+    lead; 96 is the minimum);
+  - the step tick comes from the absolute step index, never accumulated;
+  - the block is the half-open window [start, end), every boundary in it
+    fires, and offsets are never clamped.
+- **One emitted-note table and one idempotent `release(NoteRef)`** as the only
+  terminal path. Same-key overlap is ordered off-then-on at the same sample.
+
+**Avoid:**
+- running float position across blocks;
+- frame-scheduled note-offs (the LMMS tempo bug);
+- a wall-clock fallback when the transport is absent (use a deterministic
+  sample-counter clock);
+- unseeded or stateful-per-call RNG (draw from (seed, absolute step, lane));
+- trusting a CLAP beat position without its beats and tempo flags (the
+  clap-wrapper gaps);
+- C `%` on negative ticks;
+- ambiguous end-repeat definitions;
+- copying any product's style names, preset names or UI text.
+
+**Differentiate:**
+- per-step probability (no arp we read documents it);
+- swing defined unambiguously: the odd step on the absolute grid is
+  displaced by a stated fraction of the step pair.
+
+**Corrections the lead made to agent claims:**
+- 15,360 is not divisible by 7;
+- CLAP's 2³¹ beat factor does not convert exactly to 15,360 ticks, so it
+  rounds once per block by a documented rule.
+
+**Name:** high collision risk for "Arp" as a product name ("ARP" is a live
+mark, almost certainly Korg's); low as an in-UI feature label. Keep it as the
+codename; horde's B433 clears the public name. Directions are in the doc.
+
+**For M3:** a logging probe in each target host, to settle what public
+sources cannot (equal-timestamp event order, loop-point block splits, which
+transport fields each DAW fills).
+
+## D-006 — Four more features join 1.0 (RATIFIED by poll, 2026-10-21; ROADMAP Q-A4)
+
+From the Phase 0 landscape, by one multi-select poll, the human took all four:
+1. **Latch with two behaviours.** Replace: a new chord after a full release
+   replaces the held set. Append: keys added while latched join it.
+2. **Gate above 100 % (legato overlap).** A repeated key under overlap is a
+   forced terminal at the next step (off-then-on at one sample). What the
+   voice does is horde's engine (VO-3/VO-6).
+3. **Per-step probability** in step patterns, drawn deterministically from
+   (seed, absolute step, lane).
+4. **Ratchets:** a step repeats 2–4 times within its length, and sub-steps
+   are placed exactly on the tick grid.
+
+Each adds spec rows, invariant tests with planted controls, and a morph rule.
+The manifest's `scope_1_0` records them (a protected path, covered by this
+poll). **Cutoff risk:** with D-004, the 1.0 surface has grown twice since
+ratification. ROADMAP now says which of them yields first if the cutoff
+tightens. Proposed: ratchets, then probability, since both live in bank data,
+can ship as entries after 1.0, and need no core-format change if the format
+reserves their fields now.

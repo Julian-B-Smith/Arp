@@ -6,14 +6,20 @@ lives in `DECISIONS.md`; horde's terms are in `intake/` and `SPINUP-BRIEF.md`.
 
 ## Status
 
-- **Phase:** spun up 2026-10-21. Phase 0 (prior art) is next. Nothing is built.
+- **Phase:** Phase 0 done 2026-10-21 (`docs/prior-art.md`, D-005). **Phase A (spec + lab) is next.** Nothing is built.
 - **Oracle:** `./verify fast` = kit integrity, leak gate, private-name gate,
   structure, manifest, intake pin. No note gates yet: they arrive with the lab
   (Phase A) and the C++ core (M1). `full` = `fast` for now.
 - **Hard date:** horde's module cutoff **2026-12-11**. The 1.0 arpeggiator
   meets horde's MUST rows by then, or it ships after 1.0. Which rows bind Arp is
   not in the intake packet yet (Q-H1).
-- **Last human ratification:** 2026-10-21 — manifest ratified by poll (D-003).
+- **Last human ratification:** 2026-10-21 — manifest ratified by poll (D-003);
+  scope widened by poll twice the same day: the pattern bank (D-004), and
+  four Phase 0 additions (D-006).
+- **Cutoff risk:** the 1.0 surface has grown twice since ratification. If the
+  cutoff tightens, **ratchets yield first, then probability**: both are bank
+  data that can ship after 1.0, provided the bank format reserves their
+  fields now (D-006, proposed).
 
 ## Phases (each gate is a checkable condition)
 
@@ -47,6 +53,14 @@ mode names, presets or UI text.
   - **the pattern bank format** (D-004): order styles as generic algorithms and
     step patterns as data (rest/tie, accent, gate, octave jump per step); how a
     step pattern combines with an order style; the starter bank's entries (Q-A3);
+  - **latch's two behaviours** (replace / append) in the held-set state machine;
+  - **gate above 100 %** and the same-key overlap rule (off-then-on at one
+    sample, forced terminal at the next step);
+  - **the tick grid** (15,360 per quarter, the half-open block window, the
+    block-start conversion rule, ratchet sub-steps, swing parity from the
+    absolute step);
+  - the random draw (seed, absolute step, lane), used by random modes and
+    per-step probability;
   - the random mode's seed and stream rules;
   - the quantize rule (nearest in-scale pitch, and the tie-break);
   - the transport rules (stop, jump, loop, tempo change).
@@ -63,8 +77,9 @@ mode names, presets or UI text.
   identity type is a local placeholder behind the FOUNDATIONS surface until
   that brief resolves (survey Q6).
 - Modes (up, down, up-down ± repeated ends, as played, chord, random/seeded),
-  synced rate by division name, octave range, gate length, latch, the pedal as
-  input hold.
+  synced rate by division name, octave range, gate length (including above
+  100 %), latch (replace and append), the pedal as input hold. Every rule in
+  `docs/prior-art.md` §2 becomes a test.
 - **Invariant suite**, each detector with a planted must-fail control:
   - one terminal per note across every row of the spec's terminal-path table;
   - the grid is sample-exact against the transport;
@@ -80,7 +95,8 @@ mode names, presets or UI text.
   global scale; the restart parameter's three values; every setting a morph
   target, discrete ones switching per the Phase A rule.
 - **The starter pattern bank** (D-004): the order styles and step patterns that
-  Q-A3 chose, loaded from the bank format.
+  Q-A3 chose, loaded from the bank format, with per-step probability and
+  ratchets (D-006).
 - **Gate:** each item's invariants are in the suite with planted controls:
   - quantize keeps every note in the scale;
   - swing displaces only the off-steps, by the spec'd fraction, sample-exact;
@@ -119,7 +135,7 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 ## Queue
 
 ### T-001 — Phase 0 prior-art swarm
-- **Status:** open
+- **Status:** done 2026-10-21 (`docs/prior-art.md`; D-005, D-006)
 - **Scope:** `docs/prior-art.md`, DECISIONS
 - **Acceptance criteria:** the Phase 0 gate above.
 - **Out of scope:** any spec or code.
@@ -150,6 +166,8 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 - **Q-A3 — The starter bank's entries** (about 12–16 order styles and step
   patterns). Decided in Phase A from the Phase 0 landscape and by playing in
   the lab (D-004).
+- **Q-A4 — Phase 0 extras:** CLOSED 2026-10-21 by poll (D-006). All four
+  are in 1.0.
 - **Q-P1 — Where the step sequencer begins** (an extension of the arp's grid,
   or its own lab/module here). Decided at the post-1.0 gate (survey Open 6).
 
