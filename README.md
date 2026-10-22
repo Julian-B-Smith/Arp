@@ -5,8 +5,15 @@ plays them as a pattern in time. After 1.0 it grows into step sequencing and gen
 library that horde runs ahead of its engine, plus a browser lab for playing it. "Arp" is a working name; the
 user-facing name is cleared before release.
 
-**Status: Phase 0 done 2026-10-21. Nothing is built yet.** Prior art is in [`docs/prior-art.md`](docs/prior-art.md). The
-next step is the spec and the lab (Phase A). horde's module cutoff is **2026-12-11**. Phase state lives
+**Status: Phase A built 2026-10-21, awaiting your playing and ratification.** The spec is drafted and the lab is playable.
+To play it:
+
+```bash
+python3 -m http.server 59531 --bind 127.0.0.1
+```
+
+Run that from the repo root, then open http://localhost:59531/lab/arp-lab.html (or use the Browser pane's "lab" preview).
+The C++ core is next (M1). horde's module cutoff is **2026-12-11**. Phase state lives
 in [`ROADMAP.md`](ROADMAP.md).
 
 ## What it will do (1.0)
@@ -39,7 +46,11 @@ once. **Status: planned.** Every item above is spec work in Phase A.
 | `integrations/` | Inbound mailbox (`integrations/<sender>/`) and the outbound thread table | live |
 | `docs/filings/` | Working copies of what Arp filed in other repos | live |
 | `docs/prior-art.md` | Phase 0: pattern-bank landscape, failure modes, grid math, name check (dated, cited) | done |
-| `spec/`, `lab/`, `tools/`, `core/` | Spec, listening twin, oracles, C++ core | not yet built |
+| `spec/` | The 1.0 spec (SPEC.md), every setting (params.json), the candidate step-pattern bank | draft r2.1, awaiting ratification |
+| `lab/arp-lab.html` | The playable twin: keys, MIDI, transport, every setting, bank, morph A/B, a small synth | built; play it to decide Q-A1–Q-A5 |
+| `tools/lab_smoke.mjs` | Headless checks of the lab core against the spec's invariants, run by `./verify fast` | live |
+| `docs/spec-review-r1.md` | The independent critic's findings on spec r1 and where each went | done |
+| `core/` | C++ core | not yet built (M1) |
 | `verify` | The oracle: `./verify fast` / `full` / `report` | live |
 
 ## Neighbours

@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lab",
+      "comment": "Serves the repo root on localhost so lab/arp-lab.html runs with Web MIDI and AudioContext (a secure context; file:// is not one in every browser). Open /lab/arp-lab.html. python3 -m http.server takes the port positionally and does not read $PORT, hence the sh -c wrapper.",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "exec python3 -m http.server \"$PORT\" --bind 127.0.0.1"
+      ],
+      "port": 59531,
+      "autoPort": true
+    }
+  ]
+}

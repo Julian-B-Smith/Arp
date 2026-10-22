@@ -1,0 +1,272 @@
+{
+  "format": "arp-params/1",
+  "status": "DRAFT r2 2026-10-21 (Phase A, after critic review r1); protected once the human ratifies spec/",
+  "tpq": 15360,
+  "note": "Every setting is a morph target (D-000 Open 5). All values are INTEGERS in the snapshot (horde rounds morph blends). kind=continuous blends; kind=discrete resolves to the largest-weight corner with 0.05 hysteresis and applies from the next evaluated step (SPEC §9, Q-A1 PROPOSED); `enabled` applies at offset 0 of its block (SPEC T4/T5). Enums are stored by NAME. Tempo is clamped to [20, 999] bpm (SPEC §1.3).",
+  "params": [
+    {
+      "key": "enabled",
+      "kind": "discrete",
+      "type": "bool",
+      "default": false,
+      "ref": "SPEC §7 T4/T5, §9"
+    },
+    {
+      "key": "order",
+      "kind": "discrete",
+      "type": "enum",
+      "values": [
+        "up",
+        "down",
+        "bounce",
+        "bounce2",
+        "played",
+        "chord",
+        "random",
+        "shuffle",
+        "converge",
+        "diverge",
+        "pedal_low",
+        "pedal_high"
+      ],
+      "default": "up",
+      "ref": "SPEC §4.2"
+    },
+    {
+      "key": "pattern",
+      "kind": "discrete",
+      "type": "enum",
+      "values_from": "spec/bank/starter.json patterns[].id",
+      "default": "none",
+      "ref": "SPEC §4.3"
+    },
+    {
+      "key": "rate",
+      "kind": "discrete",
+      "type": "enum",
+      "values_from": "rate[].name (aliases accepted on load)",
+      "default": "1/16",
+      "ref": "SPEC §2.1"
+    },
+    {
+      "key": "octaves",
+      "kind": "discrete",
+      "type": "int",
+      "min": 1,
+      "max": 4,
+      "default": 1,
+      "ref": "SPEC §4.2"
+    },
+    {
+      "key": "gate",
+      "kind": "continuous",
+      "type": "percent",
+      "min": 1,
+      "max": 200,
+      "default": 80,
+      "ref": "SPEC §5"
+    },
+    {
+      "key": "swing",
+      "kind": "continuous",
+      "type": "permille",
+      "min": 500,
+      "max": 750,
+      "default": 500,
+      "ref": "SPEC §5",
+      "note": "500 straight, 667 triplet feel"
+    },
+    {
+      "key": "latch",
+      "kind": "discrete",
+      "type": "enum",
+      "values": [
+        "off",
+        "replace",
+        "append"
+      ],
+      "default": "off",
+      "ref": "SPEC §3"
+    },
+    {
+      "key": "vel_mode",
+      "kind": "discrete",
+      "type": "enum",
+      "values": [
+        "played",
+        "fixed"
+      ],
+      "default": "played",
+      "ref": "SPEC §4.4"
+    },
+    {
+      "key": "vel_fixed",
+      "kind": "continuous",
+      "type": "int",
+      "min": 1,
+      "max": 127,
+      "default": 100,
+      "ref": "SPEC §4.4"
+    },
+    {
+      "key": "restart",
+      "kind": "discrete",
+      "type": "enum",
+      "values": [
+        "chord",
+        "bar",
+        "free"
+      ],
+      "default": "chord",
+      "ref": "SPEC §4.5"
+    },
+    {
+      "key": "quantize",
+      "kind": "discrete",
+      "type": "bool",
+      "default": false,
+      "ref": "SPEC §6"
+    },
+    {
+      "key": "seed",
+      "kind": "discrete",
+      "type": "uint32",
+      "default": 0,
+      "ref": "SPEC §10"
+    }
+  ],
+  "rate": [
+    {
+      "name": "2/1",
+      "alias": null,
+      "beats": "8",
+      "ticks": 122880
+    },
+    {
+      "name": "3/2",
+      "alias": "1/1D",
+      "beats": "6",
+      "ticks": 92160
+    },
+    {
+      "name": "2/1T",
+      "alias": null,
+      "beats": "16/3",
+      "ticks": 81920
+    },
+    {
+      "name": "1/1",
+      "alias": null,
+      "beats": "4",
+      "ticks": 61440
+    },
+    {
+      "name": "3/4",
+      "alias": "1/2D",
+      "beats": "3",
+      "ticks": 46080
+    },
+    {
+      "name": "1/1T",
+      "alias": null,
+      "beats": "8/3",
+      "ticks": 40960
+    },
+    {
+      "name": "1/2",
+      "alias": null,
+      "beats": "2",
+      "ticks": 30720
+    },
+    {
+      "name": "3/8",
+      "alias": "1/4D",
+      "beats": "3/2",
+      "ticks": 23040
+    },
+    {
+      "name": "1/2T",
+      "alias": null,
+      "beats": "4/3",
+      "ticks": 20480
+    },
+    {
+      "name": "1/4",
+      "alias": null,
+      "beats": "1",
+      "ticks": 15360
+    },
+    {
+      "name": "3/16",
+      "alias": "1/8D",
+      "beats": "3/4",
+      "ticks": 11520
+    },
+    {
+      "name": "1/4T",
+      "alias": null,
+      "beats": "2/3",
+      "ticks": 10240
+    },
+    {
+      "name": "1/8",
+      "alias": null,
+      "beats": "1/2",
+      "ticks": 7680
+    },
+    {
+      "name": "3/32",
+      "alias": "1/16D",
+      "beats": "3/8",
+      "ticks": 5760
+    },
+    {
+      "name": "1/8T",
+      "alias": null,
+      "beats": "1/3",
+      "ticks": 5120
+    },
+    {
+      "name": "1/16",
+      "alias": null,
+      "beats": "1/4",
+      "ticks": 3840
+    },
+    {
+      "name": "3/64",
+      "alias": "1/32D",
+      "beats": "3/16",
+      "ticks": 2880
+    },
+    {
+      "name": "1/16T",
+      "alias": null,
+      "beats": "1/6",
+      "ticks": 2560
+    },
+    {
+      "name": "1/32",
+      "alias": null,
+      "beats": "1/8",
+      "ticks": 1920
+    },
+    {
+      "name": "3/128",
+      "alias": "1/64D",
+      "beats": "3/32",
+      "ticks": 1440
+    },
+    {
+      "name": "1/32T",
+      "alias": null,
+      "beats": "1/12",
+      "ticks": 1280
+    },
+    {
+      "name": "1/64",
+      "alias": null,
+      "beats": "1/16",
+      "ticks": 960
+    }
+  ]
+}

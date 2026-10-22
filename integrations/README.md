@@ -27,7 +27,8 @@ move; `status:` is lifecycle; neither does the other's job.
 
 | provider | file in THEIR tree | what |
 |---|---|---|
-| HYPERSAW (repo `horde`) | `integrations/arp/notice-spinup.md` | we exist; the survey's answers; states the pattern bank (D-004); asks Q-H1 (which MUST rows bind Arp) and Q-H2 (how horde consumes the core). **Filed 2026-10-21** as horde PR #1179 (path-only); ball HYPERSAW, respond-by 2026-11-13 |
+| HYPERSAW (repo `horde`) | `integrations/arp/notice-spinup.md` | we exist; the survey's answers; states the pattern bank (D-004); asks Q-H1 (which MUST rows bind Arp) and Q-H2 (how horde consumes the core). **Filed 2026-10-21**; horde merged PR #1179; ball HYPERSAW, respond-by 2026-11-13 |
+| HYPERSAW (repo `horde`) | `integrations/arp/notice-triggers.md` | seq 2: D-006/D-007 scope, Q-H3 (trigger lanes), the name finding, and a request to file through `integrations/hypersaw/`. **Filed 2026-10-21** as horde PR #1184 (path-only); ball HYPERSAW, respond-by 2026-11-13 |
 | autonomous | `integrations/arp/brief.md` | brief `arp-001`: register Arp in the ecosystem tracks. **Filed 2026-10-21** as autonomous PR #60 (path-only); ball autonomous, respond-by 2026-11-04 |
 | FOUNDATIONS | — | deferred until the C++ first touches NoteRef/HeldStack (survey Q6) |
 

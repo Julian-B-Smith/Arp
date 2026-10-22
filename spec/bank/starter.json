@@ -1,0 +1,251 @@
+{
+  "format": "arp-bank/1",
+  "status": "DRAFT 2026-10-21 — CANDIDATES for the starter bank (Q-A3, decided by playing the lab). Clean-room: names and patterns are ours (D-004).",
+  "step_defaults": {
+    "on": true,
+    "tie": false,
+    "vel": 100,
+    "gate": 100,
+    "oct": 0,
+    "prob": 100,
+    "ratchet": 1,
+    "trig": 0
+  },
+  "fields": "SPEC §4.3: on, tie, vel %, gate %, oct, prob %, ratchet 1-4, trig lane 0-8",
+  "patterns": [
+    {
+      "id": "none",
+      "name": "Plain",
+      "purpose": "every step plays; the arp with no rhythm pattern",
+      "length": 1,
+      "steps": [
+        {}
+      ]
+    },
+    {
+      "id": "offbeat",
+      "name": "Off-beat",
+      "purpose": "only the off-beats play",
+      "length": 2,
+      "steps": [
+        {
+          "on": false
+        },
+        {}
+      ]
+    },
+    {
+      "id": "gallop",
+      "name": "Gallop",
+      "purpose": "long-short-short: one eighth then two sixteenths",
+      "length": 4,
+      "steps": [
+        {},
+        {
+          "on": false
+        },
+        {},
+        {}
+      ]
+    },
+    {
+      "id": "three_three_two",
+      "name": "Three-three-two",
+      "purpose": "the 3+3+2 syncopation over eight steps",
+      "length": 8,
+      "steps": [
+        {},
+        {
+          "on": false
+        },
+        {
+          "on": false
+        },
+        {},
+        {
+          "on": false
+        },
+        {
+          "on": false
+        },
+        {},
+        {
+          "on": false
+        }
+      ]
+    },
+    {
+      "id": "accent_one",
+      "name": "Downbeat accent",
+      "purpose": "accent the first of every four",
+      "length": 4,
+      "steps": [
+        {
+          "vel": 130
+        },
+        {
+          "vel": 85
+        },
+        {
+          "vel": 85
+        },
+        {
+          "vel": 85
+        }
+      ]
+    },
+    {
+      "id": "tied_legato",
+      "name": "Tied legato",
+      "purpose": "ties hold notes across steps; the order advances only on new notes",
+      "length": 8,
+      "steps": [
+        {},
+        {
+          "tie": true
+        },
+        {},
+        {
+          "tie": true
+        },
+        {},
+        {},
+        {
+          "tie": true
+        },
+        {
+          "tie": true
+        }
+      ]
+    },
+    {
+      "id": "octave_leap",
+      "name": "Octave leap",
+      "purpose": "the second step jumps up an octave, the fourth down",
+      "length": 4,
+      "steps": [
+        {},
+        {
+          "oct": 1
+        },
+        {},
+        {
+          "oct": -1
+        }
+      ]
+    },
+    {
+      "id": "roll_end",
+      "name": "Roll at the end",
+      "purpose": "plain steps, then a double and a quadruple ratchet",
+      "length": 8,
+      "steps": [
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {
+          "ratchet": 2
+        },
+        {
+          "ratchet": 4
+        }
+      ]
+    },
+    {
+      "id": "sparse_chance",
+      "name": "Sparse chance",
+      "purpose": "five sure hits, the rest at 30 % (seeded, so it repeats)",
+      "length": 16,
+      "steps": [
+        {},
+        {
+          "prob": 30
+        },
+        {
+          "prob": 30
+        },
+        {},
+        {
+          "prob": 30
+        },
+        {
+          "prob": 30
+        },
+        {},
+        {
+          "prob": 30
+        },
+        {
+          "prob": 30
+        },
+        {
+          "prob": 30
+        },
+        {},
+        {
+          "prob": 30
+        },
+        {
+          "prob": 30
+        },
+        {},
+        {
+          "prob": 30
+        },
+        {
+          "prob": 30
+        }
+      ]
+    },
+    {
+      "id": "bar_trigger",
+      "name": "Bar trigger",
+      "purpose": "every step plays; step 1 also fires trigger lane 1 (e.g. a module's clear)",
+      "length": 16,
+      "steps": [
+        {
+          "trig": 1
+        },
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "id": "trigger_pulse",
+      "name": "Trigger pulse",
+      "purpose": "no notes; fires lane 1 on every beat (a trigger-only pattern)",
+      "length": 4,
+      "steps": [
+        {
+          "on": false,
+          "trig": 1
+        },
+        {
+          "on": false
+        },
+        {
+          "on": false
+        },
+        {
+          "on": false
+        }
+      ]
+    }
+  ]
+}

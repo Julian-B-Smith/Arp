@@ -6,20 +6,28 @@ lives in `DECISIONS.md`; horde's terms are in `intake/` and `SPINUP-BRIEF.md`.
 
 ## Status
 
-- **Phase:** Phase 0 done 2026-10-21 (`docs/prior-art.md`, D-005). **Phase A (spec + lab) is next.** Nothing is built.
+- **Phase:** **Phase A: built, awaiting the human** (2026-10-21).
+  - `spec/` is DRAFT r2.1: r1, then the independent critic (13 HIGH, all
+    folded in, D-008), then the lab build's 17 gaps (§13).
+  - `lab/arp-lab.html` is built and was run in a real browser.
+  - The lab smoke is wired into `./verify fast`, with 16 plants.
+
+  **Next:** the human plays the lab to settle Q-A1, Q-A2, Q-A3 and Q-A5,
+  then ratifies `spec/`.
 - **Oracle:** `./verify fast` = kit integrity, leak gate, private-name gate,
-  structure, manifest, intake pin. No note gates yet: they arrive with the lab
-  (Phase A) and the C++ core (M1). `full` = `fast` for now.
+  structure, manifest, intake pin, and the **lab smoke** (SPEC §11: N1, G1–G5,
+  D1, Q1, R1, P1, T1, K1, C1, the order styles; each proven on a planted
+  fault; about 0.3 s). The C++ suite arrives at M1. `full` = `fast` for now.
 - **Hard date:** horde's module cutoff **2026-12-11**. The 1.0 arpeggiator
   meets horde's MUST rows by then, or it ships after 1.0. Which rows bind Arp is
   not in the intake packet yet (Q-H1).
 - **Last human ratification:** 2026-10-21 — manifest ratified by poll (D-003);
   scope widened by poll twice the same day: the pattern bank (D-004), and
   four Phase 0 additions (D-006).
-- **Cutoff risk:** the 1.0 surface has grown twice since ratification. If the
-  cutoff tightens, **ratchets yield first, then probability**: both are bank
-  data that can ship after 1.0, provided the bank format reserves their
-  fields now (D-006, proposed).
+- **Cutoff risk:** the 1.0 surface has grown three times since ratification
+  (D-004, D-006, D-007). If the cutoff tightens, **ratchets yield first, then
+  probability, then triggers**. All three are bank data that can ship after
+  1.0, because `spec/bank/` reserves their fields now.
 
 ## Phases (each gate is a checkable condition)
 
@@ -159,6 +167,13 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   M3 gate.
 - **Q-H2 — How horde consumes the core.** Vendored source pinned by hash, a
   submodule, or a package? Asked of horde in the spin-up notice. Blocks M3.
+- **Q-H3 — How horde receives Arp's trigger lanes** (D-007). Arp emits
+  `Trigger{lane 1–8}` at a sample offset; horde's routing maps lanes to
+  declared actions and impulses (ADR-267). Ask in the next notice, together
+  with "please file through `integrations/hypersaw/`". Blocks M3's trigger
+  wiring, not the core.
+- **Q-A5 — Quantize tie direction, and whether pre-roll plays.** PROPOSED in
+  SPEC §6 and §12; decided in the lab.
 - **Q-A1 — The morph threshold rule for discrete settings.** Decided in
   Phase A by playing in the lab, then an ADR (survey Open 5).
 - **Q-A2 — Restart × morph.** Does a morph that changes the restart value act

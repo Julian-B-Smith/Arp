@@ -1,0 +1,1487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arp lab</title>
+<!--
+  Arp lab - the Phase A listening twin (ROADMAP Phase A; spec/SPEC.md DRAFT r2).
+  NOT a parity target: the C++ core (M1) is the reference. One file, no
+  dependencies, opens from disk. The CORE section is sliced out and run headless
+  by tools/lab_smoke.mjs (./verify fast), so what is gated is what is heard.
+  Determinism: seeded mulberry32 draws only; CORE reads no clock. The UI alone
+  reads AudioContext time, never the core.
+  Play it to decide Q-A1 (discrete morph), Q-A2 (restart under morph), Q-A3 (which
+  bank entries ship) and Q-A5 (quantize tie, pre-roll): the panels below say how.
+-->
+<style>
+  :root { color-scheme: light dark; --bg:#f6f7f9; --panel:#fff; --line:#cfd5df; --text:#171b24; --dim:#5d6678; --acc:#0a7d72; --hot:#c25a00; --key:#fff; --keyb:#222; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1218; --panel:#171b24; --line:#2a3040; --text:#e8ecf2; --dim:#8b94a6; --acc:#5ff2e0; --hot:#ffc24b; --key:#e8ecf2; --keyb:#0b0d12; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font:13px/1.5 ui-monospace,Menlo,Consolas,monospace; padding:14px; max-width:1100px; margin:0 auto; }
+  h1 { font-size:17px; } h1 b { color:var(--acc); }
+  .tag { color:var(--dim); font-size:11.5px; margin:2px 0 10px; max-width:900px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px; }
+  .card h2 { font-size:10.5px; text-transform:uppercase; letter-spacing:.14em; color:var(--acc); margin-bottom:8px; }
+  .q { color:var(--dim); font-size:11.5px; margin-bottom:8px; max-width:900px; } .q b { color:var(--text); }
+  .cols { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; } @media (max-width:820px) { .cols { grid-template-columns:1fr; } }
+  .bar { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin-bottom:6px; }
+  label { color:var(--dim); font-size:11.5px; }
+  select, input[type=number] { background:var(--bg); color:var(--text); border:1px solid var(--line); font:inherit; font-size:11.5px; padding:2px 4px; border-radius:3px; }
+  input[type=number] { width:84px; }
+  button { background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; font:inherit; font-size:11.5px; padding:4px 10px; cursor:pointer; }
+  button:hover { border-color:var(--dim); } button.on { border-color:var(--acc); color:var(--acc); }
+  .row { display:grid; grid-template-columns:96px minmax(0,1fr) 44px 56px; gap:6px; align-items:center; margin-bottom:3px; }
+  .row input[type=range] { width:100%; } .val { text-align:right; } .eff { color:var(--hot); font-size:11px; }
+  #kb { position:relative; height:112px; display:flex; user-select:none; touch-action:none; margin:6px 0; }
+  .key { cursor:pointer; touch-action:none; } .white { flex:1; background:var(--key); border:1px solid var(--line); border-radius:0 0 4px 4px; }
+  .black { position:absolute; top:0; width:3.2%; height:64%; background:var(--keyb); border:1px solid var(--line); border-radius:0 0 3px 3px; z-index:2; }
+  .key.down { background:var(--acc); }
+  #grid { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
+  .cell { width:64px; border:1px solid var(--line); border-radius:4px; padding:3px 4px; font-size:10.5px; } .cell b { color:var(--dim); margin-right:4px; }
+  .cell i { display:block; font-style:normal; color:var(--hot); min-height:14px; }
+  .cell.on { background:color-mix(in srgb, var(--acc) 22%, transparent); } .cell.tie { background:color-mix(in srgb, var(--hot) 22%, transparent); } .cell.rest { opacity:.55; }
+  .cell.trig { border-color:var(--hot); } .cell.now { outline:2px solid var(--acc); }
+  #lamps { display:flex; gap:6px; } .lamp { width:26px; height:26px; border-radius:50%; border:2px solid var(--line); display:grid; place-items:center; color:var(--dim); font-size:11px; }
+  .lamp.lit { background:var(--hot); border-color:var(--hot); color:#000; }
+  #log { height:190px; overflow:auto; white-space:pre; font-size:11.5px; background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:6px; }
+  .pcs { color:var(--dim); margin-left:8px; }
+</style>
+</head>
+<body>
+<h1>Arp <b>lab</b></h1>
+<p class="tag">A listening twin of the Arp core (spec DRAFT r2). Hold keys, press Play or leave the transport stopped (the free clock: step 0 lands on your key press), and change anything. Not a parity target.</p>
+<div class="card">
+  <div class="bar">
+    <button id="startBtn">Start audio</button>
+    <button id="playBtn" class="play">Play</button>
+    <label>BPM <input id="bpm" type="number" min="20" max="999" value="120"></label>
+    <button id="panicBtn">Panic</button>
+    <button id="pedalBtn" title="toggle the sustain pedal">Pedal</button>
+    <span id="midiStatus" class="pcs"></span>
+  </div>
+  <div class="q" id="clockNote">Transport stopped: the free clock. Step 0 lands on your key press.</div>
+  <div id="kb"></div>
+  <div class="q">Computer keys: bottom row z s x d c v g b h n j m , (C3 up), top row q 2 w 3 e r 5 t 6 y 7 u i (C4 up), space = Play/Stop. Mouse and touch work on the keys above.</div>
+  <div class="q" id="status"></div>
+  <div class="q" id="coreStatus"></div>
+</div>
+<div class="cols">
+  <div>
+    <div class="card"><h2>Settings (every key of params.json)</h2><div id="settings"></div><div id="scale" class="bar"></div></div>
+  </div>
+  <div>
+    <div class="card"><h2>Step pattern</h2><div class="q" id="patPurpose"></div><div id="grid"></div>
+      <h2>Trigger lanes</h2><div id="lamps"></div></div>
+    <div class="card"><h2>Morph (A / B corners)</h2>
+      <div class="q">Copy the current settings into corner A or B, then slide. Continuous settings blend linearly; discrete ones follow SPEC 9 Q-A1.</div>
+      <div class="bar"><button id="copyA">A &larr; current</button><button id="copyB">B &larr; current</button>
+        <label><input type="checkbox" id="morphOn"> morph on</label>
+        <label>Q-A1 rule <select id="morphRule"><option value="hyst">largest weight + 0.05 hysteresis (spec)</option><option value="plain">largest weight, no hysteresis</option><option value="from0">B as soon as the slider leaves A</option></select></label></div>
+      <div class="bar"><label>A <input type="range" id="morphW" min="0" max="100" value="50" style="width:260px"> B</label><span id="morphWv">B 50% / A 50%</span><span id="cornerNow" class="eff"></span></div>
+      <div class="bar"><button id="demoA1">load Q-A1 demo</button><button id="demoA2">load Q-A2 demo</button></div>
+    </div>
+    <div class="card"><h2>Listen and decide (Q-A5)</h2>
+      <div class="bar"><label>quantize tie goes <select id="tieSel"><option value="down">to the lower key (spec)</option><option value="up">to the upper key</option></select></label>
+        <label><input type="checkbox" id="prerollStart"> start the transport 1 bar early (pre-roll)</label>
+        <label><input type="checkbox" id="prerollPlay" checked> play the pre-roll steps</label></div>
+    </div>
+  </div>
+</div>
+<div class="card"><h2>Output events</h2><div class="bar"><button id="clearLog">clear</button></div><div id="log"></div></div>
+<script>
+/* ================= CORE =================
+ * Arp core: a pure note processor (spec/SPEC.md, DRAFT r2). No DOM, no clock, no
+ * Math.random: tools/lab_smoke.mjs slices this section out by its banner and
+ * builds it with poisoned Math.random / Date / performance, so a read of any of
+ * them throws. Positions are exact BigInt "posNum" values (SPEC 2.2); the lab is a
+ * listening twin, never a parity target for the C++ core.
+ *
+ * Comments marked SPEC-GAP are places where the spec is silent or ambiguous and
+ * the simplest reading was taken; the list goes back to the spec's owner.
+ */
+const TPQ = 15360;
+const ARP_PARAMS = {
+ "format": "arp-params/1",
+ "status": "DRAFT r2 2026-10-21 (Phase A, after critic review r1); protected once the human ratifies spec/",
+ "tpq": 15360,
+ "note": "Every setting is a morph target (D-000 Open 5). All values are INTEGERS in the snapshot (horde rounds morph blends). kind=continuous blends; kind=discrete resolves to the largest-weight corner with 0.05 hysteresis and applies from the next evaluated step (SPEC §9, Q-A1 PROPOSED); `enabled` applies at offset 0 of its block (SPEC T4/T5). Enums are stored by NAME. Tempo is clamped to [20, 999] bpm (SPEC §1.3).",
+ "params": [
+  {
+   "key": "enabled",
+   "kind": "discrete",
+   "type": "bool",
+   "default": false,
+   "ref": "SPEC §7 T4/T5, §9"
+  },
+  {
+   "key": "order",
+   "kind": "discrete",
+   "type": "enum",
+   "values": [
+    "up",
+    "down",
+    "bounce",
+    "bounce2",
+    "played",
+    "chord",
+    "random",
+    "shuffle",
+    "converge",
+    "diverge",
+    "pedal_low",
+    "pedal_high"
+   ],
+   "default": "up",
+   "ref": "SPEC §4.2"
+  },
+  {
+   "key": "pattern",
+   "kind": "discrete",
+   "type": "enum",
+   "values_from": "spec/bank/starter.json patterns[].id",
+   "default": "none",
+   "ref": "SPEC §4.3"
+  },
+  {
+   "key": "rate",
+   "kind": "discrete",
+   "type": "enum",
+   "values_from": "rate[].name (aliases accepted on load)",
+   "default": "1/16",
+   "ref": "SPEC §2.1"
+  },
+  {
+   "key": "octaves",
+   "kind": "discrete",
+   "type": "int",
+   "min": 1,
+   "max": 4,
+   "default": 1,
+   "ref": "SPEC §4.2"
+  },
+  {
+   "key": "gate",
+   "kind": "continuous",
+   "type": "percent",
+   "min": 1,
+   "max": 200,
+   "default": 80,
+   "ref": "SPEC §5"
+  },
+  {
+   "key": "swing",
+   "kind": "continuous",
+   "type": "permille",
+   "min": 500,
+   "max": 750,
+   "default": 500,
+   "ref": "SPEC §5",
+   "note": "500 straight, 667 triplet feel"
+  },
+  {
+   "key": "latch",
+   "kind": "discrete",
+   "type": "enum",
+   "values": [
+    "off",
+    "replace",
+    "append"
+   ],
+   "default": "off",
+   "ref": "SPEC §3"
+  },
+  {
+   "key": "vel_mode",
+   "kind": "discrete",
+   "type": "enum",
+   "values": [
+    "played",
+    "fixed"
+   ],
+   "default": "played",
+   "ref": "SPEC §4.4"
+  },
+  {
+   "key": "vel_fixed",
+   "kind": "continuous",
+   "type": "int",
+   "min": 1,
+   "max": 127,
+   "default": 100,
+   "ref": "SPEC §4.4"
+  },
+  {
+   "key": "restart",
+   "kind": "discrete",
+   "type": "enum",
+   "values": [
+    "chord",
+    "bar",
+    "free"
+   ],
+   "default": "chord",
+   "ref": "SPEC §4.5"
+  },
+  {
+   "key": "quantize",
+   "kind": "discrete",
+   "type": "bool",
+   "default": false,
+   "ref": "SPEC §6"
+  },
+  {
+   "key": "seed",
+   "kind": "discrete",
+   "type": "uint32",
+   "default": 0,
+   "ref": "SPEC §10"
+  }
+ ],
+ "rate": [
+  {
+   "name": "2/1",
+   "alias": null,
+   "beats": "8",
+   "ticks": 122880
+  },
+  {
+   "name": "3/2",
+   "alias": "1/1D",
+   "beats": "6",
+   "ticks": 92160
+  },
+  {
+   "name": "2/1T",
+   "alias": null,
+   "beats": "16/3",
+   "ticks": 81920
+  },
+  {
+   "name": "1/1",
+   "alias": null,
+   "beats": "4",
+   "ticks": 61440
+  },
+  {
+   "name": "3/4",
+   "alias": "1/2D",
+   "beats": "3",
+   "ticks": 46080
+  },
+  {
+   "name": "1/1T",
+   "alias": null,
+   "beats": "8/3",
+   "ticks": 40960
+  },
+  {
+   "name": "1/2",
+   "alias": null,
+   "beats": "2",
+   "ticks": 30720
+  },
+  {
+   "name": "3/8",
+   "alias": "1/4D",
+   "beats": "3/2",
+   "ticks": 23040
+  },
+  {
+   "name": "1/2T",
+   "alias": null,
+   "beats": "4/3",
+   "ticks": 20480
+  },
+  {
+   "name": "1/4",
+   "alias": null,
+   "beats": "1",
+   "ticks": 15360
+  },
+  {
+   "name": "3/16",
+   "alias": "1/8D",
+   "beats": "3/4",
+   "ticks": 11520
+  },
+  {
+   "name": "1/4T",
+   "alias": null,
+   "beats": "2/3",
+   "ticks": 10240
+  },
+  {
+   "name": "1/8",
+   "alias": null,
+   "beats": "1/2",
+   "ticks": 7680
+  },
+  {
+   "name": "3/32",
+   "alias": "1/16D",
+   "beats": "3/8",
+   "ticks": 5760
+  },
+  {
+   "name": "1/8T",
+   "alias": null,
+   "beats": "1/3",
+   "ticks": 5120
+  },
+  {
+   "name": "1/16",
+   "alias": null,
+   "beats": "1/4",
+   "ticks": 3840
+  },
+  {
+   "name": "3/64",
+   "alias": "1/32D",
+   "beats": "3/16",
+   "ticks": 2880
+  },
+  {
+   "name": "1/16T",
+   "alias": null,
+   "beats": "1/6",
+   "ticks": 2560
+  },
+  {
+   "name": "1/32",
+   "alias": null,
+   "beats": "1/8",
+   "ticks": 1920
+  },
+  {
+   "name": "3/128",
+   "alias": "1/64D",
+   "beats": "3/32",
+   "ticks": 1440
+  },
+  {
+   "name": "1/32T",
+   "alias": null,
+   "beats": "1/12",
+   "ticks": 1280
+  },
+  {
+   "name": "1/64",
+   "alias": null,
+   "beats": "1/16",
+   "ticks": 960
+  }
+ ]
+};
+const ARP_BANK = {
+ "format": "arp-bank/1",
+ "status": "DRAFT 2026-10-21 — CANDIDATES for the starter bank (Q-A3, decided by playing the lab). Clean-room: names and patterns are ours (D-004).",
+ "step_defaults": {
+  "on": true,
+  "tie": false,
+  "vel": 100,
+  "gate": 100,
+  "oct": 0,
+  "prob": 100,
+  "ratchet": 1,
+  "trig": 0
+ },
+ "fields": "SPEC §4.3: on, tie, vel %, gate %, oct, prob %, ratchet 1-4, trig lane 0-8",
+ "patterns": [
+  {
+   "id": "none",
+   "name": "Plain",
+   "purpose": "every step plays; the arp with no rhythm pattern",
+   "length": 1,
+   "steps": [
+    {}
+   ]
+  },
+  {
+   "id": "offbeat",
+   "name": "Off-beat",
+   "purpose": "only the off-beats play",
+   "length": 2,
+   "steps": [
+    {
+     "on": false
+    },
+    {}
+   ]
+  },
+  {
+   "id": "gallop",
+   "name": "Gallop",
+   "purpose": "long-short-short: one eighth then two sixteenths",
+   "length": 4,
+   "steps": [
+    {},
+    {
+     "on": false
+    },
+    {},
+    {}
+   ]
+  },
+  {
+   "id": "three_three_two",
+   "name": "Three-three-two",
+   "purpose": "the 3+3+2 syncopation over eight steps",
+   "length": 8,
+   "steps": [
+    {},
+    {
+     "on": false
+    },
+    {
+     "on": false
+    },
+    {},
+    {
+     "on": false
+    },
+    {
+     "on": false
+    },
+    {},
+    {
+     "on": false
+    }
+   ]
+  },
+  {
+   "id": "accent_one",
+   "name": "Downbeat accent",
+   "purpose": "accent the first of every four",
+   "length": 4,
+   "steps": [
+    {
+     "vel": 130
+    },
+    {
+     "vel": 85
+    },
+    {
+     "vel": 85
+    },
+    {
+     "vel": 85
+    }
+   ]
+  },
+  {
+   "id": "tied_legato",
+   "name": "Tied legato",
+   "purpose": "ties hold notes across steps; the order advances only on new notes",
+   "length": 8,
+   "steps": [
+    {},
+    {
+     "tie": true
+    },
+    {},
+    {
+     "tie": true
+    },
+    {},
+    {},
+    {
+     "tie": true
+    },
+    {
+     "tie": true
+    }
+   ]
+  },
+  {
+   "id": "octave_leap",
+   "name": "Octave leap",
+   "purpose": "the second step jumps up an octave, the fourth down",
+   "length": 4,
+   "steps": [
+    {},
+    {
+     "oct": 1
+    },
+    {},
+    {
+     "oct": -1
+    }
+   ]
+  },
+  {
+   "id": "roll_end",
+   "name": "Roll at the end",
+   "purpose": "plain steps, then a double and a quadruple ratchet",
+   "length": 8,
+   "steps": [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {
+     "ratchet": 2
+    },
+    {
+     "ratchet": 4
+    }
+   ]
+  },
+  {
+   "id": "sparse_chance",
+   "name": "Sparse chance",
+   "purpose": "five sure hits, the rest at 30 % (seeded, so it repeats)",
+   "length": 16,
+   "steps": [
+    {},
+    {
+     "prob": 30
+    },
+    {
+     "prob": 30
+    },
+    {},
+    {
+     "prob": 30
+    },
+    {
+     "prob": 30
+    },
+    {},
+    {
+     "prob": 30
+    },
+    {
+     "prob": 30
+    },
+    {
+     "prob": 30
+    },
+    {},
+    {
+     "prob": 30
+    },
+    {
+     "prob": 30
+    },
+    {},
+    {
+     "prob": 30
+    },
+    {
+     "prob": 30
+    }
+   ]
+  },
+  {
+   "id": "bar_trigger",
+   "name": "Bar trigger",
+   "purpose": "every step plays; step 1 also fires trigger lane 1 (e.g. a module's clear)",
+   "length": 16,
+   "steps": [
+    {
+     "trig": 1
+    },
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ]
+  },
+  {
+   "id": "trigger_pulse",
+   "name": "Trigger pulse",
+   "purpose": "no notes; fires lane 1 on every beat (a trigger-only pattern)",
+   "length": 4,
+   "steps": [
+    {
+     "on": false,
+     "trig": 1
+    },
+    {
+     "on": false
+    },
+    {
+     "on": false
+    },
+    {
+     "on": false
+    }
+   ]
+  }
+ ]
+};
+// Named fault switches, ALL inert by default; only tools/lab_smoke.mjs turns them on,
+// each against a fresh core, to prove its detector can go red.
+const ARP_PLANTS = ["dropRelease", "doubleRelease", "sameSampleOff", "clampOffset", "floatPosition",
+  "roundNotCeil", "swingParityK", "srTickMath", "noOnceGuard", "timeInDraw", "skipQuantizeChord",
+  "advanceOnRest", "probLE", "trigEveryRatchet", "tieAtTieStep", "noOffReserve"];
+const DISCRETE_KEYS = ["order", "pattern", "rate", "octaves", "latch", "vel_mode", "restart", "quantize", "seed"];
+const RATE_TICKS = {};
+for (const r of ARP_PARAMS.rate) { RATE_TICKS[r.name] = r.ticks; if (r.alias) RATE_TICKS[r.alias] = r.ticks; }
+const RANK = { off: 0, panic: 1, on: 2, trig: 3, pass: 4 };
+// Shared across instances ON PURPOSE: the timeInDraw plant needs hidden state that
+// outlives one core, so two same-seed runs differ (a time-varying draw input).
+let plantedDrawTicks = 0;
+
+function defaultSettings() { const o = {}; for (const p of ARP_PARAMS.params) o[p.key] = p.default; return o; }
+
+// ---- integer helpers (SPEC "Arithmetic conventions": mathematical floor/ceil) ----
+const floorDivB = (a, b) => { const q = a / b; return (a % b !== 0n && (a < 0n) !== (b < 0n)) ? q - 1n : q; };
+const cdivB = (a, b) => -floorDivB(-a, b);
+const fdiv = (a, b) => Math.floor(a / b);
+const cdiv = (a, b) => Math.ceil(a / b);
+const mod = (a, b) => a - b * Math.floor(a / b);
+const clamp = (x, lo, hi) => x < lo ? lo : x > hi ? hi : x;
+
+// ---- the draw (SPEC 10): counter-based, no state between calls ----
+function mulberry32Once(a) {
+  a = (a + 0x6D2B79F5) | 0;
+  let t = Math.imul(a ^ (a >>> 15), 1 | a);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return (t ^ (t >>> 14)) >>> 0;
+}
+function draw(seed, x, lane, epoch) {
+  return mulberry32Once((seed ^ Math.imul(x, 0x9E3779B1) ^ Math.imul(lane, 0x85EBCA77) ^ Math.imul(epoch, 0xC2B2AE3D)) >>> 0);
+}
+
+// ---- order styles (SPEC 4.2) ----
+function periodOf(order, e, oct) {
+  switch (order) {
+    case "bounce": return e === 1 ? 1 : 2 * e - 2;
+    case "bounce2": return 2 * e;
+    case "chord": return oct;
+    case "pedal_low": case "pedal_high": return e === 1 ? 1 : 2 * (e - 1);
+    default: return e;   // up down played converge diverge shuffle (random has no period)
+  }
+}
+const convIdx = (q, e) => (q % 2 === 0) ? q / 2 : e - 1 - (q - 1) / 2;
+function indexOf(order, e, p) {
+  switch (order) {
+    case "up": return p;
+    case "down": return e - 1 - p;
+    case "bounce": return p < e ? p : 2 * e - 2 - p;
+    case "bounce2": return p < e ? p : 2 * e - 1 - p;
+    case "converge": return convIdx(p, e);
+    case "diverge": return convIdx(e - 1 - p, e);
+    case "pedal_low": return p % 2 === 0 ? 0 : 1 + (p - 1) / 2;
+    case "pedal_high": return p % 2 === 0 ? e - 1 : e - 2 - (p - 1) / 2;
+  }
+  throw new Error("indexOf: unknown order " + order);
+}
+const refId = r => (r !== null && typeof r === "object") ? r.port + ":" + r.channel + ":" + r.key + ":" + r.id : String(r);
+
+/* simHost: a simulated host whose position is an EXACT function of the absolute
+ * sample count (SPEC G1). Segments start at sample indexes; the caller splits blocks
+ * at edges(). Not used by the core itself. */
+function simHost(o) {
+  const sr = Math.round(o.sr), D = BigInt(60 * sr * 1000);
+  const segs = [];
+  const mk = (start, playing, bpm, base) => ({ start, playing, bpm, base, inc: BigInt(Math.round(bpm * 1000)) * BigInt(TPQ) });
+  segs.push(mk(0, o.playing !== false, o.bpm || 120, BigInt(Math.round((o.startBeats || 0) * TPQ)) * D));
+  const segAt = i => { let g = segs[0]; for (const x of segs) if (x.start <= i) g = x; return g; };
+  const posAt = i => { const g = segAt(i); return g.playing ? g.base + BigInt(i - g.start) * g.inc : g.base; };
+  return {
+    sr, D, segs, posAt,
+    set(at, ch) {
+      const prev = segAt(at), pos = posAt(at);
+      const base = ch.seekBeats !== undefined ? BigInt(Math.round(ch.seekBeats * TPQ)) * D : pos;
+      segs.push(mk(at, ch.playing !== undefined ? ch.playing : prev.playing, ch.bpm !== undefined ? ch.bpm : prev.bpm, base));
+      segs.sort((a, b) => a.start - b.start);
+    },
+    at(i) {
+      const g = segAt(i), rep = posAt(i);
+      return { playing: g.playing, hasBeats: true, hasTempo: true, tempo: g.bpm, rep, beats: Number(rep) / Number(D) / TPQ, loop: false };
+    },
+    edges(a, b) { return segs.filter(g => g.start > a && g.start < b).map(g => g.start); },
+  };
+}
+
+class ArpCore {
+  constructor(opts = {}) {
+    this.caps = Object.assign({ held: 32, refsPerKey: 4, sounding: 128, pending: 512, events: 0 }, opts.caps || {});
+    this.bank = opts.bank || ARP_BANK;
+    this.patMap = new Map(this.bank.patterns.map(p => [p.id, p]));
+    this.stepDefaults = this.bank.step_defaults || ARP_BANK.step_defaults;
+    // lab.opts are the lab's listening toggles (Q-A5), not spec behaviour changes.
+    this.lab = { plant: {}, opts: { quantizeTie: "down", playPreroll: true } };
+    for (const p of ARP_PLANTS) this.lab.plant[p] = false;
+    this.sr = 0;
+    this._dropped = false; this._doubled = false;   // plant bookkeeping; survives reset() so a plant fires once per instance
+    this.rows = {}; this.counters = {};
+    this.lastSteps = [];
+    this._blk = 0; this._ver = 0;
+  }
+
+  prepare(sampleRate, maxBlock) {
+    this.sr = Math.round(sampleRate);
+    if (this.sr < 8000 || this.sr > 768000) throw new Error("prepare: sampleRate out of 8000..768000");
+    if (!(maxBlock >= 1 && maxBlock <= 4096)) throw new Error("prepare: maxBlock must be 1..4096");
+    this.maxBlock = maxBlock;
+    this.D = BigInt(60 * this.sr * 1000);
+    this.capEv = this.caps.events || Math.max(1024, 4 * maxBlock);
+    this.rows = {}; for (let i = 1; i <= 16; i++) this.rows["T" + i] = 0;   // coverage evidence for the smoke: a row counts only when it really acted
+    this.counters = { heldOverflow: 0, refOverflow: 0, soundingOverflow: 0, pendingOverflow: 0, eventOverflow: 0, refused: 0, keysDropped: 0 };
+    this._resetState();
+  }
+
+  _resetState() {
+    this.refs = []; this.ignored = []; this.pedalDown = false;
+    this.enabled = false; this.idCounter = 0;
+    this.sounding = []; this.pending = [];
+    this.absSample = 0;
+    this.clock = "none"; this._start = 0n; this._next = 0n; this._inc = 0n;
+    this.freeRunning = false; this.epoch = 0; this.lastTempoMilli = 120000;
+    this.lastEvaluated = null; this.anchorK = null; this.m = 0; this.lastBar = null;
+    this.active = null; this.L = 0; this.stepSeq = 0;
+    this.prevCont = null; this._fnext = undefined;
+    this.barTicks = 4 * TPQ; this.barPhase = 0;
+  }
+
+  // reset(): T10. Returns the NoteOffs the adapter must deliver to the engine directly.
+  reset() {
+    this._ev = []; this._absBase = this.absSample; this._n = 1;
+    if (this.sounding.length) this.rows.T10++;
+    this._releaseAll(0);
+    const out = this._ev; this._ev = [];
+    this._resetState();
+    return out;
+  }
+
+  // ---------------------------------------------------------------- process
+  process(block) {
+    const n = block.n, ins = block.in || [], P = this.lab.plant, D = this.D;
+    if (!(n >= 1 && n <= this.maxBlock)) throw new Error("process: n out of 1..maxBlock");
+    this._ev = []; this._evI = 0; this.lastSteps = []; this._blk++;
+    const tr = block.transport || {}, S = block.settings;
+    this.incoming = S; this.scale = block.scale || { root: 0, mask: 0 };
+    this._n = n; this._absBase = this.absSample;
+    const inc = this._tempoMilli(tr) * BigInt(TPQ);
+    this._inc = inc;
+    if (!this.active) { this.active = {}; for (const k of DISCRETE_KEYS) this.active[k] = S[k]; this.L = this._rateTicks(S.rate); }
+    const num = tr.timeSigNum || 4, den = tr.timeSigDen || 4;
+    this.barTicks = Math.floor(TPQ * 4 * num / den);
+
+    // -- which clock, and where it starts (SPEC 2.2 three bands, 2.4)
+    for (const e of ins) if (!(e.s >= 0 && e.s < n)) throw new Error("input offset outside block");
+    let edge = false;
+    if (tr.playing && tr.hasBeats) {
+      const rep = this._rep(tr);
+      if (this.clock !== "host") { edge = true; this._start = rep; }
+      else {
+        const d = rep - this._next, ad = d < 0n ? -d : d;
+        if (d === 0n) this._start = this._next;               // continuous
+        else if (ad <= 960n * D) this._start = rep;           // re-base: silent, no terminals
+        else { edge = true; this._start = rep; }              // jump: T6
+      }
+      this.clock = "host";
+      this.barPhase = tr.barStartBeats != null ? mod(Math.round(tr.barStartBeats * TPQ), this.barTicks) : 0;
+    } else {
+      if (this.clock === "host") { edge = true; this._start = 0n; }
+      else this._start = this.clock === "none" ? 0n : this._next;
+      this.clock = "free"; this.barPhase = 0;
+    }
+    if (P.floatPosition) {
+      this._tps = Number(inc) / Number(D);
+      this._fstart = (!edge && this._fnext !== undefined) ? this._fnext : Number(this._start) / Number(D);
+    }
+    if (edge) this._edge();
+    // plant: re-derive the evaluated-step cursor from the position every block (no once-guard)
+    if (P.noOnceGuard) this.lastEvaluated = Number(cdivB(this._start, BigInt(this.L) * D)) - 1;
+
+    // -- T9 bookkeeping, rate/enabled changes that act at offset 0
+    const cont = S.gate + "," + S.swing + "," + S.vel_fixed;
+    if (this.prevCont !== null && cont !== this.prevCont && this.sounding.length) this.rows.T9++;
+    this.prevCont = cont;
+    const en = !!S.enabled;
+    if (en !== this.enabled) {
+      if (!en) { if (this.sounding.length) this.rows.T4++; this._releaseAll(0); this.enabled = false; }
+      else {
+        this.rows.T5++; this.enabled = true;
+        this.active.rate = S.rate; this.L = this._rateTicks(S.rate);   // SPEC-GAP: rate adopted at enable (the grid restarts anyway)
+        this._reanchor(0, true);
+      }
+    }
+    this._maybeFreeStart(0);
+
+    // -- the timeline: input events, due offs, pending ons/triggers, grid-step evaluations
+    let ii = 0, cur = 0;
+    for (;;) {
+      if (this.clock === "free" && this.freeRunning && !this.refs.length && !this.sounding.length && !this.pending.length) this.freeRunning = false;   // idle (SPEC 2.4)
+      const running = this.enabled && (this.clock === "host" || this.freeRunning);
+      if (running && this.lastEvaluated === null) this.lastEvaluated = Number(cdivB(this._posAt(cur), BigInt(this.L) * D)) - 1;
+      let t = Infinity, kind = -1, idx = -1;
+      if (ii < ins.length) { t = ins[ii].s; kind = 0; idx = ii; }
+      for (let q = 0; q < this.sounding.length; q++) { const s = this._offTime(this.sounding[q]); if (s < t) { t = s; kind = 1; idx = q; } }
+      let pi = -1;
+      for (let q = 0; q < this.pending.length; q++) if (pi < 0 || this.pending[q].pos < this.pending[pi].pos) pi = q;
+      if (pi >= 0) { const s = Math.max(0, this._ofs(this.pending[pi].pos)); if (s < t) { t = s; kind = 2; idx = pi; } }
+      if (running) { const s = Math.max(0, this._ofs(BigInt((this.lastEvaluated + 1) * this.L) * D)); if (s < t) { t = s; kind = 3; } }
+      if (kind < 0 || !(P.clampOffset ? t <= n : t < n)) break;
+      if (t < cur) t = cur;
+      cur = t;
+      const so = (P.clampOffset && t >= n) ? n - 1 : t;
+      if (kind === 0) { this._input(ins[ii++], so); }
+      else if (kind === 1) { const x = this.sounding[idx]; if (x.offPos !== null) this.rows.T1++; this._release(x.ref, so); }
+      else if (kind === 2) { const p = this.pending.splice(idx, 1)[0]; if (p.kind === "on") this._emitOn(p, so); else this._pushNon({ t: "trig", s: so, lane: p.lane, tick: this._tickOf(p.pos) }); }
+      else this._visit(so);
+    }
+    this._next = this._start + BigInt(n) * inc;
+    if (P.floatPosition) this._fnext = Math.fround(this._fstart + n * this._tps);   // plant: a float32 running position
+    this.absSample += n;
+    this._ev.sort((a, b) => a.s - b.s || RANK[a.t] - RANK[b.t] || this._tie(a, b));
+    return this._ev;
+  }
+
+  // Same-offset order (SPEC 1.1): offs by id, panic, ons by step order then key, triggers by lane, pass-through by input order.
+  _tie(a, b) {
+    if (a.t === "off") return a.ref.id - b.ref.id;
+    if (a.t === "on") return a.ord - b.ord || a.key - b.key;
+    if (a.t === "trig") return a.lane - b.lane || a._i - b._i;
+    return a._i - b._i;
+  }
+
+  // ---------------------------------------------------------------- time
+  _tempoMilli(tr) {
+    let bpm;
+    if (tr.hasTempo) { bpm = tr.tempo; if (!(bpm > 1)) bpm = 120; this.lastTempoMilli = Math.round(clamp(bpm, 20, 999) * 1000); }
+    return BigInt(this.lastTempoMilli);
+  }
+  _rep(tr) {
+    if (typeof tr.rep === "bigint") return tr.rep;
+    const D = this.D, ticks = tr.beats * TPQ, whole = Math.floor(ticks);
+    return BigInt(whole) * D + BigInt(Math.round((ticks - whole) * Number(D)));   // SPEC-GAP: float beats; the exact adapter does this once, in integers
+  }
+  _posAt(s) { return this._start + BigInt(s) * this._inc; }
+  // SPEC 2.3: s = cdiv(x - start, inc). May be negative for a LATE event (re-base forward); callers clamp that to 0.
+  _ofs(x) {
+    const P = this.lab.plant;
+    if (P.floatPosition) return Math.ceil((Number(x) / Number(this.D) - this._fstart) / this._tps);
+    const d = x - this._start;
+    if (P.roundNotCeil) return Number(floorDivB(2n * d + this._inc, 2n * this._inc));
+    return Number(cdivB(d, this._inc));
+  }
+  _tickOf(pos) { return Number(floorDivB(pos, this.D)); }
+  _rateTicks(name) { return RATE_TICKS[name] || 3840; }
+
+  // T6: release everything, restart the grid from the new position, re-anchor.
+  _edge() {
+    if (this.sounding.length) this.rows.T6++;
+    this._releaseAll(0);
+    this.active.rate = this.incoming.rate; this.L = this._rateTicks(this.active.rate);   // SPEC-GAP: rate adopted at an edge
+    this.freeRunning = false; this.epoch = 0;
+    this.lastEvaluated = null;
+    this._reanchor(0, false);
+  }
+  // Re-anchor at the current position (T5/T6): m := 0; chord anchors only if an anchor exists or keys are held.
+  _reanchor(s, resetEvaluated) {
+    const LD = BigInt(this.L) * this.D;
+    if (resetEvaluated || this.lastEvaluated === null) this.lastEvaluated = Number(cdivB(this._posAt(s), LD)) - 1;
+    this.m = 0; this.lastBar = null;
+    const a = this.active;
+    if (a.restart === "free") this.anchorK = 0;
+    else if (a.restart === "chord") this.anchorK = (this.anchorK !== null || this.refs.length) ? this.lastEvaluated + 1 : null;
+  }
+  // H7b: the free clock starts at a switch/enable sample when keys are held.
+  _maybeFreeStart(s) { if (this.clock === "free" && !this.freeRunning && this.enabled && this.refs.length) this._freeStart(s); }
+  // H7a/H7c: posNum := 0 at sample s; every pending event and sounding off shifts by the same exact delta (T14).
+  _freeStart(s) {
+    const shift = this._posAt(s);
+    if (this.freeRunning && (this.sounding.length || this.pending.length)) this.rows.T14++;
+    this._start -= shift; this._ver++;
+    for (const x of this.sounding) if (x.offPos !== null) x.offPos -= shift;
+    for (const p of this.pending) { p.pos -= shift; if (p.offPos !== undefined) p.offPos -= shift; }
+    this.epoch = (this.epoch + 1) >>> 0;
+    this.freeRunning = true; this.lastEvaluated = -1;
+    this.m = 0; this.lastBar = null;
+    const r = this.active.restart;
+    this.anchorK = (r === "bar") ? this.anchorK : 0;   // chord: the gesture anchors at tick 0; free: tick 0
+  }
+
+  // ---------------------------------------------------------------- input (SPEC 3)
+  _input(e, s) {
+    switch (e.t) {
+      case "on": this._noteOn(e, s); if (this.sounding.length) this.rows.T3++; break;
+      case "off": this._noteOff(e); if (this.sounding.length) this.rows.T3++; break;
+      case "pedal": this._pedal(!!e.down); if (this.sounding.length) this.rows.T3++; break;
+      case "panic":
+        if (this.sounding.length) this.rows.T7++;
+        this.refs = []; this.ignored = []; this.pedalDown = false;
+        this._releaseAll(s);
+        this._pushNon({ t: "panic", s });
+        break;
+      default: this._pushNon({ t: "pass", s, ev: e });   // pass-through, unchanged
+    }
+  }
+  _noteOn(e, s) {
+    const id = refId(e.ref), a = this.active, key = e.key;
+    if (this.refs.some(r => r.id === id) || this.ignored.includes(id)) return;
+    const ignore = () => { this.ignored.push(id); if (this.ignored.length > 256) this.ignored.shift(); };
+    const noActive = !this.refs.some(r => r.state === "down" || r.state === "pedal");
+    const hadLatched = this.refs.some(r => r.state === "latched");
+    if (noActive && a.latch === "replace") this.refs = this.refs.filter(r => r.state !== "latched");
+    if (a.latch === "append") {
+      const same = this.refs.filter(r => r.key === key);
+      if (same.length && same.every(r => r.state === "latched")) { this.refs = this.refs.filter(r => r.key !== key); ignore(); return; }   // toggle out
+    }
+    const sameKey = this.refs.filter(r => r.key === key).length;
+    if (!sameKey && new Set(this.refs.map(r => r.key)).size >= this.caps.held) { this.counters.heldOverflow++; ignore(); return; }
+    if (sameKey >= this.caps.refsPerKey) { this.counters.refOverflow++; ignore(); return; }
+    this.refs.push({ id, key, vel: e.vel === undefined ? 100 : e.vel, ch: e.ch || 0, state: "down", abs: this._absBase + s });
+    // gesture start (SPEC 3): no DOWN/PEDAL ref beforehand; under append a press that joins a latched set is not one (4.5)
+    if (noActive && !(a.latch === "append" && hadLatched)) this._gesture(s);
+  }
+  _gesture(s) {
+    if (!this.enabled) return;
+    if (this.clock === "free") { this._freeStart(s); return; }
+    if (this.active.restart === "chord") {
+      if (this.lastEvaluated === null) this.lastEvaluated = Number(cdivB(this._posAt(s), BigInt(this.L) * this.D)) - 1;
+      this.anchorK = this.lastEvaluated + 1;   // the first step not yet evaluated = first at/after this sample
+      this.m = 0;
+    }
+  }
+  _noteOff(e) {
+    const id = refId(e.ref), r = this.refs.find(x => x.id === id);
+    if (!r || r.state !== "down") return;   // unknown, ignored (not in refs) or already released: no effect
+    if (this.pedalDown) r.state = "pedal";
+    else if (this.active.latch === "off") this.refs = this.refs.filter(x => x !== r);
+    else r.state = "latched";
+  }
+  _pedal(down) {
+    if (!down && this.pedalDown) {
+      const latch = this.active.latch !== "off";
+      this.refs = this.refs.filter(r => r.state !== "pedal" || latch);
+      if (latch) for (const r of this.refs) if (r.state === "pedal") r.state = "latched";
+    }
+    this.pedalDown = down;
+  }
+  // H: distinct keys, earliest live ref's channel+velocity, press order = that ref's press sample (ties by key)
+  _held() {
+    const m = new Map();
+    for (const r of this.refs) { const h = m.get(r.key); if (!h || r.abs < h.abs) m.set(r.key, { key: r.key, vel: r.vel, ch: r.ch, abs: r.abs }); }
+    return [...m.values()].sort((x, y) => x.key - y.key);
+  }
+
+  // ---------------------------------------------------------------- the grid walk (SPEC 4)
+  // Called when the next unevaluated grid step's GRID tick lands at offset `so`.
+  _visit(so) {
+    const S = this.incoming, kAbs = this.lastEvaluated + 1;
+    if (S.rate !== this.active.rate) { this._switchRate(kAbs); return; }   // T15: applies at the next step of the OLD rate (SPEC 9)
+    this.lastEvaluated = kAbs;
+    this._adopt();
+    const a = this.active;
+    if (a.restart === "chord" && this.anchorK === null) return;             // no anchor yet (SPEC 2.5)
+    if (!this.lab.opts.playPreroll && kAbs * this.L < 0) return;
+    this._evalStep(kAbs, so);
+  }
+  _switchRate(kAbs) {
+    const gOld = BigInt(kAbs * this.L) * this.D;
+    this.active.rate = this.incoming.rate; this.L = this._rateTicks(this.active.rate);
+    const kNew = Number(cdivB(gOld, BigInt(this.L) * this.D));
+    this.lastEvaluated = kNew - 1;
+    if (this.sounding.length) this.rows.T15++;
+    const r = this.active.restart;
+    if (r === "chord") { if (this.anchorK !== null) { this.anchorK = kNew; this.m = 0; } }
+    else if (r === "free") this.anchorK = 0;
+    else if (this.lastBar !== null) this.anchorK = cdiv(this.barPhase + this.lastBar * this.barTicks, this.L);   // bar anchor re-expressed in the new rate; m untouched (SPEC-GAP)
+  }
+  // Discrete settings apply from the next evaluated step (T8).
+  _adopt() {
+    const a = this.active, S = this.incoming; let changed = false;
+    for (const k of DISCRETE_KEYS) {
+      if (k === "rate" || a[k] === S[k]) continue;
+      changed = true;
+      if (k === "latch" && S.latch === "off") this.refs = this.refs.filter(r => r.state !== "latched");
+      if (k === "restart") { if (S.restart === "bar") { this.lastBar = null; this.m = 0; } else if (S.restart === "free") { this.m = 0; this.anchorK = 0; } }   // into chord: keep the anchor
+      a[k] = S[k];
+    }
+    if (changed && this.sounding.length) this.rows.T8++;
+  }
+  _pattern(id) { return this.patMap.get(id) || this.patMap.get("none"); }
+  _step(pat, j) { return Object.assign({}, this.stepDefaults, pat.steps[mod(j, pat.steps.length)]); }
+  _draw(seed, x, lane) {
+    if (this.lab.plant.timeInDraw) seed = (seed ^ (plantedDrawTicks++)) >>> 0;
+    return draw(seed, x, lane, this.epoch);
+  }
+
+  _evalStep(kAbs, so) {
+    const P = this.lab.plant, a = this.active, S = this.incoming, L = this.L, D = this.D;
+    // anchor bookkeeping per restart mode (SPEC 4.5)
+    if (a.restart === "bar") {
+      const b = fdiv(kAbs * L - this.barPhase, this.barTicks);
+      if (b !== this.lastBar) { this.lastBar = b; this.anchorK = cdiv(this.barPhase + b * this.barTicks, L); this.m = 0; }
+    }
+    const aK = a.restart === "free" ? 0 : this.anchorK;
+    const k = kAbs - aK, pat = this._pattern(a.pattern), j = mod(k, pat.steps.length);
+    const st = this._step(pat, j);
+    const ord = this.stepSeq++;
+    const fires = P.probLE ? (this._draw(a.seed, kAbs, 2) % 100) <= st.prob : (this._draw(a.seed, kAbs, 2) % 100) < st.prob;
+
+    // on-times anchor at kAbs*L (SPEC 5.1, never k*L); swing parity from kAbs (G3)
+    const swingD = fdiv(L * (2 * S.swing - 1000), 1000);
+    const onT = x => x * L + (mod(P.swingParityK && aK !== null ? x - aK : x, 2) === 1 ? swingD : 0) + (P.srTickMath ? Math.floor(this.sr / 44100) : 0);
+    const on0 = onT(kAbs);
+    const H = this._held();
+    const mBefore = this.m;
+    let kind = "rest";
+    const trig = () => { if (fires && st.trig) this._queue({ kind: "trig", pos: BigInt(on0) * D, lane: st.trig, ord }); };
+
+    if (st.tie && !P.tieAtTieStep) { kind = "tie"; trig(); }   // the tie was honoured by look-ahead at the playing step
+    else if (st.on && fires && H.length) {
+      kind = "play";
+      this._play(kAbs, j, pat, st, H, onT, ord, fires);
+      this.m++;
+      trig();
+    } else if (fires && st.trig) { kind = "trig"; trig(); }
+    else if (P.advanceOnRest) this.m++;
+    this.lastSteps.push({ s: so, kAbs, k, j, mBefore, mAfter: this.m, fires, kind });
+  }
+
+  _play(kAbs, j, pat, st, H, onT, ord, fires) {
+    const P = this.lab.plant, a = this.active, S = this.incoming, L = this.L, D = this.D;
+    const notes = this._notes(a, H, kAbs);
+    // octave offset, quantize (0-127 only), drop out-of-range (T16), collisions keep the earliest source
+    const out = [], seen = new Set();
+    for (const nt of notes) {
+      let key = nt.key + st.oct * 12;
+      if (key < 0 || key > 127) { this.rows.T16++; this.counters.keysDropped++; continue; }
+      if (a.quantize && !(P.skipQuantizeChord && a.order === "chord")) key = this._quant(key);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const base = a.vel_mode === "fixed" ? S.vel_fixed : nt.vel;
+      out.push({ key, vel: clamp(fdiv(base * st.vel + 50, 100), 1, 127), ch: nt.ch });
+    }
+    // ties by look-ahead (SPEC 5.2): consecutive tie steps after this one, cyclic, ignoring prob
+    let t = 0; const plen = pat.steps.length;
+    if (!P.tieAtTieStep) while (t < plen - 1 && this._step(pat, j + 1 + t).tie) t++;
+    if (t > 0) this.rows.T12++;
+    const on0 = onT(kAbs), span = onT(kAbs + 1) - on0, r = clamp(st.ratchet | 0, 1, 4);
+    for (let i = 0; i < r; i++) {
+      const subOn = on0 + fdiv(i * span, r);
+      let len;
+      if (r === 1) len = Math.max(1, fdiv(span * S.gate * st.gate, 10000));
+      else len = Math.min(fdiv(span, r), Math.max(1, fdiv(fdiv(span, r) * S.gate * st.gate, 10000)));
+      let off = subOn + len;
+      if (i === r - 1 && t > 0) {
+        const x = kAbs + t, sp = onT(x + 1) - onT(x);
+        off = onT(x) + Math.max(1, fdiv(sp * S.gate * this._step(pat, j + t).gate, 10000));
+      }
+      for (const o of out) {
+        this._queue({ kind: "on", pos: BigInt(subOn) * D, offPos: BigInt(off) * D, key: o.key, vel: o.vel, ch: o.ch, ord });
+        // plant: the trigger fires on every ratchet, not just the first
+        if (P.trigEveryRatchet && i > 0 && fires && st.trig) this._queue({ kind: "trig", pos: BigInt(subOn) * D, lane: st.trig, ord });
+      }
+    }
+  }
+  _queue(p) {
+    if (this.pending.length >= this.caps.pending) { this.counters.pendingOverflow++; return; }
+    this.pending.push(p);
+  }
+
+  // The notes a step plays, in the style's order (SPEC 4.2). H is sorted by key.
+  _notes(a, H, kAbs) {
+    const oct = a.octaves, m = this.m;
+    if (a.order === "chord") { const p = m % oct; return H.map(h => ({ key: h.key + 12 * p, vel: h.vel, ch: h.ch })); }
+    if (a.order === "played") {
+      const hp = H.slice().sort((x, y) => x.abs - y.abs || x.key - y.key), pp = [];
+      for (let o = 0; o < oct; o++) for (const h of hp) pp.push({ key: h.key + 12 * o, vel: h.vel, ch: h.ch });
+      return [pp[m % pp.length]];
+    }
+    const map = new Map();   // E = sorted unique of all octave copies; source = the first held key that generates it
+    for (let o = 0; o < oct; o++) for (const h of H) { const key = h.key + 12 * o; if (!map.has(key)) map.set(key, { key, vel: h.vel, ch: h.ch }); }
+    const E = [...map.values()].sort((x, y) => x.key - y.key), e = E.length;
+    if (a.order === "random") return [E[this._draw(a.seed, kAbs, 0) % e]];
+    if (a.order === "shuffle") {
+      const c = fdiv(m, e), Pm = E.slice();
+      for (let i = e - 1; i > 0; i--) { const q = this._draw(a.seed, c * 256 + i, 1) % (i + 1); const tmp = Pm[i]; Pm[i] = Pm[q]; Pm[q] = tmp; }
+      return [Pm[mod(m, e)]];
+    }
+    return [E[indexOf(a.order, e, mod(m, periodOf(a.order, e, oct)))]];
+  }
+  _quant(key) {
+    const sc = this.scale, mask = sc.mask & 0xFFF;
+    if (!mask) return key;
+    const inMask = x => (mask >> mod(x - sc.root, 12)) & 1;
+    if (inMask(key)) return key;
+    for (let d = 1; d <= 12; d++) {
+      const pair = this.lab.opts.quantizeTie === "up" ? [key + d, key - d] : [key - d, key + d];   // Q-A5: ties go to the lower key by default
+      for (const c of pair) if (c >= 0 && c <= 127 && inMask(c)) return c;
+    }
+    return key;
+  }
+
+  // ---------------------------------------------------------------- note emission and the ONE release path
+  _room(extra) { return this._ev.length + this.sounding.length + extra <= this.capEv; }
+  _pushNon(ev) {
+    if (!this._room(1)) { this.counters.eventOverflow++; return; }
+    ev._i = this._evI++; this._ev.push(ev);
+  }
+  _emitOn(p, s) {
+    const P = this.lab.plant;
+    // T13: refuse an on whose own off would not be guaranteed room (128 slots stay reserved for offs)
+    if (P.noOffReserve ? this._ev.length >= this.capEv : !this._room(2)) { this.rows.T13++; this.counters.refused++; return; }
+    for (const x of this.sounding.slice()) if (x.key === p.key && x.ch === p.ch && !x.dying) { this.rows.T2++; this._release(x.ref, s); }   // T2: (channel,key)
+    if (this.sounding.length >= this.caps.sounding) { this.rows.T11++; this.counters.soundingOverflow++; this._release(this.sounding[0].ref, s); }
+    const ref = { port: 0, channel: p.ch, key: p.key, id: this.idCounter++ };
+    this.sounding.push({ ref, key: p.key, ch: p.ch, offPos: p.offPos, onAbs: this._absBase + s, dying: false });
+    this._ev.push({ t: "on", s, ref, key: p.key, vel: p.vel, tick: this._tickOf(p.pos), ord: p.ord, _i: this._evI++ });
+  }
+  // release(ref): the ONLY path that emits a NoteOff. Idempotent: a ref no longer in the table is a no-op.
+  _release(ref, s) {
+    const P = this.lab.plant, i = this.sounding.findIndex(x => x.ref.id === ref.id);
+    if (i < 0) return false;
+    const x = this.sounding[i];
+    // SPEC 1.1: never at the same sample as its own on -> keep it "dying" and let the loop emit it at on+1
+    if (!P.sameSampleOff && !P.clampOffset && x.onAbs + 1 > this._absBase + s) { x.dying = true; x.offPos = null; return true; }
+    this.sounding.splice(i, 1);
+    if (P.dropRelease && !this._dropped) { this._dropped = true; return true; }
+    const ev = { t: "off", s, ref: x.ref, releaseVel: 64, tick: x.offPos === null ? undefined : this._tickOf(x.offPos), _i: this._evI++ };
+    this._ev.push(ev);
+    if (P.doubleRelease && !this._doubled) { this._doubled = true; this._ev.push(Object.assign({}, ev, { _i: this._evI++ })); }
+    if (P.noOffReserve && this._ev.length > this.capEv) { this._ev.length = this.capEv; }   // plant: a full buffer silently loses the off
+    return true;
+  }
+  _releaseAll(s) {
+    for (const x of this.sounding.slice()) this._release(x.ref, s);
+    this.pending.length = 0;   // SPEC 7: release-all also clears the pending queue
+  }
+  // When a sounding note's off is due, as a block offset (>= the sample after its own on).
+  _offTime(x) {
+    const min = x.onAbs + 1 - this._absBase;
+    let base = 0;
+    if (x.offPos !== null) {
+      if (x._cb !== this._blk || x._cv !== this._ver) { x._cs = Math.max(0, this._ofs(x.offPos)); x._cb = this._blk; x._cv = this._ver; }
+      base = x._cs;
+    }
+    return this.lab.plant.sameSampleOff ? base : Math.max(base, min);
+  }
+}
+
+/* ================= UI =================
+ * Adapter: keyboard, MIDI, transport, controls, morph, log, and a small WebAudio
+ * synth. The only place that reads AudioContext time. The core is driven in fixed
+ * 128-sample blocks scheduled slightly ahead of the audio clock.
+ */
+(function () {
+  "use strict";
+  const BLOCK = 128, LOOKAHEAD = 0.14, PUMP_MS = 25, KEY_LO = 48, KEYS = 24;
+  const $ = id => document.getElementById(id);
+  function h(tag, attrs, ...kids) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (k === "class") el.className = v; else if (k === "text") el.textContent = v;
+      else if (k.startsWith("on")) el.addEventListener(k.slice(2), v); else el.setAttribute(k, v);
+    }
+    for (const kid of kids) el.appendChild(typeof kid === "string" ? document.createTextNode(kid) : kid);
+    return el;
+  }
+
+  // ---- state ---------------------------------------------------------------
+  const state = {
+    cur: Object.assign(defaultSettings(), { enabled: true }),
+    morph: { on: false, A: null, B: null, w: 0.5, rule: "hyst", corner: 0 },
+    scale: { root: 0, mask: 0xAB5 },
+    bpm: 120, preroll: false,
+  };
+  const eng = { ctx: null, core: new ArpCore(), host: null, sr: 0, t0: 0, next: 0, q: [], hostQ: [], voices: new Map(), timer: 0, master: null,
+    stepQ: [], logLines: [], logDirty: false, playing: false };
+  const pressed = new Map();       // key -> live press count (on-screen highlight)
+  const controls = {};             // setting key -> { set(value), eff(el) }
+  let gridPattern = null, pedal = false;
+
+  // ---- morph (SPEC 9; Q-A1 PROPOSED: largest weight, 0.05 hysteresis, ties to the lower corner) ----
+  function pickCorner() {
+    const m = state.morph, wA = 1 - m.w, wB = m.w;
+    if (m.rule === "from0") return m.w > 0 ? 1 : 0;
+    if (m.rule === "plain") return wB > wA ? 1 : 0;
+    const lead = wB > wA ? 1 : 0, leadW = lead ? wB : wA, curW = m.corner ? wB : wA;
+    if (lead !== m.corner && leadW - curW > 0.05) m.corner = lead;
+    return m.corner;
+  }
+  function effective() {
+    const m = state.morph;
+    if (!m.on || !m.A || !m.B) return state.cur;
+    const c = pickCorner(), out = {};
+    for (const p of ARP_PARAMS.params) {
+      out[p.key] = p.kind === "continuous" ? Math.round(m.A[p.key] + (m.B[p.key] - m.A[p.key]) * m.w) : (c ? m.B[p.key] : m.A[p.key]);
+    }
+    return out;
+  }
+
+  // ---- synth: saw -> lowpass -> envelope, one voice per output ref ----------
+  function synthOn(ref, key, vel, when) {
+    const c = eng.ctx;
+    if (eng.voices.size > 48) return;
+    const osc = c.createOscillator(), lp = c.createBiquadFilter(), g = c.createGain();
+    osc.type = "sawtooth"; osc.frequency.value = 440 * Math.pow(2, (key - 69) / 12);
+    lp.type = "lowpass"; lp.Q.value = 3;
+    lp.frequency.setValueAtTime(600 + vel * 28, when); lp.frequency.exponentialRampToValueAtTime(900, when + 0.25);
+    const peak = 0.05 + 0.16 * (vel / 127);
+    g.gain.setValueAtTime(0.0001, when); g.gain.linearRampToValueAtTime(peak, when + 0.004); g.gain.setTargetAtTime(peak * 0.55, when + 0.01, 0.12);
+    osc.connect(lp); lp.connect(g); g.connect(eng.master); osc.start(when);
+    eng.voices.set(ref.id, { osc, g });
+  }
+  function synthOff(ref, when) {
+    const v = eng.voices.get(ref.id); if (!v) return;
+    eng.voices.delete(ref.id);
+    v.g.gain.setTargetAtTime(0.0001, when, 0.035);
+    v.osc.stop(when + 0.3);
+  }
+
+  // ---- engine: drive the core ahead of the audio clock -----------------------
+  function startAudio() {
+    if (eng.ctx) { if (eng.ctx.state === "suspended") eng.ctx.resume(); return true; }
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) { status("No WebAudio in this browser: the core runs but you will not hear it."); return false; }
+    eng.ctx = new Ctx(); eng.sr = Math.round(eng.ctx.sampleRate);
+    eng.core.prepare(eng.sr, BLOCK);
+    eng.host = simHost({ sr: eng.sr, bpm: state.bpm, startBeats: 0, playing: false });
+    eng.master = eng.ctx.createGain(); eng.master.gain.value = 0.7; eng.master.connect(eng.ctx.destination);
+    eng.t0 = eng.ctx.currentTime + 0.1; eng.next = 0;
+    eng.timer = setInterval(pump, PUMP_MS);
+    requestAnimationFrame(frame);
+    status("Audio running at " + eng.sr + " Hz.");
+    return true;
+  }
+  function pump() {
+    const c = eng.ctx; if (!c) return;
+    let lag = c.currentTime - (eng.t0 + eng.next / eng.sr);
+    if (lag > 0.5) { eng.t0 += lag; }   // tab was throttled: skip ahead rather than burst-schedule the past
+    let guard = 0;
+    while (eng.t0 + eng.next / eng.sr < c.currentTime + LOOKAHEAD && guard++ < 400) runBlock();
+  }
+  function runBlock() {
+    const at = eng.next;
+    for (const ch of eng.hostQ.splice(0)) eng.host.set(at, ch);
+    const ins = eng.q.splice(0);
+    const evs = eng.core.process({ n: BLOCK, transport: eng.host.at(at), settings: effective(), scale: state.scale, in: ins });
+    const base = eng.t0 + at / eng.sr;
+    for (const e of evs) schedule(e, base + e.s / eng.sr);
+    for (const s of eng.core.lastSteps) eng.stepQ.push({ time: base + s.s / eng.sr, j: s.j, kind: s.kind, pat: eng.core.active.pattern });
+    eng.next += BLOCK;
+  }
+  function schedule(e, when) {
+    const rel = (when - eng.t0).toFixed(3);
+    if (e.t === "on") { synthOn(e.ref, e.key, e.vel, when); log(rel + "  on   " + e.key + "  v" + e.vel + "  #" + e.ref.id); }
+    else if (e.t === "off") { synthOff(e.ref, when); log(rel + "  off  " + e.ref.key + "  #" + e.ref.id); }
+    else if (e.t === "trig") { log(rel + "  TRIG lane " + e.lane); flashLane(e.lane, when); }
+    else if (e.t === "panic") { log(rel + "  panic forwarded"); for (const [id, v] of eng.voices) { v.g.gain.cancelScheduledValues(when); v.g.gain.setTargetAtTime(0.0001, when, 0.01); v.osc.stop(when + 0.1); } eng.voices.clear(); }
+  }
+  function log(line) { eng.logLines.push(line); if (eng.logLines.length > 400) eng.logLines.splice(0, 200); eng.logDirty = true; }
+  function flashLane(lane, when) {
+    const el = $("lamp" + lane); if (!el) return;
+    setTimeout(() => { el.classList.add("lit"); setTimeout(() => el.classList.remove("lit"), 140); }, Math.max(0, (when - eng.ctx.currentTime) * 1000));
+  }
+
+  // ---- input -------------------------------------------------------------------
+  function send(ev) { eng.q.push(ev); if (eng.q.length > 512) eng.q.splice(0, 256); }
+  function press(ref, key, vel, ch) {
+    if (!startAudio() && !eng.ctx) return;
+    send({ t: "on", s: 0, ref, key, vel: vel || 100, ch: ch || 0 });
+    pressed.set(key, (pressed.get(key) || 0) + 1); paintKeys();
+  }
+  function release(ref, key) {
+    send({ t: "off", s: 0, ref });
+    const n = (pressed.get(key) || 1) - 1; if (n > 0) pressed.set(key, n); else pressed.delete(key);
+    paintKeys();
+  }
+  function setPedal(down) { pedal = down; send({ t: "pedal", s: 0, down }); const b = $("pedalBtn"); if (b) b.classList.toggle("on", down); }
+  function panic() { send({ t: "panic", s: 0 }); pressed.clear(); paintKeys(); setPedal(false); }
+
+  const isBlack = k => [1, 3, 6, 8, 10].includes(k % 12);
+  function buildKeyboard() {
+    const kb = $("kb"); kb.textContent = "";
+    let white = 0; const whites = [];
+    for (let i = 0; i < KEYS; i++) if (!isBlack(KEY_LO + i)) whites.push(i);
+    for (let i = 0; i < KEYS; i++) {
+      const key = KEY_LO + i, black = isBlack(key);
+      const el = h("div", { class: "key " + (black ? "black" : "white"), "data-key": String(key), title: noteName(key) });
+      if (black) el.style.left = "calc(" + ((white) * (100 / whites.length)) + "% - 1.6%)"; else white++;
+      const ref = "ui:" + key;
+      el.addEventListener("pointerdown", ev => { ev.preventDefault(); press(ref, key, 100); try { el.setPointerCapture(ev.pointerId); } catch (e) { } el._down = true; });
+      const up = () => { if (el._down) { el._down = false; release(ref, key); } };
+      el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up); el.addEventListener("lostpointercapture", up);
+      kb.appendChild(el);
+    }
+  }
+  const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const noteName = k => NAMES[k % 12] + (Math.floor(k / 12) - 1);
+  function paintKeys() { for (const el of document.querySelectorAll(".key")) el.classList.toggle("down", pressed.has(Number(el.getAttribute("data-key")))); }
+
+  const LOW = "zsxdcvgbhnjm,l.;/", UP = "q2w3er5t6y7ui9o0p";
+  const heldKeys = new Set();
+  function keyOf(code) { const i = LOW.indexOf(code); if (i >= 0) return 48 + i; const j = UP.indexOf(code); return j >= 0 ? 60 + j : -1; }
+  function isTyping(t) { return t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA"); }
+  document.addEventListener("keydown", ev => {
+    if (ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey || isTyping(ev.target)) return;
+    if (ev.key === " ") { ev.preventDefault(); togglePlay(); return; }
+    const k = keyOf(ev.key.toLowerCase()); if (k < 0 || heldKeys.has(ev.key)) return;
+    heldKeys.add(ev.key); press("kb:" + k, k, 100);
+  });
+  document.addEventListener("keyup", ev => {
+    if (!heldKeys.has(ev.key)) return; heldKeys.delete(ev.key);
+    const k = keyOf(ev.key.toLowerCase()); if (k >= 0) release("kb:" + k, k);
+  });
+  function initMidi() {
+    const out = $("midiStatus");
+    if (!navigator.requestMIDIAccess) { out.textContent = "Web MIDI: not available in this browser (use the keyboard)."; return; }
+    navigator.requestMIDIAccess().then(acc => {
+      const hook = () => { let n = 0; acc.inputs.forEach(inp => { n++; inp.onmidimessage = onMidi; }); out.textContent = "Web MIDI: " + n + " input(s)."; };
+      hook(); acc.onstatechange = hook;
+    }, () => { out.textContent = "Web MIDI: permission refused."; });
+  }
+  function onMidi(m) {
+    const [st, d1, d2] = m.data, cmd = st & 0xF0, ch = st & 15;
+    if (cmd === 0x90 && d2 > 0) { press("midi:" + ch + ":" + d1, d1, d2, ch); }
+    else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) release("midi:" + ch + ":" + d1, d1);
+    else if (cmd === 0xB0 && d1 === 64) setPedal(d2 >= 64);
+    else if (cmd === 0xB0 && (d1 === 123 || d1 === 120)) panic();
+  }
+
+  // ---- transport ---------------------------------------------------------------
+  function togglePlay() {
+    if (!startAudio() && !eng.ctx) return;
+    eng.playing = !eng.playing;
+    eng.hostQ.push(eng.playing ? { playing: true, seekBeats: state.preroll ? -4 : 0 } : { playing: false });
+    $("playBtn").textContent = eng.playing ? "Stop" : "Play"; $("playBtn").classList.toggle("on", eng.playing);
+    $("clockNote").textContent = eng.playing ? "Host clock: steps lock to the transport grid." : "Transport stopped: the free clock. Step 0 lands on your key press.";
+  }
+
+  // ---- settings controls (generated from params.json) --------------------------
+  function paramLabel(p) { return p.key.replace("_", " "); }
+  function buildSettings() {
+    const box = $("settings"); box.textContent = "";
+    for (const p of ARP_PARAMS.params) {
+      const row = h("div", { class: "row" }), eff = h("span", { class: "eff" });
+      let input;
+      const commit = v => { state.cur[p.key] = v; };
+      if (p.type === "bool") {
+        input = h("input", { type: "checkbox" }); input.checked = !!state.cur[p.key];
+        input.addEventListener("change", () => commit(input.checked));
+        controls[p.key] = { set: v => { input.checked = !!v; } };
+      } else if (p.type === "enum") {
+        const vals = p.key === "pattern" ? ARP_BANK.patterns.map(x => x.id) : p.key === "rate" ? ARP_PARAMS.rate.map(x => x.name) : p.values;
+        input = h("select", {}, ...vals.map(v => h("option", { value: v, text: p.key === "pattern" ? v + " - " + ARP_BANK.patterns.find(x => x.id === v).name : v })));
+        input.value = state.cur[p.key];
+        input.addEventListener("change", () => { commit(input.value); if (p.key === "pattern") renderGrid(); });
+        controls[p.key] = { set: v => { input.value = v; if (p.key === "pattern") renderGrid(); } };
+      } else if (p.type === "uint32") {
+        input = h("input", { type: "number", min: "0", max: "4294967295", value: String(state.cur[p.key]) });
+        input.addEventListener("change", () => commit(Math.max(0, Math.floor(Number(input.value) || 0)) >>> 0));
+        const re = h("button", { text: "next", title: "step the seed (deterministic LCG)" });
+        re.addEventListener("click", () => { const v = (Math.imul(state.cur.seed, 1664525) + 1013904223) >>> 0; commit(v); input.value = String(v); });
+        controls[p.key] = { set: v => { input.value = String(v); } };
+        row.append(h("label", { text: paramLabel(p) }), input, re, eff); box.appendChild(row); controls[p.key].eff = eff; continue;
+      } else {
+        input = h("input", { type: "range", min: String(p.min), max: String(p.max), step: "1", value: String(state.cur[p.key]) });
+        const val = h("span", { class: "val", text: String(state.cur[p.key]) });
+        input.addEventListener("input", () => { commit(Number(input.value)); val.textContent = input.value; });
+        controls[p.key] = { set: v => { input.value = String(v); val.textContent = String(v); } };
+        row.append(h("label", { text: paramLabel(p) }), input, val, eff); box.appendChild(row); controls[p.key].eff = eff; continue;
+      }
+      row.append(h("label", { text: paramLabel(p) }), input, eff); box.appendChild(row);
+      controls[p.key].eff = eff;
+    }
+  }
+  function syncControls(from) { for (const p of ARP_PARAMS.params) controls[p.key].set(from[p.key]); }
+
+  // ---- scale ---------------------------------------------------------------------
+  const SCALES = { "C major": [0xAB5, 0], "A minor": [0x5AD, 9], "pentatonic": [0x295, 0], "all keys": [0xFFF, 0], "none (mask 0)": [0, 0] };
+  function buildScale() {
+    const box = $("scale"); box.textContent = "";
+    const sel = h("select", {}, ...Object.keys(SCALES).map(n => h("option", { value: n, text: n })));
+    sel.addEventListener("change", () => { const [m, r] = SCALES[sel.value]; state.scale = { root: r, mask: m }; paint(); });
+    const pcs = h("span", { class: "pcs" });
+    function paint() { pcs.textContent = NAMES.map((n, i) => ((state.scale.mask >> ((i - state.scale.root + 12) % 12)) & 1) ? n : "-").join(" "); }
+    box.append(h("label", { text: "scale (read, never owned)" }), sel, pcs); paint();
+  }
+
+  // ---- step grid + trigger lamps -------------------------------------------------
+  function renderGrid() {
+    const pat = ARP_BANK.patterns.find(p => p.id === state.cur.pattern) || ARP_BANK.patterns[0];
+    gridPattern = pat.id;
+    const box = $("grid"); box.textContent = "";
+    pat.steps.forEach((raw, j) => {
+      const st = Object.assign({}, ARP_BANK.step_defaults, raw);
+      const bits = [];
+      if (st.vel !== 100) bits.push("v" + st.vel); if (st.gate !== 100) bits.push("g" + st.gate); if (st.oct) bits.push("o" + (st.oct > 0 ? "+" : "") + st.oct);
+      if (st.prob !== 100) bits.push(st.prob + "%"); if (st.ratchet > 1) bits.push("x" + st.ratchet); if (st.trig) bits.push("T" + st.trig);
+      const cls = "cell" + (st.tie ? " tie" : st.on ? " on" : " rest") + (st.trig ? " trig" : "");
+      box.appendChild(h("div", { class: cls, "data-j": String(j) }, h("b", { text: String(j + 1) }), h("span", { text: st.tie ? "tie" : st.on ? "note" : st.trig ? "trig" : "rest" }), h("i", { text: bits.join(" ") })));
+    });
+    $("patPurpose").textContent = pat.purpose || "";
+  }
+  function buildLamps() { const box = $("lamps"); box.textContent = ""; for (let i = 1; i <= 8; i++) box.appendChild(h("div", { class: "lamp", id: "lamp" + i, text: String(i) })); }
+
+  // ---- morph panel ---------------------------------------------------------------
+  function buildMorph() {
+    const m = state.morph;
+    $("copyA").addEventListener("click", () => { m.A = Object.assign({}, state.cur); status("Corner A = current settings."); });
+    $("copyB").addEventListener("click", () => { m.B = Object.assign({}, state.cur); status("Corner B = current settings."); });
+    $("morphOn").addEventListener("change", ev => { m.on = ev.target.checked; if (m.on) { if (!m.A) m.A = Object.assign({}, state.cur); if (!m.B) m.B = Object.assign({}, state.cur); } });
+    $("morphW").addEventListener("input", ev => { m.w = Number(ev.target.value) / 100; $("morphWv").textContent = "B " + Math.round(m.w * 100) + "% / A " + Math.round((1 - m.w) * 100) + "%"; });
+    $("morphRule").addEventListener("change", ev => { m.rule = ev.target.value; });
+    $("demoA1").addEventListener("click", () => {
+      m.A = Object.assign({}, state.cur, { order: "up", pattern: "none" }); m.B = Object.assign({}, state.cur, { order: "down", pattern: "gallop" });
+      state.cur = Object.assign({}, m.A); syncControls(state.cur); m.on = true; $("morphOn").checked = true; status("Q-A1 demo: A = up/plain, B = down/gallop. Slide across the middle with a chord held.");
+    });
+    $("demoA2").addEventListener("click", () => {
+      m.A = Object.assign({}, state.cur, { restart: "chord" }); m.B = Object.assign({}, state.cur, { restart: "free" });
+      state.cur = Object.assign({}, m.A); syncControls(state.cur); m.on = true; $("morphOn").checked = true; status("Q-A2 demo: A restart = chord, B restart = free. Slide while playing a pattern.");
+    });
+  }
+
+  // ---- listening toggles (Q-A5) --------------------------------------------------
+  function buildLab() {
+    $("tieSel").addEventListener("change", ev => { eng.core.lab.opts.quantizeTie = ev.target.value; });
+    $("prerollPlay").addEventListener("change", ev => { eng.core.lab.opts.playPreroll = ev.target.checked; });
+    $("prerollStart").addEventListener("change", ev => { state.preroll = ev.target.checked; });
+    $("bpm").addEventListener("change", ev => { state.bpm = clamp(Number(ev.target.value) || 120, 20, 999); ev.target.value = String(state.bpm); eng.hostQ.push({ bpm: state.bpm }); });
+    $("playBtn").addEventListener("click", togglePlay);
+    $("panicBtn").addEventListener("click", panic);
+    $("pedalBtn").addEventListener("click", () => setPedal(!pedal));
+    $("startBtn").addEventListener("click", startAudio);
+    $("clearLog").addEventListener("click", () => { eng.logLines.length = 0; eng.logDirty = true; });
+  }
+
+  // ---- per-frame paint ------------------------------------------------------------
+  function frame() {
+    requestAnimationFrame(frame);
+    const now = eng.ctx ? eng.ctx.currentTime : 0;
+    if (state.cur.pattern !== gridPattern && !state.morph.on) renderGrid();
+    let cur = null;
+    while (eng.stepQ.length && eng.stepQ[0].time <= now) cur = eng.stepQ.shift();
+    if (cur) for (const el of document.querySelectorAll(".cell")) el.classList.toggle("now", Number(el.getAttribute("data-j")) === cur.j);
+    if (eng.logDirty) { eng.logDirty = false; $("log").textContent = eng.logLines.slice(-160).reverse().join("\n"); }
+    const eff = effective();
+    for (const p of ARP_PARAMS.params) { const e = controls[p.key].eff; if (e) e.textContent = (state.morph.on && eff[p.key] !== state.cur[p.key]) ? "-> " + eff[p.key] : ""; }
+    const c = eng.core;
+    $("coreStatus").textContent = eng.ctx ? "clock " + c.clock + (c.clock === "free" ? (c.freeRunning ? " (running, epoch " + c.epoch + ")" : " (idle)") : "") +
+      " | sounding " + c.sounding.length + " | refused " + c.counters.refused + " | dropped keys " + c.counters.keysDropped : "audio not started";
+    if (state.morph.on) $("cornerNow").textContent = "discrete corner now: " + (state.morph.corner ? "B" : "A");
+  }
+  function status(msg) { $("status").textContent = msg; }
+
+  function init() {
+    buildKeyboard(); buildSettings(); buildScale(); buildLamps(); buildMorph(); buildLab(); renderGrid(); initMidi();
+    status("Press Start audio (or any key / Play) - browsers need a gesture before they will make sound.");
+  }
+  init();
+})();
+
+</script>
+</body>
+</html>
