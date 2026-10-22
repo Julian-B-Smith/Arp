@@ -18,6 +18,8 @@ lives in `DECISIONS.md`; horde's terms are in `intake/` and `SPINUP-BRIEF.md`.
   structure, manifest, intake pin, and the **lab smoke** (SPEC §11: N1, G1–G5,
   D1, Q1–Q4, R1, P1, T1, S1, K1, C1, the order styles; each proven on a planted
   fault; about 0.3 s). The C++ suite arrives at M1. `full` = `fast` for now.
+- **Functionality freeze (the human, 2026-10-22, D-018): IN EFFECT** once the repeats and chord-stage PR merges. 1.0
+  scope is frozen; any further feature needs an explicit unfreeze decision. Next: play the lab, ratify the spec, M1.
 - **Hard date:** horde's module cutoff **2026-12-11**. The 1.0 arpeggiator
   meets horde's MUST rows by then, or it ships after 1.0. The rows are horde's
   `docs/proposals/note-processor-1.0-bar.md` (answered 2026-10-22, D-015).
@@ -180,6 +182,8 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   horde ADR-169 first**: module presets "embed by value", and preset identity
   per corner may already answer this (D-013). Then ask in the next notice.
   Blocks the M3 preset wiring only.
+- **Q-H7 — A third stream, `chord`, in horde's per-source selector** (D-018). Filed 2026-10-22 as horde PR #1194
+  (seq 5); ball HYPERSAW, respond-by 2026-11-13.
 - **Q-H5 — Stream-scoped pedal** (D-009). We proposed that horde's VO-12
   sustain `direct` voices only. The ball is horde's, in our
   `integrations/hypersaw/response-note-stream.md`. It blocks nothing in the

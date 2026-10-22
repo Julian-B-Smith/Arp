@@ -1,6 +1,6 @@
 {
   "format": "arp-params/1",
-  "status": "DRAFT r2.8 2026-10-22 (Phase A); protected once the human ratifies spec/",
+  "status": "DRAFT r2.11 2026-10-22 (Phase A); protected once the human ratifies spec/",
   "tpq": 15360,
   "note": "Every setting is a morph target (D-000 Open 5). All values are INTEGERS in the snapshot (horde rounds morph blends). kind=continuous blends; kind=discrete resolves to the largest-weight corner with 0.05 hysteresis and applies from the next evaluated step (SPEC §9, Q-A1 PROPOSED); `enabled` applies at offset 0 of its block (SPEC T4/T5). Enums are stored by NAME. Tempo is clamped to [20, 999] bpm (SPEC §1.3).",
   "params": [
@@ -9,7 +9,16 @@
       "kind": "discrete",
       "type": "bool",
       "default": false,
-      "ref": "SPEC §7 T4/T5, §9"
+      "ref": "SPEC §7 T4/T5, §9",
+      "note": "the WHOLE module (off: horde routes input around Arp; every chord and arp note ends, T4)"
+    },
+    {
+      "key": "arp_enabled",
+      "kind": "discrete",
+      "type": "bool",
+      "default": true,
+      "ref": "SPEC §14",
+      "note": "the arp alone; off with chord_enabled on = a chord generator; toggling never touches chord notes; applies at offset 0 (D-019)"
     },
     {
       "key": "order",
@@ -173,6 +182,16 @@
       "ref": "SPEC §4.5"
     },
     {
+      "key": "repeats",
+      "kind": "discrete",
+      "type": "int",
+      "min": 0,
+      "max": 16,
+      "default": 0,
+      "ref": "SPEC §4.8",
+      "note": "full cycles of the whole pattern per chord, then stop until the next gesture; 0 = forever (D-018)"
+    },
+    {
       "key": "quantize",
       "kind": "discrete",
       "type": "enum",
@@ -309,6 +328,129 @@
       "type": "uint32",
       "default": 0,
       "ref": "SPEC §10"
+    },
+    {
+      "key": "chord_enabled",
+      "kind": "discrete",
+      "type": "bool",
+      "default": false,
+      "ref": "SPEC §14",
+      "note": "the chord stage: a second processor before the arp, with its own `chord` stream"
+    },
+    {
+      "key": "chord_unit",
+      "kind": "discrete",
+      "type": "enum",
+      "values": [
+        "semitones",
+        "degrees"
+      ],
+      "default": "semitones",
+      "ref": "SPEC §14"
+    },
+    {
+      "key": "chord_quantize",
+      "kind": "discrete",
+      "type": "bool",
+      "default": false,
+      "ref": "SPEC §14",
+      "note": "with semitones: quantize the shifted keys to the effective scale"
+    },
+    {
+      "key": "chord_on1",
+      "kind": "discrete",
+      "type": "bool",
+      "default": true,
+      "ref": "SPEC §14"
+    },
+    {
+      "key": "chord_shift1",
+      "kind": "discrete",
+      "type": "int",
+      "min": -24,
+      "max": 24,
+      "default": 4,
+      "ref": "SPEC §14"
+    },
+    {
+      "key": "chord_on2",
+      "kind": "discrete",
+      "type": "bool",
+      "default": true,
+      "ref": "SPEC §14"
+    },
+    {
+      "key": "chord_shift2",
+      "kind": "discrete",
+      "type": "int",
+      "min": -24,
+      "max": 24,
+      "default": 7,
+      "ref": "SPEC §14"
+    },
+    {
+      "key": "chord_on3",
+      "kind": "discrete",
+      "type": "bool",
+      "default": false,
+      "ref": "SPEC §14"
+    },
+    {
+      "key": "chord_shift3",
+      "kind": "discrete",
+      "type": "int",
+      "min": -24,
+      "max": 24,
+      "default": 12,
+      "ref": "SPEC §14"
+    },
+    {
+      "key": "chord_on4",
+      "kind": "discrete",
+      "type": "bool",
+      "default": false,
+      "ref": "SPEC §14"
+    },
+    {
+      "key": "chord_shift4",
+      "kind": "discrete",
+      "type": "int",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "ref": "SPEC §14"
+    },
+    {
+      "key": "chord_on5",
+      "kind": "discrete",
+      "type": "bool",
+      "default": false,
+      "ref": "SPEC §14"
+    },
+    {
+      "key": "chord_shift5",
+      "kind": "discrete",
+      "type": "int",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "ref": "SPEC §14"
+    },
+    {
+      "key": "chord_on6",
+      "kind": "discrete",
+      "type": "bool",
+      "default": false,
+      "ref": "SPEC §14"
+    },
+    {
+      "key": "chord_shift6",
+      "kind": "discrete",
+      "type": "int",
+      "min": -24,
+      "max": 24,
+      "default": 0,
+      "ref": "SPEC §14"
     }
   ],
   "rate": [

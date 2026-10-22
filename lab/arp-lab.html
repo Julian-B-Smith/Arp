@@ -15,8 +15,8 @@
   bank entries ship) and Q-A5 (quantize tie, pre-roll): the panels below say how.
 -->
 <style>
-  :root { color-scheme: light dark; --bg:#f6f7f9; --panel:#fff; --line:#cfd5df; --text:#171b24; --dim:#5d6678; --acc:#0a7d72; --hot:#c25a00; --key:#fff; --keyb:#222; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#0f1218; --panel:#171b24; --line:#2a3040; --text:#e8ecf2; --dim:#8b94a6; --acc:#5ff2e0; --hot:#ffc24b; --key:#e8ecf2; --keyb:#0b0d12; } }
+  :root { color-scheme: light dark; --bg:#f6f7f9; --panel:#fff; --line:#cfd5df; --text:#171b24; --dim:#5d6678; --acc:#0a7d72; --hot:#c25a00; --chd:#7a3fb5; --key:#fff; --keyb:#222; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1218; --panel:#171b24; --line:#2a3040; --text:#e8ecf2; --dim:#8b94a6; --acc:#5ff2e0; --hot:#ffc24b; --chd:#c79bff; --key:#e8ecf2; --keyb:#0b0d12; } }
   * { box-sizing:border-box; margin:0; padding:0; }
   body { background:var(--bg); color:var(--text); font:13px/1.5 ui-monospace,Menlo,Consolas,monospace; padding:14px; max-width:1100px; margin:0 auto; }
   h1 { font-size:17px; } h1 b { color:var(--acc); }
@@ -81,6 +81,10 @@
   .ued button { text-align:center; }
   .ued button.rest { color:var(--dim); } .ued button.tie { border-color:var(--hot); color:var(--hot); } .ued button.note { border-color:var(--acc); color:var(--acc); }
   .ued .nondef { border-color:var(--acc); }
+  .chslots { display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:4px; margin-top:4px; }
+  .chslots label { display:flex; flex-direction:column; gap:2px; align-items:stretch; font-size:10.5px; color:var(--dim); }
+  .chslots input[type=number] { width:100%; }
+  .chtag { color:var(--chd); font-weight:600; }
   .tm { display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center; }
   .tm input[type=range] { flex:1 1 140px; min-width:100px; } .tm input[type=number] { width:76px; } .tm .u { color:var(--dim); font-size:11px; }
   .lib { margin-top:8px; border-top:1px solid var(--line); padding-top:6px; }
@@ -98,6 +102,8 @@
     <label>BPM <input id="bpm" type="number" min="20" max="999" value="120"></label>
     <button id="panicBtn">Panic</button>
     <button id="pedalBtn" title="toggle the sustain pedal">Pedal</button>
+    <label title="simulates horde routing each stream to its own oscillator: it only mutes voices in this page's synth, never the core">listen to <select id="listen">
+      <option value="all">all (direct + chord + arp)</option><option value="chord">chord only</option><option value="arp">arp only</option><option value="chordarp">chord + arp</option></select></label>
     <span id="midiStatus" class="pcs"></span>
   </div>
   <div class="q" id="clockNote">Transport stopped: the free clock. Step 0 lands on your key press.</div>
@@ -112,6 +118,7 @@
   <canvas id="pvRoll" class="roll" height="190" aria-label="Piano roll of one full pattern cycle"></canvas>
   <div class="rollhead"><h3>Live</h3><span class="legend">
     <span><i style="background:var(--acc)"></i>note (thicker, brighter = louder)</span>
+    <span><i style="background:var(--chd)"></i>chord-stage note</span>
     <span><i style="background:linear-gradient(var(--hot) 0 30%, var(--acc) 30%)"></i>accented step</span>
     <span><i style="background:var(--line)"></i>rest</span>
     <span><i style="border:1px dashed var(--dim)"></i>tie</span>
@@ -124,6 +131,13 @@
 </div>
 <div class="cols">
   <div>
+    <div class="card"><h2>Chord <span class="chtag">stage before the arp</span></h2>
+      <div class="q">Each key you hold becomes itself plus up to six intervals, sent as its own <b>chord</b> stream (so horde can feed one oscillator the chord and another the arp). With the stage on, the arp plays the chord's notes. Untick <b>arp on</b> to hear the chord alone: the chord notes behave like held notes and keep sounding when you toggle the arp or stop the transport. The master <b>enabled</b> below switches the whole module.</div>
+      <div class="bar"><label><input type="checkbox" id="chEnabled"> chord stage on</label>
+        <label title="the arp alone: off leaves the chord notes sounding (the master 'enabled' below switches the whole module)"><input type="checkbox" id="chArp"> arp on</label>
+        <label>unit <select id="chUnit"><option value="semitones">semitones</option><option value="degrees">degrees</option></select></label>
+        <label title="semitones: snap each shifted key to the scale (the ties follow section 6)"><input type="checkbox" id="chQuant"> quantize</label></div>
+      <div class="chslots" id="chSlots"></div></div>
     <div class="card"><h2>Settings (every key of params.json)</h2><div id="settings"></div><div id="scale" class="bar"></div></div>
   </div>
   <div>
@@ -175,7 +189,7 @@
 const TPQ = 15360;
 const ARP_PARAMS = {
  "format": "arp-params/1",
- "status": "DRAFT r2.8 2026-10-22 (Phase A); protected once the human ratifies spec/",
+ "status": "DRAFT r2.11 2026-10-22 (Phase A); protected once the human ratifies spec/",
  "tpq": 15360,
  "note": "Every setting is a morph target (D-000 Open 5). All values are INTEGERS in the snapshot (horde rounds morph blends). kind=continuous blends; kind=discrete resolves to the largest-weight corner with 0.05 hysteresis and applies from the next evaluated step (SPEC §9, Q-A1 PROPOSED); `enabled` applies at offset 0 of its block (SPEC T4/T5). Enums are stored by NAME. Tempo is clamped to [20, 999] bpm (SPEC §1.3).",
  "params": [
@@ -184,7 +198,16 @@ const ARP_PARAMS = {
    "kind": "discrete",
    "type": "bool",
    "default": false,
-   "ref": "SPEC §7 T4/T5, §9"
+   "ref": "SPEC §7 T4/T5, §9",
+   "note": "the WHOLE module (off: horde routes input around Arp; every chord and arp note ends, T4)"
+  },
+  {
+   "key": "arp_enabled",
+   "kind": "discrete",
+   "type": "bool",
+   "default": true,
+   "ref": "SPEC §14",
+   "note": "the arp alone; off with chord_enabled on = a chord generator; toggling never touches chord notes; applies at offset 0 (D-019)"
   },
   {
    "key": "order",
@@ -348,6 +371,16 @@ const ARP_PARAMS = {
    "ref": "SPEC §4.5"
   },
   {
+   "key": "repeats",
+   "kind": "discrete",
+   "type": "int",
+   "min": 0,
+   "max": 16,
+   "default": 0,
+   "ref": "SPEC §4.8",
+   "note": "full cycles of the whole pattern per chord, then stop until the next gesture; 0 = forever (D-018)"
+  },
+  {
    "key": "quantize",
    "kind": "discrete",
    "type": "enum",
@@ -484,6 +517,129 @@ const ARP_PARAMS = {
    "type": "uint32",
    "default": 0,
    "ref": "SPEC §10"
+  },
+  {
+   "key": "chord_enabled",
+   "kind": "discrete",
+   "type": "bool",
+   "default": false,
+   "ref": "SPEC §14",
+   "note": "the chord stage: a second processor before the arp, with its own `chord` stream"
+  },
+  {
+   "key": "chord_unit",
+   "kind": "discrete",
+   "type": "enum",
+   "values": [
+    "semitones",
+    "degrees"
+   ],
+   "default": "semitones",
+   "ref": "SPEC §14"
+  },
+  {
+   "key": "chord_quantize",
+   "kind": "discrete",
+   "type": "bool",
+   "default": false,
+   "ref": "SPEC §14",
+   "note": "with semitones: quantize the shifted keys to the effective scale"
+  },
+  {
+   "key": "chord_on1",
+   "kind": "discrete",
+   "type": "bool",
+   "default": true,
+   "ref": "SPEC §14"
+  },
+  {
+   "key": "chord_shift1",
+   "kind": "discrete",
+   "type": "int",
+   "min": -24,
+   "max": 24,
+   "default": 4,
+   "ref": "SPEC §14"
+  },
+  {
+   "key": "chord_on2",
+   "kind": "discrete",
+   "type": "bool",
+   "default": true,
+   "ref": "SPEC §14"
+  },
+  {
+   "key": "chord_shift2",
+   "kind": "discrete",
+   "type": "int",
+   "min": -24,
+   "max": 24,
+   "default": 7,
+   "ref": "SPEC §14"
+  },
+  {
+   "key": "chord_on3",
+   "kind": "discrete",
+   "type": "bool",
+   "default": false,
+   "ref": "SPEC §14"
+  },
+  {
+   "key": "chord_shift3",
+   "kind": "discrete",
+   "type": "int",
+   "min": -24,
+   "max": 24,
+   "default": 12,
+   "ref": "SPEC §14"
+  },
+  {
+   "key": "chord_on4",
+   "kind": "discrete",
+   "type": "bool",
+   "default": false,
+   "ref": "SPEC §14"
+  },
+  {
+   "key": "chord_shift4",
+   "kind": "discrete",
+   "type": "int",
+   "min": -24,
+   "max": 24,
+   "default": 0,
+   "ref": "SPEC §14"
+  },
+  {
+   "key": "chord_on5",
+   "kind": "discrete",
+   "type": "bool",
+   "default": false,
+   "ref": "SPEC §14"
+  },
+  {
+   "key": "chord_shift5",
+   "kind": "discrete",
+   "type": "int",
+   "min": -24,
+   "max": 24,
+   "default": 0,
+   "ref": "SPEC §14"
+  },
+  {
+   "key": "chord_on6",
+   "kind": "discrete",
+   "type": "bool",
+   "default": false,
+   "ref": "SPEC §14"
+  },
+  {
+   "key": "chord_shift6",
+   "kind": "discrete",
+   "type": "int",
+   "min": -24,
+   "max": 24,
+   "default": 0,
+   "ref": "SPEC §14"
   }
  ],
  "rate": [
@@ -1102,7 +1258,9 @@ const ARP_PLANTS = ["dropRelease", "doubleRelease", "sameSampleOff", "clampOffse
   "advanceOnRest", "probLE", "trigEveryRatchet", "tieAtTieStep", "noOffReserve", "untaggedOn", "tieAlwaysDown", "ownIgnored", "chordRootAsRoot",
   "pickAdvancesM", "ignorePick", "swapMidStep", "shuffleBoundaryRepeat",
   "lastQNoReset", "collisionKeepsLast", "prepareResetsUser", "userFirstWins", "transposeMerged", "degreesAsSemis", "stepsZeroShifts", "timeUsesTempo", "timeAnchorsTransport", "stepSizeIgnored",
-  "regridAbsolute", "regridKAbs", "timeBarsCount", "offsetsPerStage", "stepOffsetReadsGlobal", "timeEntryNoStart", "inactiveReanchors"];
+  "regridAbsolute", "regridKAbs", "timeBarsCount", "offsetsPerStage", "stepOffsetReadsGlobal", "timeEntryNoStart", "inactiveReanchors",
+  "repeatsCountPatternPasses", "repeatsNeverStop", "chordNoDedupe", "chordEndsOnFirstSource", "arpIgnoresChord", "chordRestartAll",
+  "chordRecomputeAtRelease", "t2AcrossStreams", "arpToggleEndsChord", "chordT6Restart", "sharedSoundingTable", "exhaustedStopsGuard", "onlyGestureResets", "morphRevives", "chordSyncPerEvent", "chordDedupeByChannelKey", "latchAtNextStep"];
 // Every discrete setting except `enabled` (which applies at offset 0, T4/T5) switches at the next
 // evaluated step (SPEC §9). Derived from params.json, so a new discrete setting cannot be forgotten.
 const DISCRETE_KEYS = ARP_PARAMS.params.filter(p => p.kind === "discrete" && p.key !== "enabled").map(p => p.key);
@@ -1120,6 +1278,7 @@ const floorDivB = (a, b) => { const q = a / b; return (a % b !== 0n && (a < 0n) 
 const cdivB = (a, b) => -floorDivB(-a, b);
 const fdiv = (a, b) => Math.floor(a / b);
 const cdiv = (a, b) => Math.ceil(a / b);
+const gcd = (a, b) => b ? gcd(b, a % b) : a;
 const mod = (a, b) => a - b * Math.floor(a / b);
 const clamp = (x, lo, hi) => x < lo ? lo : x > hi ? hi : x;
 
@@ -1230,7 +1389,7 @@ class ArpCore {
     this.D = BigInt(60 * this.sr * 1000);
     this.capEv = this.caps.events || Math.max(1024, 4 * maxBlock);
     this.rows = {}; for (let i = 1; i <= 16; i++) this.rows["T" + i] = 0;   // coverage evidence for the smoke: a row counts only when it really acted
-    this.counters = { heldOverflow: 0, refOverflow: 0, soundingOverflow: 0, pendingOverflow: 0, eventOverflow: 0, refused: 0, keysDropped: 0 };
+    this.counters = { heldOverflow: 0, refOverflow: 0, soundingOverflow: 0, pendingOverflow: 0, eventOverflow: 0, refused: 0, keysDropped: 0, chordDropped: 0 };
     if (this.lab.plant.prepareResetsUser) { this._up.fresh = false; this._upLatest = null; this._userFill(this._up.slots[this._up.r], null); }   // plant: prepare wipes preset data (SPEC 4.6 r2 H3)
     this._resetState();
   }
@@ -1289,6 +1448,11 @@ class ArpCore {
     this.barTicks = 4 * TPQ; this.barPhase = 0;
     this.timeMode = false; this.D = BigInt(60 * this.sr * 1000);   // sync units until a block says rate_mode = time
     this._gO = 0; this._gK1 = 0;   // the time-mode grid origin: step _gK1 sits at tick _gO
+    this.repeatSteps = 0; this.exhausted = false;   // SPEC 4.8: steps evaluated since the gesture's first step; the latched "spent" flag
+    this.moduleOn = false;                          // the WHOLE module's `enabled`; `this.enabled` below is the ARP running (module on and arp_enabled)
+    // SPEC 14: the chord stage. held: heldKey -> { h, keys: [{slot, key}] } is the STORED mapping, computed once when the key enters H and never
+    // recomputed at release; notes: key -> the sounding chord note; set: the keys with count > 0 (sorted), what the arp reads as H'.
+    this.chord = { held: new Map(), notes: new Map(), set: [], sig: null };
   }
 
   // reset(): T10. Returns the NoteOffs the adapter must deliver to the engine directly.
@@ -1357,10 +1521,15 @@ class ArpCore {
     const cont = S.gate + "," + S.swing + "," + S.vel_fixed;
     if (this.prevCont !== null && cont !== this.prevCont && this.sounding.length) this.rows.T9++;
     this.prevCont = cont;
-    const en = !!S.enabled;
-    if (en !== this.enabled) {
-      if (!en) { if (this.sounding.length) this.rows.T4++; this._releaseAll(0); this.enabled = false; }
-      else {
+    // SPEC 14: `enabled` is the WHOLE module (off: every chord and arp note ends, T4); `arp_enabled` is the arp alone, applied at offset 0 and never
+    // touching chord notes. this.enabled below = "the arp is running" = module on and arp_enabled.
+    const modOn = !!S.enabled, arpNow = modOn && S.arp_enabled !== false;
+    if (modOn !== this.moduleOn) { if (!modOn) { if (this.sounding.length) this.rows.T4++; this._releaseAll(0); } this.moduleOn = modOn; }
+    if (arpNow !== this.enabled) {
+      if (!arpNow) {
+        if (modOn) { if (this.sounding.length) this.rows.T4++; if (P.arpToggleEndsChord) this._releaseAll(0); else this._releaseArp(0); }   // arp off alone: only the arp's notes end
+        this.enabled = false;
+      } else {
         this.rows.T5++; this.enabled = true;
         this.active.rate = S.rate; this.L = this._curL(S);   // SPEC-GAP: rate adopted at enable (the grid restarts anyway)
         this._reanchor(0, true);
@@ -1368,12 +1537,19 @@ class ArpCore {
     }
     if (!(P.timeEntryNoStart && modeSwitch)) this._maybeFreeStart(0);   // entering time mode with keys held starts the time clock at this offset (SPEC 2.6, as H7b)
     if (this.timeMode) this._timeRegrid(S);
+    // SPEC 13b 12: `latch` applies at OFFSET 0 of the block whose snapshot changes it, because it changes H, which the chord stage follows with no arp steps (with
+    // the arp off there is no "next step"). Turning it off drops the LATCHED refs here. Plant latchAtNextStep: the old behaviour, applied by _adopt at an arp step.
+    if (!P.latchAtNextStep && S.latch !== this.active.latch) {
+      if (S.latch === "off") this.refs = this.refs.filter(r => r.state !== "latched");
+      this.active.latch = S.latch;
+    }
+    this._chordSync(0);   // SPEC 14: a changed shape / scale / stage switch is applied at offset 0 of its block
 
     // -- the timeline: input events, due offs, pending ons/triggers, grid-step evaluations
     let ii = 0, cur = 0;
     for (;;) {
       if (this.clock === "free" && this.freeRunning && !this.refs.length && !this.sounding.length && !this.pending.length && !(P.timeAnchorsTransport && tm)) this.freeRunning = false;   // idle (SPEC 2.4)
-      const running = this.enabled && (this.clock === "host" || this.freeRunning);
+      const running = this.enabled && (this.clock === "host" || this.freeRunning) && !(P.exhaustedStopsGuard && this.exhausted);   // plant: a spent arp stops consuming the once-guard (r4 H4)
       if (running && this.lastEvaluated === null) this.lastEvaluated = this._kAtOrAfter(this._posAt(cur)) - 1;
       let t = Infinity, kind = -1, idx = -1;
       if (ii < ins.length) { t = ins[ii].s; kind = 0; idx = ii; }
@@ -1386,7 +1562,7 @@ class ArpCore {
       if (t < cur) t = cur;
       cur = t;
       const so = (P.clampOffset && t >= n) ? n - 1 : t;
-      if (kind === 0) { this._input(ins[ii++], so); }
+      if (kind === 0) { const e = ins[ii++]; this._input(e, so, P.chordSyncPerEvent || !(ii < ins.length && ins[ii].s === e.s)); }
       else if (kind === 1) { const x = this.sounding[idx]; if (x.offPos !== null) this.rows.T1++; this._release(x.ref, so); }
       else if (kind === 2) { const p = this.pending.splice(idx, 1)[0]; if (p.kind === "on") this._emitOn(p, so); else this._pushNon({ t: "trig", s: so, lane: p.lane, tick: this._tickOf(p.pos) }); }
       else this._visit(so);
@@ -1460,10 +1636,11 @@ class ArpCore {
   // T6: release everything, restart the grid from the new position, re-anchor.
   _edge() {
     if (this.sounding.length) this.rows.T6++;
-    this._releaseAll(0);
+    this._releaseArp(0);   // T6 ends the ARP's notes; chord notes behave like held notes and ignore transport edges (SPEC 14)
+    if (this.lab.plant.chordT6Restart) { for (const n of this.chord.notes.values()) { this._chordOff(n, 0); n.restartMe = true; } }   // plant: the r2.10 behaviour
     this.active.rate = this.incoming.rate; this.L = this._curL(this.incoming);   // SPEC-GAP: rate adopted at an edge
     this.freeRunning = false; this.epoch = 0;
-    this.lastEvaluated = null; this._gO = 0; this._gK1 = 0;
+    this.lastEvaluated = null; this._gO = 0; this._gK1 = 0; this.repeatSteps = 0; this.exhausted = false;
     this._reanchor(0, false);
   }
   // Re-anchor at the current position (T5/T6): m := 0; chord anchors only if an anchor exists or keys are held.
@@ -1491,14 +1668,15 @@ class ArpCore {
   }
 
   // ---------------------------------------------------------------- input (SPEC 3)
-  _input(e, s) {
+  _input(e, s, last = true) { this._input1(e, s); if (last) this._chordSync(s); }   // the chord stage follows H sample-exactly (SPEC 14); `last` defers the sync past the other events at one sample, so a count going 1->0->1 within a sample keeps its note
+  _input1(e, s) {
     switch (e.t) {
       case "on": this._noteOn(e, s); if (this.sounding.length) this.rows.T3++; break;
       case "off": this._noteOff(e); if (this.sounding.length) this.rows.T3++; break;
       case "pedal": this._pedal(!!e.down); if (this.sounding.length) this.rows.T3++; break;
       case "panic":
         if (this.sounding.length) this.rows.T7++;
-        this.refs = []; this.ignored = []; this.pedalDown = false;
+        this.refs = []; this.ignored = []; this.pedalDown = false; this.repeatSteps = 0; this.exhausted = false;
         this._releaseAll(s);
         this._pushNon({ t: "panic", s });
         break;
@@ -1519,9 +1697,13 @@ class ArpCore {
     const sameKey = this.refs.filter(r => r.key === key).length;
     if (!sameKey && new Set(this.refs.map(r => r.key)).size >= this.caps.held) { this.counters.heldOverflow++; ignore(); return; }
     if (sameKey >= this.caps.refsPerKey) { this.counters.refOverflow++; ignore(); return; }
+    const addsKey = sameKey === 0;
     this.refs.push({ id, key, vel: e.vel === undefined ? 100 : e.vel, ch: e.ch || 0, state: "down", abs: this._absBase + s });
+    // SPEC 4.8 (r4): ANY NoteOn that adds a key to H (a gesture start, latch append, the pedal) restarts the repeat count and clears `exhausted`; it re-anchors
+    // the pattern only when it is a gesture start (below). Plant onlyGestureResets: only a gesture start does.
+    if (addsKey && !this.lab.plant.onlyGestureResets) { this.repeatSteps = 0; this.exhausted = false; }
     // gesture start (SPEC 3): no DOWN/PEDAL ref beforehand; under append a press that joins a latched set is not one (4.5)
-    if (noActive && !(a.latch === "append" && hadLatched)) this._gesture(s);
+    if (noActive && !(a.latch === "append" && hadLatched)) { this.repeatSteps = 0; this.exhausted = false; this._gesture(s); }   // SPEC 4.8: the repeat count restarts at each gesture start
   }
   _gesture(s) {
     if (!this.enabled) return;
@@ -1549,6 +1731,98 @@ class ArpCore {
     this.pedalDown = down;
   }
   // H: distinct keys, earliest live ref's channel+velocity, press order = that ref's press sample (ties by key)
+  // H' (SPEC 14): what the arp reads. With the chord stage on it is the chord set: each key with its chord note's velocity / channel, in press order
+  // by its first source then slot order; otherwise the held keys. Plant arpIgnoresChord: the arp reads the raw keys.
+  _heldArp() {
+    if (this.incoming.enabled && this.incoming.chord_enabled && !this.lab.plant.arpIgnoresChord) return this.chord.set;
+    return this._held();
+  }
+  // The chord keys of the held key h, computed ONCE when h enters H and stored (SPEC 14, r4 H1). Slot 0 is h as played, never moved. Semitones: h + shift,
+  // quantized to the effective scale if chord_quantize is on. Degrees: from h's nearest in-scale key, move `shift` in-scale keys (a zero mask: semitones).
+  // Chord-stage ties ALWAYS go to the lower key and the stage never reads or writes lastQ, which is the arp's. Keys outside 0-127 are dropped.
+  // SPEC-GAP: the effective scale is the arp's scale source / root / mask with the chord_root anchor on the played keys H, `quantize = off` read as `scale`.
+  _chordMap(h, H, S) {
+    const keys = [{ slot: 0, key: h.key }], degrees = S.chord_unit === "degrees";
+    const sc = this._scaleOf(Object.assign({}, S, { quantize: S.quantize === "off" ? "scale" : S.quantize }), H), scaleOn = sc.mask !== 0;
+    for (let i = 1; i <= 6; i++) {
+      if (!S["chord_on" + i]) continue;
+      const shift = S["chord_shift" + i];
+      let k;
+      if (degrees) k = this._degreeMove(scaleOn ? this._quant(h.key, sc, null) : h.key, shift, scaleOn ? sc : null);
+      else { k = h.key + shift; if (k >= 0 && k <= 127 && S.chord_quantize && scaleOn) k = this._quant(k, sc, null); }
+      if (k < 0 || k > 127) { this.counters.chordDropped++; continue; }
+      keys.push({ slot: i, key: k });
+    }
+    return keys;
+  }
+  // What a re-map depends on: the chord_* settings, the scale settings (and the global scale when it is the source), the arp's quantize mode (the chord_root anchor).
+  _chordSig(S) {
+    let t = [S.chord_enabled, S.chord_unit, S.chord_quantize, S.scale_source, S.scale_root, S.quantize];
+    for (let i = 1; i <= 6; i++) t.push(S["chord_on" + i], S["chord_shift" + i]);
+    for (let i = 0; i < 12; i++) t.push(S["scale_deg" + i]);
+    if (S.scale_source === "global") t.push(this.scale.root, this.scale.mask);
+    return t.join();
+  }
+  // Bring the chord notes in line with H. Keys entering H get their mapping computed and stored; keys leaving drop THEIR stored keys; a re-map (a chord_* /
+  // scale setting change, or chord_enabled turning on, found at offset 0 of the block) recomputes every held key. Keys whose source count falls to 0 end,
+  // new keys start, unchanged keys keep sounding (SPEC 14). Called after the LAST input event of a sample, so 1->0->1 inside one sample keeps its note.
+  _chordSync(s) {
+    const c = this.chord, S = this.incoming, P = this.lab.plant;
+    if (!(S.enabled && S.chord_enabled)) {   // stage off (or module off, T4): every chord note ends, nothing is held in the stage
+      for (const n of c.notes.values()) this._chordOff(n, s);
+      c.notes.clear(); c.held.clear(); c.set = []; c.sig = null; return;
+    }
+    const sig = this._chordSig(S), remap = c.sig !== sig; c.sig = sig;
+    const H = this._held(), cur = new Map(H.map(h => [h.key, h]));
+    for (const k of [...c.held.keys()]) if (!cur.has(k)) {
+      if (P.chordRecomputeAtRelease) {   // plant (r4 H1): the leaver's chord keys are recomputed NOW and subtracted, instead of its stored ones
+        const rec = c.held.get(k), fresh = this._chordMap(rec.h, H, S); c.drift = c.drift || new Map();
+        for (const m of rec.keys) c.drift.set(m.key, (c.drift.get(m.key) || 0) + 1);   // undo the natural removal of the stored keys ...
+        for (const m of fresh) c.drift.set(m.key, (c.drift.get(m.key) || 0) - 1);      // ... and subtract the recomputed ones
+      }
+      c.held.delete(k);
+    }
+    if (remap && P.chordRestartAll) { for (const n of c.notes.values()) this._chordOff(n, s); c.notes.clear(); }   // plant: a re-map ends and restarts every chord note
+    for (const h of H) {
+      const rec = c.held.get(h.key);
+      if (!rec) c.held.set(h.key, { h: { key: h.key, vel: h.vel, ch: h.ch, abs: h.abs }, keys: this._chordMap(h, H, S) });
+      else if (remap) rec.keys = this._chordMap(h, H, S);
+    }
+    // the source counts and the earliest source of every key, from the STORED mapping
+    const count = new Map(), first = new Map();
+    for (const rec of c.held.values()) for (const m of rec.keys) {
+      const id = P.chordNoDedupe ? m.key + ":" + rec.h.key + ":" + m.slot : P.chordDedupeByChannelKey ? rec.h.ch + ":" + m.key : m.key;   // dedupe by KEY alone (r4 M2)
+      count.set(id, (count.get(id) || 0) + 1);
+      const f = first.get(id);
+      if (!f || rec.h.abs < f.h.abs || (rec.h.abs === f.h.abs && m.slot < f.slot)) first.set(id, { h: rec.h, slot: m.slot, key: m.key });
+    }
+    if (c.drift) for (const [k, d] of c.drift) { const v = Math.max(0, (count.get(k) || 0) + d); count.set(k, v); }
+    for (const [id, n] of [...c.notes]) {
+      if (!count.get(id)) { this._chordOff(n, s); c.notes.delete(id); }
+      else if (P.chordEndsOnFirstSource && !n.ended && count.get(id) < n.max) this._chordOff(n, s);   // plant: ends when ANY source leaves
+    }
+    for (const [id, cnt] of count) {
+      if (!cnt) continue;
+      let n = c.notes.get(id);
+      const f = first.get(id);
+      if (!n) { n = { ref: null, key: f.key, ended: true, max: cnt }; c.notes.set(id, n); this._chordOn(n, f, s); }   // channel / velocity fixed here, from the earliest source
+      else if (n.restartMe) { n.restartMe = false; this._chordOn(n, { key: n.key, h: f.h }, s); }
+      if (cnt > n.max) n.max = cnt;
+    }
+    c.set = [...first.entries()].filter(([id]) => count.get(id) > 0).map(([id, f]) => { const n = c.notes.get(id); return { key: f.key, vel: n.vel !== undefined ? n.vel : f.h.vel, ch: n.ch !== undefined ? n.ch : f.h.ch, abs: f.h.abs, slot: f.slot }; })
+      .sort((x, y) => x.key - y.key);
+  }
+  _chordOn(n, f, s) {
+    n.vel = f.h.vel; n.ch = f.h.ch;
+    if (!this._room(2)) { this.rows.T13++; this.counters.refused++; return; }   // refused: stays silent and counted; no sounding entry, so no off is owed
+    const ref = { port: 0, channel: n.ch, key: n.key, id: this.idCounter++ };
+    this.sounding.push({ ref, key: n.key, ch: n.ch, offPos: null, onAbs: this._absBase + s, dying: false, chord: true });
+    this._ev.push({ t: "on", s, ref, key: n.key, vel: n.vel, stream: "chord", tick: this._tickOf(this._posAt(s)), ord: -1, _i: this._evI++ });
+    n.ref = ref; n.ended = false;
+  }
+  _chordOff(n, s) { if (!n.ended && n.ref) this._release(n.ref, s); n.ended = true; }
+  // T4 (module off), T7, T10: every chord note ends and the stage forgets its held keys.
+  _chordEndAll(s) { const c = this.chord; for (const n of c.notes.values()) this._chordOff(n, s); c.notes.clear(); c.held.clear(); c.set = []; c.sig = null; c.drift = null; }
   _held() {
     const m = new Map();
     for (const r of this.refs) { const h = m.get(r.key); if (!h || r.abs < h.abs) m.set(r.key, { key: r.key, vel: r.vel, ch: r.ch, abs: r.abs }); }
@@ -1566,6 +1840,7 @@ class ArpCore {
     else if (S.rate !== this.active.rate) { this._switchRate(kAbs); return; }   // T15: applies at the next step of the OLD rate (SPEC 9)
     this.lastEvaluated = kAbs;
     this._adopt();
+    this._chordSync(so);   // _adopt may have dropped latched refs (latch off), which changes H
     if (this._rs() === "chord" && this.anchorK === null) return;             // no anchor yet (SPEC 2.5)
     if (!this.lab.opts.playPreroll && this._gtick(kAbs) < 0) return;
     this._evalStep(kAbs, so);
@@ -1619,6 +1894,19 @@ class ArpCore {
     const aK = this._rs() === "free" ? 0 : this.anchorK;
     const k = kAbs - aK, pat = this._pattern(a.pattern), j = mod(k, this._plen(pat));
     const st = this._step(pat, j);
+    const H = this._heldArp();
+    // SPEC 4.8: one repeat is one full cycle of the whole pattern, C steps. Once repeatSteps >= repeats * C nothing more is evaluated (no notes, no
+    // triggers) until the next gesture start; sounding notes end by their gates (T20). C is recomputed from the live H' at every step.
+    // r2.11: once spent the arp is `exhausted`, a LATCHED flag (cleared by a gesture start, a key-adding NoteOn, T6/T7/T10; a morph of repeats, steps or pattern never
+    // revives it). Spent steps still consumed the once-guard in _visit, as silent rests, so a later gesture sees no burst of overdue steps. P comes from H'.
+    if (a.repeats > 0 && H.length && !P.repeatsNeverStop && (!this.exhausted || P.morphRevives)) {
+      const Ls = this._plen(pat), pn = periodOf(a.order, H.length) * (a.steps + 1);
+      let plays = 0; for (let q = 0; q < Ls; q++) { const x = this._step(pat, q); if (x.on && !x.tie && normPick(x.pick) === "order") plays++; }
+      const C = P.repeatsCountPatternPasses ? Ls : plays > 0 ? Ls * (pn / gcd(pn, plays)) : Ls;
+      this.exhausted = this.repeatSteps >= a.repeats * C;   // (plant morphRevives re-evaluates this every step, so raising `repeats` revives the arp)
+    }
+    if (this.exhausted) return;
+    this.repeatSteps++;
     const ord = this.stepSeq++;
     const fires = P.probLE ? (this._draw(a.seed, kAbs, 2) % 100) <= st.prob : (this._draw(a.seed, kAbs, 2) % 100) < st.prob;
 
@@ -1626,7 +1914,6 @@ class ArpCore {
     const swingD = fdiv(L * (2 * S.swing - 1000), 1000);
     const onT = x => this._gtick(x) + (mod(P.swingParityK && aK !== null ? x - aK : x, 2) === 1 ? swingD : 0) + (P.srTickMath ? Math.floor(this.sr / 44100) : 0);
     const on0 = onT(kAbs);
-    const H = this._held();
     const mBefore = this.m;
     let kind = "rest";
     const trig = () => { if (fires && st.trig) this._queue({ kind: "trig", pos: BigInt(on0) * D, lane: st.trig, ord }); };
@@ -1754,7 +2041,7 @@ class ArpCore {
     if (pick === "chord") return E;
     if (pick !== "order") return [E[typeof pick === "number" ? mod(pick - 1, e) : pick === "low" ? 0 : e - 1]];
     if (a.order === "chord") return E;
-    if (a.order === "played") { const hp = H.slice().sort((x, y) => x.abs - y.abs || x.key - y.key); return [at(hp[m % hp.length])]; }
+    if (a.order === "played") { const hp = H.slice().sort((x, y) => x.abs - y.abs || (x.slot || 0) - (y.slot || 0) || x.key - y.key); return [at(hp[m % hp.length])]; }
     if (a.order === "random") return [E[this._draw(a.seed, kAbs, 0) % e]];
     if (a.order === "shuffle") return [this._shuffleCycle(E, a.seed, fdiv(m, e))[mod(m, e)]];
     const p = mod(m, periodOf(a.order, e));
@@ -1813,14 +2100,14 @@ class ArpCore {
   // Nearest in-scale key within 0-127. A TIE goes toward the previous quantized output (horde's
   // rule, from Tonality: the output line is the melody heard, so continuity is owed to it); with
   // nothing quantized yet, or equally near, the lower key. lastQ resets only at prepare/reset.
-  _quant(key, sc) {
+  _quant(key, sc, lq = this.lastQ) {
     if (!sc.mask) return key;
     const inMask = x => (sc.mask >> mod(x - sc.root, 12)) & 1;
     let out = key;
     if (!inMask(key)) {
       for (let d = 1; d <= 127; d++) {
         const lo = key - d, hi = key + d, okLo = lo >= 0 && inMask(lo), okHi = hi <= 127 && inMask(hi);
-        if (okLo && okHi) { out = (!this.lab.plant.tieAlwaysDown && this.lastQ !== null && Math.abs(hi - this.lastQ) < Math.abs(lo - this.lastQ)) ? hi : lo; break; }
+        if (okLo && okHi) { out = (!this.lab.plant.tieAlwaysDown && lq !== null && Math.abs(hi - lq) < Math.abs(lo - lq)) ? hi : lo; break; }
         if (okLo) { out = lo; break; }
         if (okHi) { out = hi; break; }
       }
@@ -1838,8 +2125,9 @@ class ArpCore {
     const P = this.lab.plant;
     // T13: refuse an on whose own off would not be guaranteed room (128 slots stay reserved for offs)
     if (P.noOffReserve ? this._ev.length >= this.capEv : !this._room(2)) { this.rows.T13++; this.counters.refused++; return; }
-    for (const x of this.sounding.slice()) if (x.key === p.key && x.ch === p.ch && !x.dying) { this.rows.T2++; this._release(x.ref, s); }   // T2: (channel,key)
-    if (this.sounding.length >= this.caps.sounding) { this.rows.T11++; this.counters.soundingOverflow++; this._release(this.sounding[0].ref, s); }
+    for (const x of this.sounding.slice()) if (x.key === p.key && x.ch === p.ch && !x.dying && (!x.chord || P.t2AcrossStreams)) { this.rows.T2++; this._release(x.ref, s); }   // T2: (channel,key) WITHIN one stream; an arp note and a chord note may share a key (SPEC 5.2)
+    const arpSounding = P.sharedSoundingTable ? this.sounding : this.sounding.filter(x => !x.chord);   // the arp's 128-entry table; chord notes have their own (SPEC 14)
+    if (arpSounding.length >= this.caps.sounding) { this.rows.T11++; this.counters.soundingOverflow++; this._release(arpSounding[0].ref, s); }
     const ref = { port: 0, channel: p.ch, key: p.key, id: this.idCounter++ };
     this.sounding.push({ ref, key: p.key, ch: p.ch, offPos: p.offPos, onAbs: this._absBase + s, dying: false });
     // SPEC §1 (D-009, horde ADR-270): every note Arp emits is on the `arp` stream; held notes reach horde
@@ -1862,13 +2150,17 @@ class ArpCore {
     if (P.noOffReserve && this._ev.length > this.capEv) { this._ev.length = this.capEv; }   // plant: a full buffer silently loses the off
     return true;
   }
-  _releaseAll(s) {
+  // The ARP's release-all (T6, and the arp switching off alone): its notes end and its pending queue clears. Chord notes are untouched.
+  _releaseArp(s) {
     if (!this.lab.plant.lastQNoReset) this.lastQ = null;   // SPEC 6 (r2 H2, PROPOSED): every release-all forgets lastQ, so each play-from-here sounds the same
-    for (const x of this.sounding.slice()) this._release(x.ref, s);
+    for (const x of this.sounding.slice()) if (!x.chord) this._release(x.ref, s);
     this.pending.length = 0;   // SPEC 7: release-all also clears the pending queue
   }
+  // T4 (module off), T7, T10: everything ends, chord notes included (SPEC 14).
+  _releaseAll(s) { this._chordEndAll(s); this._releaseArp(s); }
   // When a sounding note's off is due, as a block offset (>= the sample after its own on).
   _offTime(x) {
+    if (x.chord && !x.dying) return Infinity;   // a chord note ends with its last source, never on a schedule
     const min = x.onAbs + 1 - this._absBase;
     let base = 0;
     if (x.offPos !== null) {
@@ -1952,14 +2244,17 @@ class ArpCore {
   }
 
   // ---- synth: saw -> lowpass -> envelope, one voice per output ref ----------
-  function synthOn(ref, key, vel, when) {
+  // "listen to" (the human's per-source routing, simulated): which streams this page's synth voices. The core is never touched.
+  const audible = stream => { const m = $("listen").value; return m === "all" || (m === "chord" ? stream === "chord" : m === "arp" ? stream === "arp" : stream === "chord" || stream === "arp"); };
+  const directVoices = new Map();   // the player's own keys (horde's `direct` stream), voiced only in "all"
+  function synthOn(ref, key, vel, when, kind) {
     const c = eng.ctx;
     if (eng.voices.size > 48) return;
     const osc = c.createOscillator(), lp = c.createBiquadFilter(), g = c.createGain();
-    osc.type = "sawtooth"; osc.frequency.value = 440 * Math.pow(2, (key - 69) / 12);
+    osc.type = kind === "chord" ? "triangle" : "sawtooth"; osc.frequency.value = 440 * Math.pow(2, (key - 69) / 12);
     lp.type = "lowpass"; lp.Q.value = 3;
     lp.frequency.setValueAtTime(600 + vel * 28, when); lp.frequency.exponentialRampToValueAtTime(900, when + 0.25);
-    const peak = 0.05 + 0.16 * (vel / 127);
+    const peak = (0.05 + 0.16 * (vel / 127)) * (kind === "chord" ? 0.8 : 1);
     g.gain.setValueAtTime(0.0001, when); g.gain.linearRampToValueAtTime(peak, when + 0.004); g.gain.setTargetAtTime(peak * 0.55, when + 0.01, 0.12);
     osc.connect(lp); lp.connect(g); g.connect(eng.master); osc.start(when);
     eng.voices.set(ref.id, { osc, g });
@@ -2009,7 +2304,7 @@ class ArpCore {
   }
   function schedule(e, when) {
     const rel = (when - eng.t0).toFixed(3);
-    if (e.t === "on") { rollOn(e, when); synthOn(e.ref, e.key, e.vel, when); log(rel + "  on   " + e.key + "  v" + e.vel + "  #" + e.ref.id); }
+    if (e.t === "on") { rollOn(e, when); if (audible(e.stream)) synthOn(e.ref, e.key, e.vel, when, e.stream); log(rel + "  on   " + e.key + "  v" + e.vel + "  #" + e.ref.id + (e.stream === "chord" ? "  [chord]" : "")); }
     else if (e.t === "off") { rollOff(e, when); synthOff(e.ref, when); log(rel + "  off  " + e.ref.key + "  #" + e.ref.id); }
     else if (e.t === "trig") { roll.trigs.push({ time: when, lane: e.lane }); log(rel + "  TRIG lane " + e.lane); flashLane(e.lane, when); }
     else if (e.t === "panic") { log(rel + "  panic forwarded"); for (const [id, v] of eng.voices) { v.g.gain.cancelScheduledValues(when); v.g.gain.setTargetAtTime(0.0001, when, 0.01); v.osc.stop(when + 0.1); } eng.voices.clear(); }
@@ -2025,15 +2320,20 @@ class ArpCore {
   function press(ref, key, vel, ch) {
     if (!startAudio() && !eng.ctx) return;
     send({ t: "on", s: 0, ref, key, vel: vel || 100, ch: ch || 0 });
+    if ($("listen").value === "all" && eng.ctx && !directVoices.has(ref)) {   // the direct stream: the key itself, a quiet sine
+      const o = eng.ctx.createOscillator(), g = eng.ctx.createGain(); o.type = "sine"; o.frequency.value = 440 * Math.pow(2, (key - 69) / 12);
+      g.gain.value = 0.05; o.connect(g); g.connect(eng.master); o.start(); directVoices.set(ref, { o, g });
+    }
     pressed.set(key, (pressed.get(key) || 0) + 1); paintKeys();
   }
   function release(ref, key) {
     send({ t: "off", s: 0, ref });
+    const dv = directVoices.get(ref); if (dv) { dv.g.gain.setTargetAtTime(0.0001, eng.ctx.currentTime, 0.03); dv.o.stop(eng.ctx.currentTime + 0.2); directVoices.delete(ref); }
     const n = (pressed.get(key) || 1) - 1; if (n > 0) pressed.set(key, n); else pressed.delete(key);
     paintKeys();
   }
   function setPedal(down) { pedal = down; send({ t: "pedal", s: 0, down }); const b = $("pedalBtn"); if (b) b.classList.toggle("on", down); }
-  function panic() { send({ t: "panic", s: 0 }); pressed.clear(); paintKeys(); setPedal(false); }
+  function panic() { for (const [r, dv] of directVoices) { dv.o.stop(); directVoices.delete(r); } send({ t: "panic", s: 0 }); pressed.clear(); paintKeys(); setPedal(false); }
 
   const isBlack = k => [1, 3, 6, 8, 10].includes(k % 12);
   function buildKeyboard() {
@@ -2136,8 +2436,28 @@ class ArpCore {
   }
 
   // ---- settings controls (generated from params.json) --------------------------
+  // ---- the chord stage card (SPEC 14): enable, unit, quantize and six slots (on + shift -24..24) ----
+  function buildChordCard() {
+    const arp = $("chArp"); arp.checked = state.cur.arp_enabled !== false;
+    arp.addEventListener("change", () => { state.cur.arp_enabled = arp.checked; });
+    controls.arp_enabled = { set: v => { arp.checked = v !== false && !!v; } };
+    const en = $("chEnabled"), unit = $("chUnit"), qz = $("chQuant"), box = $("chSlots"); box.textContent = "";
+    en.checked = !!state.cur.chord_enabled; unit.value = state.cur.chord_unit; qz.checked = !!state.cur.chord_quantize;
+    en.addEventListener("change", () => { state.cur.chord_enabled = en.checked; });
+    unit.addEventListener("change", () => { state.cur.chord_unit = unit.value; });
+    qz.addEventListener("change", () => { state.cur.chord_quantize = qz.checked; });
+    controls.chord_enabled = { set: v => { en.checked = !!v; } }; controls.chord_unit = { set: v => { unit.value = v; } }; controls.chord_quantize = { set: v => { qz.checked = !!v; } };
+    for (let i = 1; i <= 6; i++) {
+      const on = h("input", { type: "checkbox" }), sh = h("input", { type: "number", min: "-24", max: "24", step: "1", title: "slot " + i + ": shift in " + "semitones or degrees (-24..24)" });
+      on.checked = !!state.cur["chord_on" + i]; sh.value = String(state.cur["chord_shift" + i]);
+      on.addEventListener("change", () => { state.cur["chord_on" + i] = on.checked; });
+      sh.addEventListener("change", () => { const v = clamp(Math.round(Number(sh.value)), -24, 24); state.cur["chord_shift" + i] = Number.isFinite(v) ? v : 0; sh.value = String(state.cur["chord_shift" + i]); });
+      controls["chord_on" + i] = { set: v => { on.checked = !!v; } }; controls["chord_shift" + i] = { set: v => { sh.value = String(v); } };
+      box.appendChild(h("label", {}, h("span", {}, on, " slot " + i), sh));
+    }
+  }
   // The global transposition settings share spec names with the pattern-level step size; label them apart.
-  const LABELS = { steps: "transposition steps", step_size: "transposition size", step_unit: "transposition unit", rate_mode: "rate mode", step_time_us: "step time" };
+  const LABELS = { enabled: "enabled (whole module)", steps: "transposition steps", step_size: "transposition size", step_unit: "transposition unit", rate_mode: "rate mode", step_time_us: "step time", repeats: "repeats (0 = forever)" };
   function paramLabel(p) { return LABELS[p.key] || p.key.replace("_", " "); }
   const rows = {}, inputs = {};   // setting key -> its row / its select, so rate_mode can show only the control that applies
   // SPEC 2.6: step_time_us shown BOTH ways at once (ms per step and Hz), on a log slider; editing any of the three updates the others.
@@ -2167,6 +2487,7 @@ class ArpCore {
     const box = $("settings"); box.textContent = "";
     for (const p of ARP_PARAMS.params) {
       if (p.key === "scale_root" || p.key.startsWith("scale_deg")) continue;   // drawn by buildOwnScale()
+      if (p.key.startsWith("chord_") || p.key === "arp_enabled") continue;       // drawn by buildChordCard()
       const row = h("div", { class: "row" }), eff = h("span", { class: "eff" });
       rows[p.key] = row;
       let input;
@@ -2191,9 +2512,10 @@ class ArpCore {
         row.append(h("label", { text: paramLabel(p) }), input, re, eff); box.appendChild(row); controls[p.key].eff = eff; continue;
       } else {
         input = h("input", { type: "range", min: String(p.min), max: String(p.max), step: "1", value: String(state.cur[p.key]) });
-        const val = h("span", { class: "val", text: String(state.cur[p.key]) });
-        input.addEventListener("input", () => { commit(Number(input.value)); val.textContent = input.value; });
-        controls[p.key] = { set: v => { input.value = String(v); val.textContent = String(v); } };
+        const fmt = v => p.key === "repeats" && Number(v) === 0 ? "\u221e" : String(v);   // repeats 0 = forever
+        const val = h("span", { class: "val", text: fmt(state.cur[p.key]) });
+        input.addEventListener("input", () => { commit(Number(input.value)); val.textContent = fmt(input.value); });
+        controls[p.key] = { set: v => { input.value = String(v); val.textContent = fmt(v); } };
         row.append(h("label", { text: paramLabel(p) }), input, val, eff); box.appendChild(row); controls[p.key].eff = eff; continue;
       }
       row.append(h("label", { text: paramLabel(p) }), input, eff); box.appendChild(row);
@@ -2468,7 +2790,7 @@ class ArpCore {
   const LIVE_SPAN = 4;                       // seconds of history in the live roll
   function rollOn(e, when) {
     const st = roll.stepOf.get(e.ord);
-    const n = { key: e.key, vel: e.vel, acc: st ? stepVelPct(st.pat, st.j) : 100, on: when, off: null };
+    const n = { key: e.key, vel: e.vel, acc: st ? stepVelPct(st.pat, st.j) : 100, on: when, off: null, chord: e.stream === "chord" };
     roll.notes.push(n); roll.byId.set(e.ref.id, n);
   }
   function rollOff(e, when) { const n = roll.byId.get(e.ref.id); if (n) { n.off = when; roll.byId.delete(e.ref.id); } }
@@ -2503,7 +2825,14 @@ class ArpCore {
     const steps = pat.steps.map(raw => Object.assign({}, ARP_BANK.step_defaults, raw));
     const time = S.rate_mode === "time", L = stepLen(S), Ls = steps.length;
     // One order cycle repeated over steps + 1 transposition passes (SPEC 4.7), so the whole loop is P * (steps + 1) order plays.
-    const P = orderPeriod(S.order, held.keys.map(h => h.key)) * (S.steps + 1);
+    // With the chord stage on the arp plays the chord set (SPEC 14), so the order cycle runs over ITS keys: ask a scratch core for them.
+    let arpKeys = held.keys.map(h => h.key);
+    if (S.chord_enabled) {
+      const probe = new ArpCore(); probe.prepare(48000, 128);
+      probe.process({ n: 128, transport: {}, settings: Object.assign({}, S, { enabled: true }), scale: state.scale, in: held.keys.map((h, i) => ({ t: "on", s: i, ref: "pk:" + h.key, key: h.key, vel: h.vel || 100, ch: 0 })) });
+      arpKeys = probe.chord.set.map(e => e.key);
+    }
+    const P = orderPeriod(S.order, arpKeys) * (S.steps + 1);
     // Only `order` picks consume the order stream (SPEC 4.3), so an explicit-pick step is a play for rhythm but not for the cycle.
     const plays = steps.filter(st => st.on && !st.tie && (st.pick === undefined || st.pick === "order")).length;
     const full = plays ? Ls * (P / gcd(P, plays)) : Ls;
@@ -2525,7 +2854,7 @@ class ArpCore {
       const evs = core.process({ n: 4096, transport: host.at(at), settings, scale: state.scale, in: blockIns });
       for (const st of core.lastSteps) ordJ.set(st.ord, st.j);   // before the ons: an on may share its step's block
       for (const e of evs) {
-        if (e.t === "on") { const x = { key: e.key, vel: e.vel, acc: ordJ.has(e.ord) ? stepVelPct(S.pattern, ordJ.get(e.ord)) : 100, on: e.tick, off: null }; notes.push(x); byId.set(e.ref.id, x); }
+        if (e.t === "on") { const chord = e.stream === "chord"; const x = { key: e.key, vel: e.vel, acc: ordJ.has(e.ord) ? stepVelPct(S.pattern, ordJ.get(e.ord)) : 100, on: chord ? Math.max(0, e.tick) : e.tick, off: null, chord }; notes.push(x); byId.set(e.ref.id, x); }
         else if (e.t === "off") { const x = byId.get(e.ref.id); if (x) { x.off = e.tick !== undefined ? e.tick : x.on + 1; byId.delete(e.ref.id); } }
         else if (e.t === "trig") trigs.push({ tick: e.tick, lane: e.lane });
       }
@@ -2561,7 +2890,7 @@ class ArpCore {
   // Shared painter: x is a function of time (ticks or seconds); rows span the notes' range.
   function paintRoll(cv, notes, trigs, steps, xOf, x0, x1, opts) {
     const { g, w, hgt } = fitCanvas(cv);
-    const C = { bg: cssVar("--bg"), line: cssVar("--line"), dim: cssVar("--dim"), acc: cssVar("--acc"), hot: cssVar("--hot"), text: cssVar("--text") };
+    const C = { bg: cssVar("--bg"), line: cssVar("--line"), dim: cssVar("--dim"), acc: cssVar("--acc"), hot: cssVar("--hot"), chd: cssVar("--chd"), text: cssVar("--text") };
     const GUT = 34, TOP = 16, BOT = 12, plotW = w - GUT - 4, plotH = hgt - TOP - BOT;
     g.clearRect(0, 0, w, hgt);
     let lo = Infinity, hi = -Infinity; for (const n of notes) { lo = Math.min(lo, n.key); hi = Math.max(hi, n.key); }
@@ -2590,7 +2919,7 @@ class ArpCore {
       if (b < GUT || a > GUT + plotW) continue;
       const x = Math.max(a, GUT), wN = Math.max(2, b - x - 1);
       const hN = Math.max(2, (rh - 2) * (0.4 + 0.6 * n.vel / 127)), yN = Y(n.key) + (rh - hN) / 2;   // louder = thicker
-      g.globalAlpha = 0.45 + 0.55 * (n.vel / 127); g.fillStyle = C.acc; g.fillRect(x, yN, wN, hN);
+      g.globalAlpha = 0.45 + 0.55 * (n.vel / 127); g.fillStyle = n.chord ? C.chd : C.acc; g.fillRect(x, yN, wN, hN);
       g.globalAlpha = 1; g.strokeStyle = C.bg; g.lineWidth = 1; g.strokeRect(x + 0.5, yN + 0.5, Math.max(1, wN - 1), Math.max(1, hN - 1));
       if (n.acc > 100) {   // an accented step: a hot cap on the note and a tick above it
         g.fillStyle = C.hot; g.fillRect(x, yN, wN, Math.min(2, hN));
@@ -2687,13 +3016,14 @@ class ArpCore {
     g.clearRect(0, 0, w, hgt);
     if (!d) { g.fillStyle = C.dim; g.fillRect(4, hgt / 2, w - 8, 1); return; }
     const P = 3, W = w - 2 * P, H = hgt - 2 * P - 3;
-    let lo = Infinity, hi = -Infinity; for (const n of d.notes) { lo = Math.min(lo, n.key); hi = Math.max(hi, n.key); }
+    let lo = Infinity, hi = -Infinity; for (const n of d.notes) if (!n.chord) { lo = Math.min(lo, n.key); hi = Math.max(hi, n.key); }
     if (!isFinite(lo)) { lo = 60; hi = 60; }
     const span = Math.max(1, hi - lo), X = t => P + t / d.win * W, Y = k => P + (hi - k) / span * (H - 2);
     g.fillStyle = C.line; g.globalAlpha = 0.5;
     for (let k = 0; k < d.n; k++) { const st = d.stepKinds.get(k); if (!st || st.kind === "rest") g.fillRect(X(k * d.L), P, Math.max(1, X((k + 1) * d.L) - X(k * d.L)), H); }
     g.globalAlpha = 1;
     for (const n of d.notes) {
+      if (n.chord) continue;   // thumbnails show the arp's shape only
       const a = X(n.on), b = X(Math.min(n.off === null ? d.win : n.off, d.win)), th = 1 + 2 * n.vel / 127;   // louder = thicker
       g.globalAlpha = 0.45 + 0.55 * (n.vel / 127); g.fillStyle = n.acc > 100 ? C.hot : C.acc;
       g.fillRect(a, Y(n.key) + 1 - th / 2, Math.max(1.5, b - a - 0.5), th);
@@ -2724,7 +3054,7 @@ class ArpCore {
   function status(msg) { $("status").textContent = msg; }
 
   function init() {
-    buildKeyboard(); buildSettings(); buildOwnScale(); buildScale(); buildLamps(); buildMorph(); buildLab(); initUserEditor(); renderGrid(); buildMatrix(); paintRateRows(); initMidi();
+    buildKeyboard(); buildChordCard(); buildSettings(); buildOwnScale(); buildScale(); buildLamps(); buildMorph(); buildLab(); initUserEditor(); renderGrid(); buildMatrix(); paintRateRows(); initMidi();
     requestAnimationFrame(frame);   // paint from load, so the pattern preview shows before audio starts
     status("Press Start audio (or any key / Play) - browsers need a gesture before they will make sound.");
   }

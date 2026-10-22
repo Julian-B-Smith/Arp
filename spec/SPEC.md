@@ -1,4 +1,4 @@
-# Arp — 1.0 specification (DRAFT r2.9, Phase A)
+# Arp — 1.0 specification (DRAFT r2.11, Phase A)
 
 > **Status: DRAFT r2.1, 2026-10-21.** r1 was reviewed by an independent Opus
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -10,6 +10,8 @@
 > the user pattern (§4.6) (D-011). r2.5 added `landed` (D-012); r2.7 defers it past 1.0
 > (`docs/deferred/landed.md`) and replaces `octaves` with Ableton-style **steps** (§4.7, D-014).
 > r2.8 adds **time mode** (§2.6), the per-step **step offset** (§4.3) and the **pattern library** (§4.6) (D-016).
+> r2.11 folds in the fourth independent review (4 HIGH; `docs/spec-review-r4.md`, D-019). Chord notes behave like held notes.
+> r2.10 adds **repeats** (§4.8) and the **chord stage** (§14), a second processor with its own `chord` stream (D-018).
 > r2.9 folds in the third independent review (2 HIGH, 3 MED, 3 LOW; `docs/spec-review-r3.md`, D-017).
 > r2.6 folded in the second independent review
 > (5 HIGH, 8 MED, 4 LOW; `docs/spec-review-r2.md`, D-013).
@@ -66,7 +68,7 @@ reset()                         // T10
 
 ### Block output
 - `outEvents`: sorted by offset, `0 ≤ offset < n`. Capacity: §1.3.
-  - `NoteOn{ref, key, vel, stream = arp}`;
+  - `NoteOn{ref, key, vel, stream}`, where `stream` is `arp` or `chord` (§14);
   - `NoteOff{ref, releaseVel = 64}`;
   - `Trigger{lane}`;
   - `Panic` (forwarded, §7 T7);
@@ -80,8 +82,11 @@ reset()                         // T10
   pass-through. horde routes input notes **around** a disabled Arp; Arp never
   echoes them.
 - **Streams (D-009, horde ADR-270).**
-  - **Every** `NoteOn` Arp emits carries `stream = arp`, whatever produced it
+  - **Every** `NoteOn` the **arp** emits carries `stream = arp`, whatever produced it
     (steps, ratchets, chord steps).
+  - **Every** `NoteOn` the **chord stage** (§14) emits carries `stream = chord`.
+    horde's per-source selector routes each stream on its own, so one oscillator
+    can take the chord, another the arp (D-018; Q-H7 to horde).
   - The player's held notes reach horde's engine as the `direct` stream
     through **horde's own tee**, placed before Arp. **Arp never echoes input
     notes**, enabled or not.
@@ -561,6 +566,41 @@ bottom can now be dropped where r2.7 kept it, and a tie can resolve differently.
 **Morph:** `steps`, `step_size` and `step_unit` are discrete settings (§9),
 applied from the next evaluated step.
 
+### 4.8 Repeats (D-018)
+`repeats` runs 0–16 (default **0 = forever**). It sets how many times the
+pattern plays **per chord**, then the arp stops until the next gesture start.
+
+- **One repeat is one full cycle of the whole pattern.** That is the number
+  of grid steps `C` before the step pattern, the order style (through every
+  held note) and the transposition passes all come round together:
+
+      C = plays > 0 ? Ls · (P·(steps+1) / gcd(P·(steps+1), plays)) : Ls
+
+  - `Ls` is the step-pattern length.
+  - `plays` is its number of `on`, non-tie steps with `pick = order` (prob is
+    ignored; this is a static count).
+  - `P` is the order style's period from the live H (`random`: e).
+  - Example: 2 repeats of `up` over C E G with pattern `none` is
+    `C E G C E G`, then silence.
+- **The count runs from the gesture start**, whatever `restart` does:
+  `repeatSteps` counts grid steps evaluated since the gesture's first step,
+  and resets only at a gesture start (and at T6/T7/T10).
+  - `C` is recomputed from the live H at each step.
+  - When `repeatSteps ≥ repeats · C`, the arp is **exhausted**. Its steps are
+    still **consumed by the once-guard** as silent rests, with no notes and no
+    triggers, so no burst of overdue steps follows (r4 H4). Sounding notes end
+    by their gates (T20).
+  - **`exhausted` is a latched flag** (r4 M1). It clears only at:
+    - a gesture start;
+    - **any NoteOn that adds a key to H**, under latch append or the pedal
+      too (the human, by poll). That press also restarts `repeatSteps` at 0,
+      without re-anchoring the pattern unless it is a gesture start;
+    - T6, T7 or T10.
+
+    Morphs of `repeats`, `steps` or `pattern` never revive an exhausted arp.
+  - `C` uses `P` from the arp's held set **H′** (§14), not H (r4 L4).
+- Time mode counts the same way, in time steps.
+
 ## 5. Note timing
 
 ### 5.1 Ons, swing and the pending queue
@@ -597,7 +637,8 @@ applied from the next evaluated step.
   - Offs are scheduled in **ticks**, so a tempo change moves them with the
     music.
   - The 1-sample minimum of §1.1 applies.
-- **Same key still sounding (T2).** "Same" means the same **(channel, key)**.
+- **Same key still sounding (T2).** "Same" means the same **(channel, key) within one stream**. An `arp`
+  note and a `chord` note may sound on one key at once; they are told apart by output id (r4 H2).
   If a new on arrives while that key sounds, the old note's `NoteOff` and the
   new note's `NoteOn` go out at one sample, in that order.
 
@@ -699,6 +740,8 @@ table **and clears the pending queue**.
 | T17 | the user pattern is replaced (`setUserPattern`) | none: it applies from the first step evaluated in the next `process`; a note already tied keeps its scheduled off |
 | T18 | `step_time_us` changes in time mode | none: the piecewise grid (§2.6) moves future steps only; sounding notes keep their offs |
 | T19 | `rate_mode` switches | release-all at offset 0 of that block (T6), then re-anchor |
+| T20 | repeats run out | none: no new steps; sounding notes end by their gates |
+| T21 | chord-stage notes (§14) | each ends exactly once: when its stored source count reaches 0, at a re-map that drops it, at `chord_enabled` off, at the module's `enabled` off (T4), at panic (T7), or at T10; never at a transport edge (T6) or an `arp_enabled` change |
 
 T3, T8, T9, T12, T14, T15 and T16 are rows on purpose: each must be shown to
 produce no extra and no missing terminal (LIBRARY L0001).
@@ -776,6 +819,8 @@ produce no extra and no missing terminal (LIBRARY L0001).
 | TM1 | time mode: step k sounds at `cdiv((k·step_time_us + swingDelay(k))·sr, 10⁶)` samples after the gesture's key press, whatever the host tempo, position or transport does; identical at every block size and sample rate (in µs) | use the host tempo; anchor at the transport |
 | TM2 | a `step_time_us` change mid-gesture: the next step lands at `max(lastTick + L_new, changeTick)`, then every `L_new`; no gap longer than `max(L_old, L_new)`, no burst | re-grid on absolute multiples of `L_new`, or `kAbs·L_new` |
 | TM3 | in time mode `restart` is inert (`bar` = `free` = `chord`) | count bars of 61,440 µs |
+| RP1 | `repeats = N`: `repeats·C` evaluated steps from the gesture start (or the last key-adding press), then exhausted (spent steps consume the once-guard, no burst) until a gesture start or a key-adding press; then nothing until the next gesture; 0 never stops | count step-pattern passes instead of full cycles; never stop |
+| CH1 | chord stage: each held key emits itself plus its enabled shifts (semitones, degrees, or quantized) as `stream = chord`, deduplicated by (channel, key) with a source count; one NoteOff per chord note when its last source leaves; the arp plays the chord stage's keys when the stage is on; the stage works with the arp off | no dedupe (two ons for a shared key); end on the first source's release; feed the arp the raw keys |
 | ST1 | the step offset is `step × pattern step_size` in the pattern's unit; at +12 semitones `step ±1` equals the old octave; degrees count in-scale keys | treat every step size as 12; read the GLOBAL step_size/unit for the step offset (tested with values that differ from the pattern's) |
 | X1 | transposition steps: pass t of every style is the base pass shifted by t·step_size (semitones), or moved t·step_size in-scale keys (degrees); `steps = 0` never shifts; the pass returns to 0 after `steps` | merge copies into one range (r2.6 octaves); count degrees as semitones while a scale is on |
 | U1 | the user pattern plays its steps' picks (k-th, low, high, chord) and rhythm exactly; a `setUserPattern` takes effect at the next step | ignore `pick`; swap mid-step |
@@ -794,6 +839,7 @@ produce no extra and no missing terminal (LIBRARY L0001).
 - **Q-A3:** the starter bank (§4.2 orders; `bank/starter.json` patterns).
 - **Q-A7:** which pass an explicit pick takes (§13b item 7; PROPOSED: the next
   order note's pass).
+- **Q-A8:** changing the chord shape while holding: leavers end and joiners start at once (PROPOSED).
 - **Q-A5:** pre-roll (**PROPOSED:** played; the grid extends to negative
   ticks). The tie direction is settled by D-010.
 - **Q-H3** (horde): the trigger-lane handoff.
@@ -893,3 +939,113 @@ before ratifying.
     no observable case in the lab smoke. Keys run in ascending order, so a
     dropped lower key cannot pull a later tie. It is implemented and
     asserted by construction; the C++ M1 suite revisits it.
+
+---
+
+## 14. The chord stage (D-018, r2.11)
+
+A **second note processor**, placed **before** the arp, in the same library.
+Each played note becomes the note plus up to six intervals, on its own
+`chord` stream, so horde can send the chord to some oscillators and the arp
+to others.
+
+**Chord notes behave like the player's held notes (the human, by poll, r4).**
+They follow only the keys, the pedal and the latch. They **ignore** transport
+edges (no T6), the arp's on/off, and the arp's notes.
+
+**Settings:**
+- `chord_enabled`;
+- `chord_unit` (`semitones` or `degrees`);
+- `chord_quantize`;
+- six slots, `chord_on1..6` and `chord_shift1..6` (−24…+24).
+
+**The module and the arp switch separately.**
+- `enabled` is the **whole module**. Off means horde routes input around
+  Arp, and every chord and arp note ends (T4).
+- **`arp_enabled`** (new, r4 H3) is the arp alone. With `arp_enabled` off
+  and `chord_enabled` on, Arp is a **chord generator**. Toggling the arp
+  never touches chord notes.
+
+**These settings apply at offset 0** of the block whose snapshot changes
+them, like `enabled`, not at the next arp step (r4 M4): the chord_*
+settings, `arp_enabled`, and (for the chord stage) the scale settings.
+
+**The mapping is stored, not recomputed (r4 H1).** When a held key `h`
+enters H (§3, any of DOWN, PEDAL or LATCHED), its chord keys are computed
+**once** and **stored per (h, slot)**:
+- **The `+0` slot** is `h` itself, as played, never moved.
+- **In semitones:** `h + shift`. With `chord_quantize` on, it is quantized
+  to the effective scale (§6: source, root and mask, the `chord_root`
+  anchor on the played keys H). Chord-stage ties **always go to the lower
+  key**, and the stage **never reads or writes `lastQ`**, which is the arp's.
+- **In degrees:** start from `h`'s nearest in-scale key (ties lower) and
+  move `shift` in-scale keys. With a zero mask, a degree is one semitone.
+- Keys outside 0–127 are dropped (T16).
+
+**When `h` leaves H**, its **stored** keys are decremented. Nothing is
+recomputed at release, so a scale or anchor change in between can never
+strand a note. Stored mappings are re-mapped only at these points, all at
+offset 0 of the block:
+- a chord_* setting change;
+- a scale-setting change;
+- `chord_enabled` turning on, which maps every held key.
+
+At each of these, keys that leave the set end, keys that join start, and
+unchanged keys keep sounding.
+
+**Dedupe by key** (r4 M2). The chord set is keyed by **key** alone. Each
+chord key keeps a **source count**. Its channel and velocity are fixed from
+its earliest source **at its NoteOn**. A source count that goes 1→0→1
+within one sample keeps the existing note, with no off/on pair (r4 M3).
+
+**Output** (`stream = chord`, own refs):
+- A chord key **starts** at the sample its count goes 0→1, and **ends**
+  (exactly one NoteOff) at the sample its count reaches 0.
+- It also ends at:
+  - `chord_enabled` off;
+  - the module's `enabled` off (T4);
+  - panic (T7);
+  - `reset`, `prepare` or deactivate (T10).
+- **Not** at transport edges (T6), and not at `arp_enabled` changes (T21).
+- At one offset, chord-stream ons sort **before** arp ons (§1.1, r4 L2).
+- A chord note refused at the event cap stays silent and is counted. It has
+  no sounding entry, so no off is owed.
+
+**Feeding the arp.** With `chord_enabled` on, the arp's held set **H′** is
+the chord set, built as follows:
+- each key's velocity and channel are the chord note's;
+- `Pp` press order is by first source press, then slot order;
+- `chord_root` for the arp's own quantize anchors on the played keys H.
+
+With the stage off, H′ = H.
+
+**Capacity** (r4 M6). The chord stage has **its own** sounding table: 224
+entries, preallocated (32 held keys × 7). So arp-note eviction (T11) never
+touches chord notes.
+
+**Invariant CH1** (§11), extended: stored mappings survive an anchor or
+scale change without stranding a note; both streams can sound on one key;
+the arp toggle leaves chord notes alone; a transport edge leaves chord notes
+alone; and N1 covers every chord note.
+12. **`latch` applies at offset 0 of its block**, like `enabled`, not at the
+    next arp step. It changes the held set H, and the chord stage follows H
+    with no arp steps at all (chord-generator mode). The lab build had applied
+    it at the next arp step; with the arp off, a latched chord then droned
+    forever after latch was turned off.
+13. **The chord stage's effective scale** is the arp's scale source, root
+    and mask, with the `chord_root` anchor on the played keys H. With the
+    arp's `quantize` off, the chord stage still uses that scale (as `scale`
+    mode). `chord_quantize` and degrees need a non-zero mask; a zero mask is
+    chromatic.
+14. **`arp_enabled` off** ends the arp's own notes (the arp's half of T4)
+    and clears its pending queue. Chord notes are untouched.
+15. **A chord re-map is triggered** by a changed signature: the chord_*
+    settings, the scale settings, the arp's `quantize` mode, and the global
+    root and mask when the global scale is the source.
+16. **With the module off**, the chord stage forgets its held keys.
+    Turning the module on with keys held maps them afresh.
+17. **A chord note refused at the event cap** stays silent and counted, and
+    is not retried while its count stays above 0.
+18. **Spent (exhausted) steps** leave no step record for the UI's step
+    highlight.
+
