@@ -1,4 +1,4 @@
-# Arp — 1.0 specification (DRAFT r2.7, Phase A)
+# Arp — 1.0 specification (DRAFT r2.9, Phase A)
 
 > **Status: DRAFT r2.1, 2026-10-21.** r1 was reviewed by an independent Opus
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -9,6 +9,8 @@
 > (D-010). r2.4 adds four chord + note order styles, the per-step `pick`, and
 > the user pattern (§4.6) (D-011). r2.5 added `landed` (D-012); r2.7 defers it past 1.0
 > (`docs/deferred/landed.md`) and replaces `octaves` with Ableton-style **steps** (§4.7, D-014).
+> r2.8 adds **time mode** (§2.6), the per-step **step offset** (§4.3) and the **pattern library** (§4.6) (D-016).
+> r2.9 folds in the third independent review (2 HIGH, 3 MED, 3 LOW; `docs/spec-review-r3.md`, D-017).
 > r2.6 folded in the second independent review
 > (5 HIGH, 8 MED, 4 LOW; `docs/spec-review-r2.md`, D-013).
 >
@@ -215,6 +217,63 @@ any block partition.
 - While stopped and idle, nothing runs, so no triggers fire.
 
 ---
+- **In time mode** (§2.6) the time clock is idle while H is empty, so trigger-only
+  steps do not fire with no keys held.
+
+### 2.6 Time mode: a free rate, from the key press (D-016)
+`rate_mode` is `sync` (the default: the grid is musical, §2.1–2.5) or `time`.
+
+**In `time` mode a tick is one microsecond.**
+- The step length is `L = step_time_us`, from 10,000 to 2,000,000 µs.
+- The display shows it **both ways at once**, as ms per step and as Hz.
+  10 ms is 100 Hz; 2 s is 0.5 Hz; the default 125,000 µs is 125 ms, or
+  8 Hz.
+- Positions use `D = sr` and `inc = 1,000,000` per sample. So every §2.3
+  and §5 formula (offsets, swing, gate, ratchets, ties, the 1-sample
+  minimum) applies **unchanged**, exactly, in integer arithmetic.
+
+**The time clock fires from the key press, whatever the transport is doing.**
+It behaves like the free clock (§2.4):
+- it starts at a gesture start with position 0, so step 0 lands on the key
+  press;
+- it re-bases at every gesture start, shifting pending positions exactly
+  (T14), with the epoch incremented;
+- it stops when Arp is idle.
+
+The host's tempo, position and transport edges are **ignored** in time mode
+(no T6 from them). Restart has nothing musical to count against:
+- `chord` anchors at the gesture start, as always;
+- `bar` and `free` both count from the time clock's tick 0, the gesture
+  start.
+
+**Changing the step time mid-pattern is smooth (the human, by poll; r3 HIGH-1).**
+`step_time_us` is a **continuous** setting, read at each step's evaluation.
+When the value read differs from the `L` in force:
+- the next unevaluated step `k₁ = lastEvaluated + 1` lands at
+  `max(lastTick + L_new, changeTick)`;
+  - `lastTick` is the tick of the last evaluated step;
+  - `changeTick` is the position where the change is applied (the block
+    start);
+- every later step is spaced by `L_new`: `tick(k) = originTick + (k − k₁)·L_new`.
+
+This is exact integer arithmetic, a piecewise grid; §2.1's "never
+accumulated" is about float drift. In practice:
+- the arp accelerates or decelerates from the step it is on, with no gap
+  longer than `max(L_old, L_new)` and **no burst** of overdue steps;
+- `m`, the pattern position and swing parity (`kAbs`) carry on;
+- sounding notes keep their offs (T18).
+
+**Restart is inert in time mode (r3 HIGH-2).** There are no bars in time.
+`bar` and `free` behave as `chord`: the pattern anchors at each gesture
+start. The UI greys `restart` out in time mode.
+
+**Switching `rate_mode` (r3 MED-4).**
+- `rate_mode` applies at **offset 0 of the block whose snapshot changes it**,
+  as `enabled` does. It is a clock switch (T6): release-all, then re-anchor.
+- **Entering time mode with H non-empty** starts the time clock at that
+  offset, as §2.4 H7b does.
+- `rate` is ignored in time mode, and `step_time_us` is ignored in sync mode.
+  A morph of the inactive one does nothing (no T15).
 
 ## 3. The held set
 
@@ -308,7 +367,7 @@ There are no octave copies. Range comes from **transposition steps**
 | `pedal_low` | e = 1: 1; else 2(e−1) | p even → E[0]; p odd → E[1 + (p−1)/2] |
 | `pedal_high` | e = 1: 1; else 2(e−1) | p even → E[e−1]; p odd → E[e−2 − (p−1)/2] |
 | `chord_walk` | e + 1 | p = 0 → every key of H (the chord); p ≥ 1 → E[p−1] |
-| `stride` | 2 | p = 0 → H[0] (the bass, lowest held); p = 1 → the **rest** of H, as a chord. With one key held, the rest is that key +12. A step's `oct` offset and the transposition (§4.7) apply to every key of the step, the bass included |
+| `stride` | 2 | p = 0 → H[0] (the bass, lowest held); p = 1 → the **rest** of H, as a chord. With one key held, the rest is that key +12. A step's `step` offset and the transposition (§4.7) apply to every key of the step, the bass included |
 | `chord_between` | 2e | p even → every key of H; p odd → E[(p−1)/2] |
 | `pairs` | e = 1: 1; else e − 1 | e = 1: {E[0]}; else {E[p], E[p+1]}, a dyad |
 
@@ -332,7 +391,9 @@ A pattern is `length` steps (1–64). Each step carries:
 - `tie`;
 - `vel` (0–200 %);
 - `gate` (1–200 %);
-- `oct` (−2…+2);
+- `step` (−8…+8): a pitch offset of `step × the pattern's step size` (D-016). It replaced r2.7's
+  `oct`. Each pattern carries `step_size` (−48…+48, default **+12**) and `step_unit`
+  (`semitones` or `degrees`), so `step = ±1` at the default is exactly the old octave;
 - `prob` (0–100 %);
 - `ratchet` (1–4);
 - `trig` (0–8);
@@ -355,10 +416,9 @@ grid tick, using **that block's settings snapshot** (H6). For step `s = steps[j]
    honoured by look-ahead (§5). Fire the trigger if `fires ∧ s.trig ≠ 0`.
 3. **Else if `s.on ∧ fires ∧ e > 0`**: **play**.
    - Take the note(s) at `p` (`pick = order`), or the step's explicit pick.
-   - Apply `s.oct·12` and the pass transposition `t` (§4.7, in semitones;
-     in degrees, §4.7's own order applies).
-   - **Drop** any key outside 0–127 (counted; H10, T16), **before** quantize.
-   - Quantize the kept keys (§6).
+   - Apply the step offset (`s.step × pattern step_size`) and the pass transposition `t`
+     with §4.7's "Applying offsets" rule. That rule includes the drop and the quantize; they are not
+     applied a second time.
    - Schedule the ons (§5). If `pick = order`, `m += 1`, even if every key
      was dropped. An explicit pick leaves `m` unchanged.
    - Fire the trigger if `s.trig ≠ 0`.
@@ -414,6 +474,32 @@ At every anchor `m := 0` (H8).
   user pattern's content does not morph; it is one pattern per preset.
 - **Ties and look-ahead (§5.2)** read the user pattern exactly as they read a
   bank pattern.
+- **Pattern-level fields:** `step_size` (−48…+48, default +12) and
+  `step_unit` (`semitones` or `degrees`) scale every step's `step` (§4.3).
+  Bank patterns carry them too (`spec/bank` `pattern_defaults`).
+- **The pattern library (D-016)** belongs to the adapter and UI, not the
+  core. It holds **named saved copies** of user patterns. Saving stores the
+  editor's pattern under a name; recalling one calls `setUserPattern` with
+  it. The core only ever holds the one active pattern.
+  - **Format rules (r3 LOW-6):**
+    - **Unknown fields are ignored.** A `format` other than `arp-user-pattern/1` is
+      rejected.
+    - **Steps are padded** (with `step_defaults`) **or truncated to `length`**, which
+      clamps to 1–16.
+    - **Every field is validated** by `setUserPattern`'s rules.
+    - **Repo patterns are read-only** and listed with their source. A browser save that
+      shares a repo pattern's name is a separate entry, marked "(browser)", and never
+      overwrites the repo file.
+    - **Bank patterns may override** `pattern_defaults` with their own `step_size`
+      and `step_unit`.
+  - **Storage format:** `arp-user-pattern/1`, holding `name`, `length`,
+    `step_size`, `step_unit` and `steps[]` (omitted step fields take
+    `step_defaults`). Files of this format in `lab/patterns/`, listed in
+    `lab/patterns/index.json`, are patterns **saved in the repo**.
+  - **In the lab:** the library lists the repo's patterns plus any saved in
+    the browser. Export and import use the same JSON.
+  - **In horde:** the library lives in horde's preset system (Q-H6). Read
+    horde ADR-169 first: module presets "embed by value".
 - **The `pick` encoding:** the JSON string `"order"`, `"low"`, `"high"` or
   `"chord"`, or an integer 1–8. Anything else is read as `"order"`.
 
@@ -445,18 +531,32 @@ transposition of a step is
 - Because `t` derives from `m`, it resets wherever `m` does (every anchor,
   §4.5).
 
-**Applying t**, in the play rule (§4.3), to every key of the step:
-- **`semitones`:** `key + t · step_size`, together with the step's
-  `oct·12`, **before** the out-of-range drop and before quantize. So
-  quantize can pull a shifted note into the scale.
-- **`degrees`:** the key is first quantized to the effective scale (§6).
-  It then moves `t · step_size` **in-scale keys** up or down that scale,
-  counting only keys in the scale. Then the step's `oct·12` is added, and
-  keys outside 0–127 are dropped.
-  - With quantize `off`, or a zero mask, a degree is one semitone (the
-    chromatic scale).
-  - A degree-transposed key is in the scale by construction, and it sets
-    `lastQ` like any quantized key.
+**Applying offsets**, in the play rule (§4.3), to every key of the step.
+Two offsets can apply:
+- the pass transposition, `t × step_size` in the global `step_unit`;
+- the step offset, `s.step × the pattern's step_size` in the pattern's
+  `step_unit`.
+
+Each offset is either a **semitone** part or a **degree** part, and the parts
+are summed by kind: `S` semitones, `G` degrees. Then, **per key**, in ascending
+pre-quantize key order, each key running through all six stages before the
+next key starts (r3 MED-3); a tie in stage 3 reads `lastQ` as the previous key left it:
+1. `key + S`.
+2. **Drop** any key outside 0–127 (T16).
+3. **Quantize** (§6), if it is on.
+4. **Move `G` in-scale keys** up or down the effective scale, counting only
+   keys in the scale.
+   - With quantize `off`, or a zero mask, a degree is one semitone (the
+     chromatic scale).
+   - A degree-moved key is in the scale by construction.
+5. **Drop** any key now outside 0–127 (T16).
+6. **`lastQ`** is set to the key's final value only if the key **survives
+   stage 5**. A dropped key never sets it.
+
+With every part in semitones this is r2.7's rule; with `G = 0`, stages 4–5
+change nothing. **One behaviour change from r2.7 (r3 LOW-7, recorded in D-017):** with the GLOBAL unit in
+degrees, a semitone step offset now applies before quantize and the degree move, so a key near the top or
+bottom can now be dropped where r2.7 kept it, and a tie can resolve differently.
 
 **Morph:** `steps`, `step_size` and `step_unit` are discrete settings (§9),
 applied from the next evaluated step.
@@ -597,6 +697,8 @@ table **and clears the pending queue**.
 | T15 | a rate change | none; offs keep their ticks; re-anchor per §4.5 |
 | T16 | a key dropped outside 0–127 | none emitted, so nothing to end |
 | T17 | the user pattern is replaced (`setUserPattern`) | none: it applies from the first step evaluated in the next `process`; a note already tied keeps its scheduled off |
+| T18 | `step_time_us` changes in time mode | none: the piecewise grid (§2.6) moves future steps only; sounding notes keep their offs |
+| T19 | `rate_mode` switches | release-all at offset 0 of that block (T6), then re-anchor |
 
 T3, T8, T9, T12, T14, T15 and T16 are rows on purpose: each must be shown to
 produce no extra and no missing terminal (LIBRARY L0001).
@@ -616,7 +718,8 @@ produce no extra and no missing terminal (LIBRARY L0001).
 ## 9. Settings, morph and timing of changes
 - All settings arrive as **integers** (`params.json`). horde rounds morph
   blends to the nearest integer before the snapshot.
-- **Continuous settings:** `gate` (1–200 %), `swing` (500–750 ‰), `vel_fixed`.
+- **Continuous settings:** `gate` (1–200 %), `swing` (500–750 ‰), `vel_fixed`, and `step_time_us`
+  (time mode; it changes smoothly per §2.6).
 - **Discrete settings:** all the rest. All of them are morph targets
   (D-000 Open 5).
 - **Q-A1, PROPOSED.** horde resolves a discrete setting to the value of the
@@ -670,6 +773,10 @@ produce no extra and no missing terminal (LIBRARY L0001).
 | R1 | rest, miss, tie, trigger-only and explicit-`pick` steps don't advance `m` | advance `m` on rests; advance `m` on explicit picks |
 | N2 | `shuffle` never plays the same key twice in a row (e ≥ 2), and every key once per cycle | skip the boundary swap |
 | Q5 | with ties toward a previous note above the tie, ties resolve UP; G1 holds with quantize ties in play; `lastQ` resets at release-all | always down; update `lastQ` at emission; never reset `lastQ` |
+| TM1 | time mode: step k sounds at `cdiv((k·step_time_us + swingDelay(k))·sr, 10⁶)` samples after the gesture's key press, whatever the host tempo, position or transport does; identical at every block size and sample rate (in µs) | use the host tempo; anchor at the transport |
+| TM2 | a `step_time_us` change mid-gesture: the next step lands at `max(lastTick + L_new, changeTick)`, then every `L_new`; no gap longer than `max(L_old, L_new)`, no burst | re-grid on absolute multiples of `L_new`, or `kAbs·L_new` |
+| TM3 | in time mode `restart` is inert (`bar` = `free` = `chord`) | count bars of 61,440 µs |
+| ST1 | the step offset is `step × pattern step_size` in the pattern's unit; at +12 semitones `step ±1` equals the old octave; degrees count in-scale keys | treat every step size as 12; read the GLOBAL step_size/unit for the step offset (tested with values that differ from the pattern's) |
 | X1 | transposition steps: pass t of every style is the base pass shifted by t·step_size (semitones), or moved t·step_size in-scale keys (degrees); `steps = 0` never shifts; the pass returns to 0 after `steps` | merge copies into one range (r2.6 octaves); count degrees as semitones while a scale is on |
 | U1 | the user pattern plays its steps' picks (k-th, low, high, chord) and rhythm exactly; a `setUserPattern` takes effect at the next step | ignore `pick`; swap mid-step |
 | P1 | `prob` 0 never fires and 100 always fires (exact); 30 and 50 are within ±2 % over 10,000 steps | use `<=` (caught at the exact endpoints, since a ±2 % band cannot see it) |
@@ -690,7 +797,7 @@ produce no extra and no missing terminal (LIBRARY L0001).
 - **Q-A5:** pre-roll (**PROPOSED:** played; the grid extends to negative
   ticks). The tie direction is settled by D-010.
 - **Q-H3** (horde): the trigger-lane handoff.
-- **Q-H6** (horde): how a preset carries Arp's user pattern (a structured
+- **Q-H6** (horde): how horde's presets carry Arp's user pattern and its pattern **library** (structured
   blob, not parameters).
 - **Q-H4** (horde, after 1.0): per-channel and MPE pedals; mapping per-note
   expressions onto Arp's output notes.
@@ -763,10 +870,8 @@ before ratifying.
    evaluation and emission interleave in time order at every block size, so
    G1 cannot diverge on it. The rule is enforced by construction (`_quant`
    runs inside step evaluation). The C++ M1 suite revisits this.
-4. **`lastQ` under degree transposition** is the final output key, after the
-   degree move and the octave shift. It is set only while quantize is on
-   with a non-zero mask. A key dropped as out of range leaves `lastQ` at its
-   first quantize result.
+4. **`lastQ` under offsets:** superseded by §4.7 "Applying offsets" stage 6 (r2.9). `lastQ` is the
+   final key, set only when the key survives the last drop.
 5. **A degree move that runs off 0–127** drops the key (counted, T16).
 6. **Pass 0 in degrees mode** takes the ordinary path. Quantizing first
    changes nothing there.
@@ -777,3 +882,14 @@ before ratifying.
    pass. The smoke pins it: `60 60 64 60 67 | 72 72 72 76 72 79 | 60 60 60`.
    The alternative, the pass of the *previous* order note, gets the opposite
    case wrong.
+8. **Time mode `changeTick`** is the block-start position, rounded up to a
+   whole microsecond.
+9. **A tie's look-ahead across a step-time change** extends at the `L` in
+   force when the tied note is scheduled. That note's off is fixed then and
+   does not move.
+10. **A step-time change before any step of the gesture is evaluated** just
+    sets `L`, so step 0 still lands on the press.
+11. **Stage 6 of "Applying offsets"** (a dropped key never sets `lastQ`) has
+    no observable case in the lab smoke. Keys run in ascending order, so a
+    dropped lower key cannot pull a later tie. It is implemented and
+    asserted by construction; the C++ M1 suite revisits it.

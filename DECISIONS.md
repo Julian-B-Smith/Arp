@@ -448,3 +448,106 @@ The settings are `steps` 0–8 (default 0), `step_size` −48…+48 (default +12
 and `step_unit`. This is SPEC r2.7 §4.7, with invariant X1. Order styles now
 walk just the held keys; `chord` and `stride` lose their octave cycling,
 because transposition supplies the range.
+
+## D-015 — horde answered the spin-up and trigger notices (recorded 2026-10-22)
+
+horde filed `response-spinup` (seq 2, 2026-10-21) and `response-triggers`
+(seq 4, 2026-10-22) in its own tree (`integrations/arp/`). Both are
+`ball: Arp`, "nothing owed". Read and recorded:
+- **Q-H1 (the 1.0 bar) is answered.** It is horde's
+  `docs/proposals/note-processor-1.0-bar.md`:
+  - every note ends exactly once;
+  - sample-exact against the transport, with time signatures as data;
+  - no input gives no output;
+  - the pedal and restart behaviour as ruled;
+  - quantize stays in scale;
+  - triggers never create history;
+  - **CPU ≤ 2 % of a min-spec core**, within horde's modulation, morph and
+    intent bus slice;
+  - cutoff 2026-12-11.
+
+  It becomes the M3 gate's checklist.
+- **Q-H2 (consumption) is answered.** horde **copies our core into its own
+  tree at our V1**, by a horde PR that records our commit hash. There is no
+  submodule, package or lock file (horde ADR-269, after Sluice D-096). So:
+  - the C++ core stays **self-contained and framework-free, buildable
+    without horde**;
+  - M3 ships **a file list** for horde to take.
+- **Q-H3 (trigger lanes) is answered.** Our `Trigger{lane 1–8, sampleOffset}`
+  is right.
+  - horde shows the lanes as event sources "Arp · T1"–"T8".
+  - horde stores any lane names in its own preset, as display text.
+  - The lane→target routes are horde's patch data.
+- **The routing request is acknowledged.** horde apologised, and everything
+  now comes through our mailbox.
+- **ARP name** noted for horde's B433.
+
+Still open with horde: Q-H5 (the direct-only pedal) and Q-H6 (presets for
+the user pattern and its library), which is ours to file after reading
+ADR-169.
+
+## D-016 — Time mode; the user-pattern library; step offset × pattern step size (RATIFIED by poll, 2026-10-22)
+
+The human said: "we only created a sync mode and we need a time mode as
+well", "save 'build your own' arp patterns as presets", and "replace the
+static octave with step and step size in the build your own". By poll, at
+`/wakeup`:
+- **Time mode, in 1.0.** This supersedes D-000 Open 2's "free rate in Hz
+  after 1.0".
+  - `rate_mode` is `sync` or `time`.
+  - In time mode, one continuous setting, `step_time_us` (10 ms to 2 s), is
+    **shown both as ms per step and as Hz**.
+  - It **fires from the key press** in either case, ignoring the host tempo
+    and transport.
+  - SPEC §2.6: a tick is one microsecond, so every timing formula applies
+    unchanged and exact.
+  - Rejected: transport-anchored time (the human chose the key press).
+- **A user-pattern library.**
+  - Named saved copies of user patterns. Recalling one loads it into the
+    single user-pattern slot.
+  - It is adapter and UI data, not core state.
+  - The lab library lists patterns saved in the repo (`lab/patterns/`,
+    format `arp-user-pattern/1`) and in the browser, with JSON
+    export/import.
+  - In horde, it lives in horde's presets (Q-H6).
+  - Rejected: a bank-design-only save.
+  - **First entry:** the human's "Broken chord stabs" (picks 1, 3, 2,
+    chord, 1, 4, chord +1 step, 2), saved at their request.
+- **The step offset.** The per-step `oct` becomes `step` (−8…+8), times a
+  per-pattern `step_size` (−48…+48, default +12) in `semitones` or
+  `degrees`.
+  - With the defaults, `step ±1` is exactly the old octave, so the bank's
+    "Octave leap" is unchanged.
+  - The bank format gains `pattern_defaults`.
+  - SPEC §4.7 now sums semitone and degree parts from the transposition
+    and the step offset, in one stated order.
+  - Rejected: per-step sizes, and a bare semitone offset.
+
+**Scope:** this is the sixth and seventh widening of 1.0. Where time mode
+and the library sit in the cutoff yield order is **not yet placed**: ask at
+the next phase gate. The library is UI-side and cheap. Time mode is core
+timing, with a new invariant TM1.
+
+## D-017 — Spec r2.9 after the third independent review; a smooth step-time sweep (RATIFIED by poll, 2026-10-22)
+
+The Opus critic, sourced separately from the author, rated r2.8 **REWORK**
+(2 HIGH, 3 MED, 3 LOW). The per-finding disposition is in
+`docs/spec-review-r3.md`.
+
+The human's ruling on the critic's question: **sweeping the step time
+speeds the arp up or slows it down smoothly from the step it is on**.
+- The next step comes at `max(lastTick + L_new, changeTick)`, then every
+  `L_new`: no gap beyond max(L), no burst, and the pattern position kept.
+- Rejected: waiting and restarting the pattern, as a synced rate change
+  does.
+
+Also adopted:
+- **restart is inert in time mode** (there are no bars in time);
+- `rate_mode` applies at offset 0 of its block;
+- the offset stages run per key;
+- the user-pattern format rules;
+- **one accepted behaviour change from r2.7:** with the global unit in
+  degrees, a semitone step offset now applies before quantize.
+
+The implementer's earlier reading of a step-time change (re-grid on
+absolute multiples of the new length) is superseded.

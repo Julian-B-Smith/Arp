@@ -1,0 +1,37 @@
+{
+  "format": "arp-user-pattern/1",
+  "name": "Broken chord stabs",
+  "saved": "2026-10-22",
+  "origin": "the human's own pattern, built in the lab's Build your own editor and saved at their request (screenshot transcribed by the lead; their step 7 octave +1 is step +1 at step size +12 semitones, identical)",
+  "note": "omitted step fields take spec/bank/starter.json step_defaults (on, vel 100, gate 100, step 0, prob 100, ratchet 1, trig 0)",
+  "length": 8,
+  "step_size": 12,
+  "step_unit": "semitones",
+  "steps": [
+    {
+      "pick": 1
+    },
+    {
+      "pick": 3
+    },
+    {
+      "pick": 2
+    },
+    {
+      "pick": "chord"
+    },
+    {
+      "pick": 1
+    },
+    {
+      "pick": 4
+    },
+    {
+      "pick": "chord",
+      "step": 1
+    },
+    {
+      "pick": 2
+    }
+  ]
+}

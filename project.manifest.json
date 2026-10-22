@@ -24,6 +24,7 @@
       "restart": "A PARAMETER with three values: on a new chord from silence (step 1 at the next grid tick); on the bar (step index from song position); free-running. Step TIMING is always the transport grid; restart decides only which step plays next. Each value carries its own invariants. Open 4, by poll (the human chose all three over the single recommended rule).",
       "morph": "ALL Arp settings are morph targets with horde's corners. Continuous settings blend; discrete settings (mode, rate, steps, restart, velocity mode, latch) switch at a threshold — the threshold rule, where a switch lands relative to the grid, and that no switch strands a note without its terminal are Phase A spec items. Open 5, by poll (the human chose all over global).",
       "presets_undo": "Every setting is part of a horde preset and undoable.",
+      "time_mode_library_step_offset": "Added 2026-10-22 by poll (D-016): rate_mode sync|time, step_time_us shown as ms and Hz, firing from the key press; a user-pattern library (UI/adapter; lab/patterns/ + browser; horde presets via Q-H6); per-step `step` x pattern step_size (semitones|degrees) replacing `oct`.",
       "landed_deferred": "D-012's `landed` (order + timing of presses) is DEFERRED past 1.0 by the human (D-014); design preserved in docs/deferred/landed.md.",
       "chord_modes_user_pattern": "Added 2026-10-22 by poll (D-011): four chord + note order styles (chord_walk, stride, chord_between, pairs); a per-step `pick` (order | 1-8 | low | high | chord; only `order` advances the order stream); the user pattern `user` (up to 16 steps, notes and rhythm per step, preset data, set off the audio thread). In 1.0, lab first.",
       "trigger_output": "Added 2026-10-21 by poll (D-007), from horde ADR-267 A1: step patterns carry a trigger lane (0–8); a firing step emits Trigger{lane} at its on-time; trigger-only steps exist; triggers are performance events (no history, no terminal). Lane routing is horde's (Q-H3).",
@@ -71,7 +72,7 @@
   },
   "open_at_survey": {
     "step_sequencer_home": "After 1.0: an extension of the arp's pattern grid, or its own lab/module here — decided at the post-1.0 gate (Open 6, by poll). Phase A designs the core as a pattern grid so extension stays possible.",
-    "free_rate_hz": "Deferred past 1.0 (Open 2).",
+    "free_rate_hz": "Superseded 2026-10-22 by D-016: time mode is in 1.0.",
     "starter_bank_contents": "Which ~12–16 entries ship in 1.0 — chosen in Phase A from the Phase 0 landscape and by playing in the lab (ROADMAP Q-A3).",
     "morph_discrete_rule":"Threshold, grid alignment and terminal safety for discrete-setting switches under morph — Phase A spec (Open 5)."
   },

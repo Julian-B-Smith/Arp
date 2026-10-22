@@ -5,8 +5,8 @@ plays them as a pattern in time. After 1.0 it grows into step sequencing and gen
 library that horde runs ahead of its engine, plus a browser lab for playing it. "Arp" is a working name; the
 user-facing name is cleared before release.
 
-**Status: Phase A built (2026-10-21/22), awaiting your playing and ratification.** The spec (draft r2.7) is written and
-twice independently reviewed, and the lab plays all of it.
+**Status: Phase A built (2026-10-21/22), awaiting your playing and ratification.** The spec (draft r2.9) is written and
+three times independently reviewed, and the lab plays all of it.
 To play it:
 
 ```bash
@@ -23,8 +23,11 @@ in [`ROADMAP.md`](ROADMAP.md).
   back-to-back repeats), converge, diverge, two pedal-tone styles, and four that mix chords and notes (chord then walk,
   stride, chord between notes, pairs). Random draws are seeded, so they repeat.
 - **Build your own:** up to 16 steps, each choosing which held note(s) play (the next of the order, 1st–8th, lowest,
-  highest, or the chord) plus its rhythm. Saved with the preset.
-- **Rate:** tempo-synced by horde's division names, with dotted and triplet values.
+  highest, or the chord) plus its rhythm, with a per-step offset of `step × the pattern's step size` (semitones or scale
+  degrees). A **library** saves patterns by name: in this repo (`lab/patterns/`) or in your browser, with JSON
+  export/import.
+- **Rate:** tempo-synced by horde's division names (dotted and triplet included), or **time mode**: a free step length
+  shown as both ms and Hz, starting from your key press. Sweeping it speeds the arp up or down smoothly.
 - **Shape:** transposition steps (the pattern repeats shifted, by semitones or scale degrees, like Ableton's), gate length (past 100% for legato), swing, and velocity (as played, fixed, or accented by
   step).
 - **Holding:** latch, either replacing or adding to the held notes. The sustain pedal holds the arp's input notes.
@@ -54,11 +57,12 @@ landed" (replaying the timing of your presses) is held for after 1.0: `docs/defe
 | `integrations/` | Inbound mailbox (`integrations/<sender>/`) and the outbound thread table | live |
 | `docs/filings/` | Working copies of what Arp filed in other repos | live |
 | `docs/prior-art.md` | Phase 0: pattern-bank landscape, failure modes, grid math, name check (dated, cited) | done |
-| `spec/` | The 1.0 spec (SPEC.md), every setting (params.json), the candidate step-pattern bank | draft r2.7, awaiting ratification |
+| `spec/` | The 1.0 spec (SPEC.md), every setting (params.json), the candidate step-pattern bank | draft r2.9, awaiting ratification |
 | `lab/arp-lab.html` | The playable twin: Ableton-style computer keys, MIDI, transport, every setting, morph A/B, a small synth, a **pattern view** (one full cycle as the core plays it, plus a live roll), an **order × pattern** thumbnail matrix, and a **build-your-own** step editor | built; play it to settle the open listening questions in ROADMAP (how settings switch during a morph, restart under morph, which patterns ship, pre-roll, tie memory, which pass a pick takes) |
 | `tools/lab_smoke.mjs` | Headless checks of the lab core against the spec's invariants, run by `./verify fast` | live |
-| `docs/spec-review-r1.md`, `docs/spec-review-r2.md` | The two independent critic reviews of the spec, and where each finding went | done |
+| `docs/spec-review-r1.md` … `-r3.md` | The three independent critic reviews of the spec, and where each finding went | done |
 | `docs/deferred/` | Designs held for after 1.0 (`landed.md`) | live |
+| `lab/patterns/` | Your saved build-your-own patterns (`arp-user-pattern/1` JSON, listed in `index.json`) | live: "Broken chord stabs" |
 | `index.html` | Root landing page: redirects to the lab | done |
 | `core/` | C++ core | not yet built (M1) |
 | `verify` | The oracle: `./verify fast` / `full` / `report` | live |
