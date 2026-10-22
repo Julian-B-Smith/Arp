@@ -16,4 +16,5 @@ Where things are. Update in the same change that moves them.
 | `lab/arp-lab.html` | Single-file twin: CORE (pure; sliced by the smoke) / UI (adapter) banners |
 | `tools/lab_smoke.mjs` | Headless lab smoke: SPEC §11 invariants with planted controls |
 | `.claude/launch.json` | `lab` preview server (python http.server on localhost) |
+| `index.html` | Root landing page: redirects to the lab, so the server's root is not a bare directory listing |
 | `core/` | _planned, M1_ — C++20 library (CMake, Unix Makefiles) |
