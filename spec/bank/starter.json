@@ -1,6 +1,6 @@
 {
   "format": "arp-bank/1",
-  "status": "DRAFT 2026-10-21 — CANDIDATES for the starter bank (Q-A3, decided by playing the lab). Clean-room: names and patterns are ours (D-004).",
+  "status": "DRAFT 2026-10-22 — CANDIDATES for the starter bank (Q-A3, decided by playing the lab). Clean-room: names and patterns are ours (D-004).",
   "step_defaults": {
     "on": true,
     "tie": false,
@@ -9,9 +9,10 @@
     "oct": 0,
     "prob": 100,
     "ratchet": 1,
-    "trig": 0
+    "trig": 0,
+    "pick": "order"
   },
-  "fields": "SPEC §4.3: on, tie, vel %, gate %, oct, prob %, ratchet 1-4, trig lane 0-8",
+  "fields": "SPEC §4.3: on, tie, vel %, gate %, oct, prob %, ratchet 1-4, trig lane 0-8, pick (order | 1-8 | low | high | chord)",
   "patterns": [
     {
       "id": "none",

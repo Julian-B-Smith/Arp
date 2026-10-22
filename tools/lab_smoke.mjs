@@ -75,15 +75,17 @@ const tickStreamOf = evs => evs.map(e => `${e.t} ${e.key} ${e.vel} ${e.lane} ${e
 function run(o) {
   const sr = o.sr || 8000, block = o.block || 64, total = o.total;
   const c = o.core || mkCore();
+  if (o.userPattern) c.setUserPattern(o.userPattern);   // BEFORE prepare on purpose: SPEC 4.6 says the user pattern survives it
   c.prepare(sr, o.maxBlock || 4096);
   const host = o.host || X.simHost({ sr, bpm: o.bpm || 120, startBeats: 0, playing: true });
   const cfg = (o.cfg || []).slice().sort((a, b) => a.at - b.at), ins = (o.ins || []).slice().sort((a, b) => a.at - b.at);
-  const resets = o.resets || [];
-  const cuts = [...new Set([...host.edges(0, total), ...cfg.map(x => x.at), ...resets].filter(x => x > 0 && x < total))].sort((a, b) => a - b);
+  const resets = o.resets || [], edits = (o.userEdits || []).slice().sort((a, b) => a.at - b.at);
+  const cuts = [...new Set([...host.edges(0, total), ...cfg.map(x => x.at), ...edits.map(x => x.at), ...resets].filter(x => x > 0 && x < total))].sort((a, b) => a - b);
   const settingsAt = pos => Object.assign(X.defaultSettings(), { enabled: true }, o.base || {}, ...cfg.filter(x => x.at <= pos).map(x => x.set));
   const evs = [], steps = []; let epoch = 0, pos = 0, ci = 0;
   while (pos < total) {
     if (resets.includes(pos)) { for (const e of c.reset()) evs.push(norm(e, pos, epoch)); epoch++; }
+    for (const ed of edits) if (ed.at === pos) c.setUserPattern(ed.p);   // between blocks, in list order (two at one sample: the later one must win)
     while (ci < cuts.length && cuts[ci] <= pos) ci++;
     const n = Math.min(block, (ci < cuts.length ? cuts[ci] : total) - pos);
     const inb = ins.filter(e => e.at >= pos && e.at < pos + n).map(e => { const r = Object.assign({}, e, { s: e.at - pos }); delete r.at; return r; });
@@ -120,6 +122,7 @@ function n1(evs) {
 const K = (at, ref, key, extra) => Object.assign({ at, t: "on", ref, key, vel: 100 }, extra);
 const O = (at, ref) => ({ at, t: "off", ref });
 const NDOWN = { root: 0, mask: 0xAB5 };
+const inScale = (key, root, mask) => ((mask >> (((key - root) % 12) + 12) % 12) & 1) === 1;
 const SESS = {
   // T1 gate end, T2 same-key retrigger (gate 150 on one key), T3 held-set change, latch replace/append, pedal, T8 discrete, T9 continuous, T12 tie
   held: () => ({ total: 44000, base: { order: "up", gate: 150 },
@@ -144,6 +147,19 @@ const SESS = {
     cfg: [{ at: 8000, set: { order: "down" } }, { at: 12000, set: { rate: "1/8" } }, { at: 16000, set: { pattern: "roll_end" } }, { at: 20000, set: { octaves: 2 } }, { at: 24000, set: { restart: "bar" } },
       { at: 28000, set: { restart: "free" } }, { at: 32000, set: { quantize: "scale" } }, { at: 36000, set: { vel_mode: "fixed", seed: 7 } }, { at: 40000, set: { restart: "chord", order: "shuffle" } }],
     ins: [K(100, "a", 61), K(100, "b", 64), K(100, "c", 66)] }),
+  // SPEC 4.2 / 4.6: the four chord + note styles, a user pattern edited mid-run, landed, shuffle, with quantize ties in play
+  styles: () => ({ total: 44000, scale: NDOWN, userPattern: UP1, base: { order: "chord_walk", pattern: "user", gate: 120, octaves: 2 },
+    cfg: [{ at: 8000, set: { order: "stride" } }, { at: 12000, set: { quantize: "scale" } }, { at: 14000, set: { order: "chord_between" } }, { at: 20000, set: { order: "pairs" } },
+      { at: 26000, set: { order: "landed" } }, { at: 32000, set: { order: "shuffle", pattern: "tied_legato" } }, { at: 38000, set: { order: "chord_walk", pattern: "user" } }],
+    userEdits: [{ at: 17003, p: { length: 5, steps: [{ pick: "high" }, { tie: true }, { pick: "chord", ratchet: 3 }, {}, { pick: 2, trig: 1 }] } }],
+    ins: [K(100, "a", 60), K(100, "b", 66), K(900, "c", 70), O(15000, "b"), K(16200, "d", 63), O(30000, "a"), O(30000, "c"), O(30000, "d"), K(33000, "e", 61), K(33400, "f", 69)] }),
+  // SPEC 4.7: landed, with a repeated press, a mid-gesture release, a rate change, a transport stop/start (the phrase re-anchors), a second gesture
+  landed: () => {
+    const host = X.simHost({ sr: 8000, bpm: 120, startBeats: 0, playing: true });
+    host.set(26000, { playing: false }); host.set(30000, { playing: true, seekBeats: 0 });
+    return { total: 44000, host, base: { order: "landed", pattern: "gallop", gate: 150, octaves: 2 }, cfg: [{ at: 18000, set: { rate: "1/8" } }],
+      ins: [K(100, "a", 60), K(2400, "b", 64), K(4100, "c", 67), K(6200, "a2", 60), O(9000, "b"), K(10200, "d", 72), O(21000, "a"), O(21000, "a2"), O(21000, "c"), O(21000, "d"), K(31000, "e", 55), K(33300, "f", 59)] };
+  },
   // T10 reset() mid-run (ids restart), then a new gesture
   reset: () => ({ total: 30000, base: { gate: 150 }, resets: [20000], ins: [K(100, "a", 60), K(100, "b", 64), K(21000, "c", 67)] }),
   // T11 the sounding table is full (a small table keeps the session short)
@@ -151,6 +167,9 @@ const SESS = {
   // T16 keys outside 0-127, and a note shorter than one sample (SPEC 1.1 deferral): 999 bpm, 1/64, gate 1 %
   short: () => ({ total: 8000, bpm: 999, base: { rate: "1/64", gate: 1, octaves: 2, order: "up" }, ins: [K(100, "a", 60), K(100, "b", 125)] }),
 };
+// A user pattern that uses every field: picks, a tie, a ratchet, a trigger, a rest, a probability and an octave.
+const UP1 = { length: 8, steps: [{ pick: "order" }, { pick: 3, ratchet: 2, vel: 130 }, { tie: true }, { pick: "low", gate: 50 }, { pick: "high", trig: 2 },
+  { pick: "chord", prob: 80 }, { on: false }, { pick: "order", oct: 1 }] };
 const ROWS = {};
 const addRows = c => { for (const [k, v] of Object.entries(c.rows)) ROWS[k] = (ROWS[k] || 0) + v; };
 const runSess = (name, block, plants) => {
@@ -182,8 +201,12 @@ const runSess = (name, block, plants) => {
 function g1Session(plants, block) {
   const host = X.simHost({ sr: 8000, bpm: 120, startBeats: 0, playing: true });
   host.set(9500, { bpm: 133.7 }); host.set(15003, { bpm: 90.5 }); host.set(22001, { playing: false }); host.set(26007, { playing: true, seekBeats: 3 }); host.set(33000, { seekBeats: 0.5 });
-  return run({ core: mkCore(plants), block, host, total: 52000, base: { order: "random", pattern: "roll_end", swing: 620, gate: 130, seed: 42, rate: "1/32" },
-    cfg: [{ at: 9001, set: { order: "shuffle", pattern: "sparse_chance" } }, { at: 18007, set: { rate: "1/16", latch: "replace" } }, { at: 30011, set: { order: "bounce", pattern: "tied_legato", rate: "1/32" } }],
+  return run({ core: mkCore(plants), block, host, total: 52000, scale: NDOWN, userPattern: UP1, base: { order: "random", pattern: "roll_end", swing: 620, gate: 130, seed: 42, rate: "1/32" },
+    // the tail adds the four chord + note styles, a user pattern (edited mid-step), landed and quantize with real ties (F# between F and G)
+    userEdits: [{ at: 40007, p: { length: 3, steps: [{ pick: "chord" }, { pick: 2, ratchet: 2 }, { pick: "low" }] } }],
+    cfg: [{ at: 9001, set: { order: "shuffle", pattern: "sparse_chance" } }, { at: 18007, set: { rate: "1/16", latch: "replace" } }, { at: 30011, set: { order: "bounce", pattern: "tied_legato", rate: "1/32" } },
+      { at: 34003, set: { order: "stride", pattern: "user", octaves: 2, quantize: "scale" } }, { at: 38501, set: { order: "landed", pattern: "none" } }, { at: 44001, set: { order: "chord_walk", pattern: "user" } },
+      { at: 46001, set: { order: "chord_between" } }, { at: 48003, set: { order: "pairs" } }],
     ins: [K(37, "a", 60), K(41, "b", 64), K(3011, "c", 67), O(12003, "a"), { at: 13000, t: "pedal", down: true }, O(14001, "b"), K(17777, "d", 72), O(19000, "c"), { at: 24000, t: "pedal", down: false }, K(25100, "e", 55), K(36000, "f", 59), { at: 38000, t: "panic" }, K(38500, "g", 62), K(41000, "h", 66), O(45000, "h"), K(47000, "i", 69)] });
 }
 function g1Diverges(plants) {
@@ -199,8 +222,9 @@ function g1Diverges(plants) {
   plant(g1Diverges(["clampOffset"]) !== null, "G1 detects offsets clamped into the block: " + g1Diverges(["clampOffset"]));
   plant(g1Diverges(["floatPosition"]) !== null, "G1 detects a position accumulated in float: " + g1Diverges(["floatPosition"]));
   const r = g1Diverges([]);
-  const n = g1Session([], 64).evs.length;
-  check(r === null && n > 100, `G1: ${n} events, absolute samples identical at block sizes 4096/512/64/7/1 (swing, ratchets, prob, tempo change, stop/start, jumps, latch, pedal, panic)` + (r ? " - " + r : ""));
+  const g1 = g1Session([], 64), n = g1.evs.length;
+  const qd = g1.evs.filter(e => e.t === "on" && e.a >= 36000);   // steps evaluated well after quantize switched on
+  check(r === null && n > 100 && qd.length > 20 && qd.every(e => inScale(e.key, 0, 0xAB5)), `G1: ${n} events, absolute samples identical at block sizes 4096/512/64/7/1 (swing, ratchets, prob, tempo change, stop/start, jumps, latch, pedal, panic, quantize ties, user pattern, the new styles, landed)` + (r ? " - " + r : ""));
 }
 
 // ---- 5. G2: ons land at cdiv of their exact tick position --------------------------------
@@ -255,15 +279,17 @@ function g1Diverges(plants) {
 
 // ---- 10. Q1-Q4: quantize in horde's scale schema (SPEC §6, D-010) ----------------------------
 // The mask is ROOT-RELATIVE (degree i = i semitones above the root), as horde's quantise() reads it.
-const inScale = (key, root, mask) => ((mask >> (((key - root) % 12) + 12) % 12) & 1) === 1;
 const MAJOR_DEGS = { scale_deg0: true, scale_deg1: false, scale_deg2: true, scale_deg3: false, scale_deg4: true, scale_deg5: true,
                      scale_deg6: false, scale_deg7: true, scale_deg8: false, scale_deg9: true, scale_deg10: false, scale_deg11: true };
 { // Q1: every quantized key is in the (global) scale and in 0-127
   const keys = [61, 63, 66, 70, 125, 127].map((k, i) => K(0, "k" + i, k));
   const sess = (plants, order, pattern) => run({ core: mkCore(plants), block: 256, total: 40000, scale: NDOWN, base: { quantize: "scale", octaves: 2, order, pattern: pattern || "none" }, ins: keys });
   const bad = plants => ["up", "chord", "random", "bounce"].some(o => ons(sess(plants, o)).concat(ons(sess(plants, o, "octave_leap"))).some(e => e.key < 0 || e.key > 127 || !inScale(e.key, 0, 0xAB5)));
-  plant(bad(["skipQuantizeChord"]), "Q1 detects quantize skipped on chord steps");
-  check(!bad([]), "Q1: every quantized key is in horde's global C-major scale and in 0-127 (chord, random, bounce, octave offsets)");
+  // the EFFECTIVE scale (SPEC §11 Q1, r2.6): under chord_root it is the global shape anchored on the lowest held key (C# here), whose own pitch class is always admitted
+  const badEff = plants => ons(run({ core: mkCore(plants), block: 256, total: 20000, scale: NDOWN, base: { quantize: "chord_root", order: "chord", octaves: 2 }, ins: [61, 64, 66].map((k, i) => K(0, "k" + i, k)) }))
+    .some(e => e.key < 0 || e.key > 127 || !inScale(e.key, 1, 0xAB5 | 1));
+  plant(bad(["skipQuantizeChord"]) && badEff(["skipQuantizeChord"]), "Q1 detects quantize skipped on chord steps (global and chord_root scales)");
+  check(!bad([]) && !badEff([]), "Q1: every quantized key is in the effective scale (global C major; chord_root anchored on the lowest held key) and in 0-127 (chord, random, bounce, octave offsets)");
 }
 { // Q2: a tie goes toward the PREVIOUS quantized output (horde's rule); the lower key when there is none
   // Held C#4 (61, a tie between 60 and 62) and A4 (69), order up: the first 61 has no previous -> 60;
@@ -298,6 +324,117 @@ const MAJOR_DEGS = { scale_deg0: true, scale_deg1: false, scale_deg2: true, scal
   const pats = ["offbeat", "tied_legato", "p50", "trigmix", "gallop"];
   plant(!pats.every(p => ok(["advanceOnRest"], p)), "R1 detects m advanced on rests");
   check(pats.every(p => ok([], p)), "R1: the up-cycle stays contiguous across rests (offbeat, gallop), ties (tied_legato), probability misses (p50) and trigger-only steps (trigmix)");
+}
+
+{ // R1 (extended): an explicit `pick` plays its note WITHOUT consuming the order stream (SPEC 4.3)
+  const bank = { step_defaults: X.ARP_BANK.step_defaults, patterns: [...X.ARP_BANK.patterns, { id: "pk", name: "pk", length: 4, steps: [{}, { pick: 1 }, {}, { pick: "high" }] }] };
+  const keys = [60, 64, 67].map((k, i) => K(0, "k" + i, k));
+  const got = plants => ons(run({ core: mkCore(plants, { bank }), block: 512, total: 60000, base: { pattern: "pk" }, ins: keys })).map(e => e.key);
+  // reference: the order stream (up over 60 64 67) advances only on the two `order` steps of the four
+  const want = n => { const o = []; let i = 0; for (let s = 0; o.length < n; s++) { if (s % 4 === 0 || s % 4 === 2) o.push([60, 64, 67][i++ % 3]); else o.push(s % 4 === 1 ? 60 : 67); } return o; };
+  const bad = plants => { const g = got(plants); return g.length < 16 || g.slice(0, 16).join() !== want(16).join(); };
+  plant(bad(["pickAdvancesM"]), "R1 detects m advanced on explicit picks");
+  check(!bad([]), "R1 (extended): explicit-pick steps leave m alone: " + got([]).slice(0, 8).join(" ") + " ... (order stream 60 64 67 resumes where it left off)");
+}
+
+// ---- 11b. U1: the user pattern (SPEC 4.6, T17) ------------------------------------------------------------
+{
+  const K3 = [100, 101, 102].map((at, i) => K(at, "k" + i, [60, 64, 67][i]));
+  const byTick = r => { const m = new Map(); for (const e of ons(r)) m.set(e.tick / 3840, (m.get(e.tick / 3840) || []).concat(e.key).sort((a, b) => a - b)); return m; };
+  const U = [{ pick: 1 }, { pick: 3 }, { pick: 5 }, { pick: "low" }, { pick: "high" }, { pick: "chord" }, { on: false }, { pick: "order" }];
+  // (a) picks and rhythm. The chord anchors at kAbs 1 (the first step after the presses), step j = (kAbs - 1) mod 8.
+  // Reference: 1 -> E[0], 3 -> E[2], 5 -> E[mod(4,3)] = E[1], low, high, chord, rest, then the up stream (60 64 67 ...) on the order steps.
+  const refA = () => { const m = new Map(); let up = 0; for (let k = 1; k < 40; k++) { const j = (k - 1) % 8; const keys = j === 7 ? [[60, 64, 67][up++ % 3]] : [[60], [67], [64], [60], [67], [60, 64, 67], []][j]; if (keys.length) m.set(k, keys); } return m; };
+  const sameMap = (a, b, upTo) => { for (let k = 0; k < upTo; k++) if ((a.get(k) || []).join() !== (b.get(k) || []).join()) return false; return true; };
+  const badA = plants => { const r = run({ core: mkCore(plants), block: 64, total: 40 * 1000, userPattern: { length: 8, steps: U }, base: { pattern: "user", gate: 50 }, ins: K3 }); return !sameMap(byTick(r), refA(), 38) || n1(r.evs).length > 0; };
+  plant(badA(["ignorePick"]), "U1 detects pick ignored (every step read as order)");
+  plant(badA(["prepareResetsUser"]), "U1 detects a user pattern wiped by prepare (set before prepare, SPEC 4.6 r2 H3)");
+  check(!badA([]), "U1: the user pattern plays picks 1, 3, 5 (cyclic), low, high, chord, a rest and an order step, in that rhythm, with the pattern set BEFORE prepare");
+  // (b) edits between blocks take effect at the next grid step: A = default plain `order` (up stream), then B = all `high` from sample 4300
+  //     (step 5 is the first evaluated after it); two calls at one sample leave the LATER one (all pick 1) from step 9.
+  const all = (n, pick) => ({ length: n, steps: Array.from({ length: n }, () => ({ pick })) });
+  const edits = [{ at: 4300, p: all(4, "high") }, { at: 8100, p: all(2, "high") }, { at: 8100, p: all(2, 1) }];
+  const badB = plants => {
+    const r = run({ core: mkCore(plants), block: 4096, total: 14000, userEdits: edits, base: { pattern: "user", gate: 50 }, ins: K3 }), m = byTick(r);
+    const want = { 1: 60, 2: 64, 3: 67, 4: 60, 5: 67, 6: 67, 7: 67, 8: 67, 9: 60, 10: 60, 11: 60, 12: 60, 13: 60 };
+    return Object.entries(want).some(([k, v]) => (m.get(Number(k)) || []).join() !== String(v));
+  };
+  plant(badB(["userFirstWins"]), "U1 detects two writes between steps resolved to the FIRST (latest must win)");
+  check(!badB([]), "U1: setUserPattern between blocks applies from the next grid step; of two writes at one sample the later wins");
+  // (c) an edit landing DURING a step's evaluation must not tear that step: A = [note, tie, note, note] (the note's off is extended through the tie by look-ahead);
+  //     B has no tie. The first note must keep A's tied off (6912 ticks at gate 80), T17.
+  class Inj extends X.ArpCore { _play(...a) { if (!this._inj && a[1] === 0) { this._inj = true; this.setUserPattern({ length: 4, steps: [{}, {}, {}, {}] }); } return super._play(...a); } }
+  const A4 = { length: 4, steps: [{}, { tie: true }, {}, {}] };
+  const sessC = plants => { const c = new Inj(); for (const p of plants) c.lab.plant[p] = true; return run({ core: c, block: 64, total: 12000, userPattern: A4, base: { pattern: "user", gate: 80 }, ins: K3 }); };
+  const badC = plants => { const r = sessC(plants), o = ons(r)[0], off = r.evs.find(e => e.t === "off" && e.id === o.id); return off.tick - o.tick !== 6912 || n1(r.evs).length > 0 || ons(r).filter(e => e.tick === o.tick + 3840).length === 0; };
+  plant(badC(["swapMidStep"]), "U1 detects an edit applied mid-step (the step's tie look-ahead tears)");
+  check(!badC([]), "U1/T17: an edit landing mid-evaluation leaves that step whole (tied off 6912 ticks kept) and the next step uses the new pattern; N1 holds");
+  // (d) validation: clamps every field, unknown pick -> order, length 1-16; getUserPattern returns the writer's latest copy
+  const clampOk = want => { const c = mkCore(); c.setUserPattern({ length: 99, steps: [{ vel: 999, gate: 0, oct: 9, prob: -4, ratchet: 9, trig: 12, pick: "bogus" }, { pick: "9" }, { pick: "7" }] });
+    const g = c.getUserPattern(); g.steps[0].vel += want; return g.length === 16 && g.steps.length === 16 && g.steps[0].vel === 200 && g.steps[0].gate === 1 && g.steps[0].oct === 2 && g.steps[0].prob === 0 && g.steps[0].ratchet === 4 && g.steps[0].trig === 8 && g.steps[0].pick === "order" && g.steps[1].pick === "order" && g.steps[2].pick === 7; };
+  plant(!clampOk(1), "U1 validation check can go red (a perturbed expectation fails)");
+  check(clampOk(0), "U1: setUserPattern clamps length 1-16 and every field, reads an unknown pick as order; getUserPattern returns the stored copy");
+}
+
+// ---- 11c. L1: `landed` replays the captured presses at their snapped steps (SPEC 4.7) -----------------------
+{
+  // 1/16 at 120 bpm, sr 8000: a step is 1000 samples (3840 ticks); TPQ/L = 4. Two gestures; ref = a time-stepped model of the spec text.
+  const PR = [["A", 1000, 60, 90], ["B", 5010, 64, 70], ["C", 6800, 67, 110], ["F", 6990, 69, 95], ["A2", 9980, 60, 50]];   // q = 0, 4, 6, 6 (a chord with C), 9 (a repeat of the first key)
+  const PR2 = [["D", 34300, 62, 80], ["E", 36700, 65, 100]];                                                              // second gesture: t0 = 34.3, so step 0 is step 35 (never back to 34); q = 0, 2
+  const PR3 = [["G", 52300, 71, 85], ["H", 54300, 74, 105]];                                                              // third gesture, host PLAYING: the first press lands 0.3 of a step late and must sound at the NEXT step (53), not a loop later; q = 0, 2
+  const ins = [...PR, ...PR2].map(([r, at, k, v]) => K(at, r, k, { vel: v })).concat(PR3.map(([r, at, k, v]) => K(at, r, k, { vel: v })), [O(12500, "B"), ...["A", "C", "F", "A2"].map(r => O(30000, r)), O(50000, "D"), O(50000, "E"), O(62000, "G"), O(62000, "H")]);
+  const ref = () => {
+    const out = [];
+    const gest = [{ ps: PR, end: 30000 }, { ps: PR2, end: 50000 }, { ps: PR3, end: 62000 }];
+    for (let k = 0; k < 70; k++) {
+      const T = k * 1000, g = gest.find(g => g.ps[0][1] <= T && T < g.end);
+      if (!g || k < Math.floor(g.ps[0][1] / 1000) + (g.ps[0][1] % 1000 ? 1 : 0)) continue;   // no keys held, or before the anchor (first step at/after the gesture start)
+      const got = g.ps.filter(p => p[1] <= T).map(([, at, key, vel]) => ({ q: Math.floor((2 * (at - g.ps[0][1]) + 1000) / 2000), key, vel }));
+      const len = Math.ceil((Math.max(...got.map(x => x.q)) + 1) / 4) * 4, k0 = Math.ceil(g.ps[0][1] / 1000), q = (((k - k0) % len) + len) % len;
+      for (const x of got) if (x.q === q) out.push(`${k} ${x.key} ${x.vel}`);
+    }
+    return out;
+  };
+  const sess = plants => run({ core: mkCore(plants), block: 64, total: 70000, base: { order: "landed", gate: 50 }, ins });
+  const bad = plants => { const r = sess(plants), got = ons(r).map(e => `${e.tick / 3840} ${e.key} ${e.vel}`); return got.slice().sort().join("|") !== ref().sort().join("|") || n1(r.evs).length > 0; };
+  plant(bad(["landedIgnoreTiming"]), "L1 detects the captured timing ignored (presses played in order, one per step)");
+  plant(bad(["landedSnapBack"]), "L1 detects a first press that snaps BACK to an evaluated step (its note a whole loop late)");
+  const r = sess([]);
+  check(!bad([]) && ref().length > 15, `L1: ${ons(r).length} landed ons match the time-stepped reference: presses at steps 0, 4, 6 (a chord), 9 (a repeat), len 12 (rounded up to a beat), a mid-gesture release keeps its press, a new gesture records anew, a press 0.3 step late sounds at the next step`);
+}
+
+// ---- 11d. N2: shuffle never repeats a key back to back, and plays every key once per cycle (SPEC 4.2, D-012a) --------
+{
+  const sess = (plants, e, seed) => ons(run({ core: mkCore(plants), sr: 8000, bpm: 999, block: 4096, total: 250 * 1100, base: { order: "shuffle", rate: "1/64", gate: 20, seed }, ins: [60, 62, 64, 67, 71].slice(0, e).map((k, i) => K(0, "k" + i, k)) })).map(x => x.key);
+  const bad = plants => { for (const e of [2, 3, 5]) for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const seq = sess(plants, e, seed), keys = [60, 62, 64, 67, 71].slice(0, e);
+    if (seq.length < 200 * e) return true;
+    for (let i = 1; i < seq.length; i++) if (seq[i] === seq[i - 1]) return true;
+    for (let c = 0; c + e <= seq.length; c += e) if (seq.slice(c, c + e).sort((x, y) => x - y).join() !== keys.join()) return true;
+  } return false; };
+  plant(bad(["shuffleBoundaryRepeat"]), "N2 detects a back-to-back repeat across a cycle boundary (boundary swap skipped)");
+  check(!bad([]), "N2: over >= 200 cycles x 6 seeds, shuffle (e = 2, 3, 5) never repeats a key back to back and plays each key once per cycle");
+}
+
+// ---- 11e. Q5: tie direction, lastQ reset at release-all, collisions (SPEC 6, r2.6) ---------------------------------
+{
+  // (a) a tie with lastQ ABOVE it resolves UP. Chord over C#4 (61) and A4 (69): ascending, 61 first; step 0 has no lastQ -> 60, then every step's 69
+  //     leaves lastQ = 69 so 61 -> 62 (Q2's up-cycle checks the same through a single-note order).
+  const chordSeq = plants => { const r = run({ core: mkCore(plants), block: 128, total: 30000, scale: NDOWN, base: { quantize: "scale", order: "chord" }, ins: [K(0, "a", 61), K(0, "b", 69)] }), m = new Map();
+    for (const e of ons(r)) m.set(e.tick, (m.get(e.tick) || []).concat(e.key).sort((x, y) => x - y)); return [...m.values()].map(v => v.join()); };
+  const badA = plants => { const q = chordSeq(plants); return q.length < 5 || q[0] !== "60,69" || q.slice(1).some(v => v !== "62,69"); };
+  plant(badA(["tieAlwaysDown"]), "Q5 detects ties always resolved downward (lastQ above the tie)");
+  check(!badA([]), `Q5: with lastQ above the tie it resolves UP: ${chordSeq([]).slice(0, 4).join(" | ")}`);
+  // (b) lastQ resets at release-all: 69 sounds, Panic, then C# alone: with nothing remembered the tie goes DOWN (60); a remembered 69 would pull it up to 62.
+  const afterPanic = plants => { const r = run({ core: mkCore(plants), block: 128, total: 14000, scale: NDOWN, base: { quantize: "scale" }, ins: [K(100, "a", 69), { at: 6000, t: "panic" }, K(9000, "b", 61)] });
+    return ons(r).filter(e => e.a > 9000)[0].key; };
+  plant(afterPanic(["lastQNoReset"]) !== 60, "Q5 detects lastQ never reset at release-all (the tie after Panic follows the old 69)");
+  check(afterPanic([]) === 60, "Q5: lastQ resets at release-all (T7): the first tie after Panic resolves down to 60");
+  // (c) a collision: C and C# in C major both land on C (the tie follows lastQ = 60); emitted once, with the EARLIEST source's velocity (C, 40)
+  const coll = plants => { const r = run({ core: mkCore(plants), block: 128, total: 20000, scale: NDOWN, base: { quantize: "scale", order: "chord" }, ins: [K(0, "a", 60, { vel: 40 }), K(0, "b", 61, { vel: 90 })] }); return ons(r).map(e => `${e.key}@${e.vel}`); };
+  const badC = plants => { const c = coll(plants); return c.length < 5 || c.some(v => v !== "60@40"); };
+  plant(badC(["collisionKeepsLast"]), "Q5 detects a collision resolved to the LAST source's velocity");
+  check(!badC([]), "Q5: two chord keys quantizing to one key emit it once, with the earliest source's velocity (60@40)");
 }
 
 // ---- 12. P1: measured probability within +-2 % over 10,000 steps ----------------------------
@@ -408,6 +545,47 @@ const MAJOR_DEGS = { scale_deg0: true, scale_deg1: false, scale_deg2: true, scal
   check(wrong.length === 0, "order styles: all 12 match SPEC 4.2 (period and first cycle) for e = 1, 2, 3, 5; unique-E and played-duplicates at octaves 2" + (wrong.length ? " - wrong: " + wrong.join(" ") : ""));
 }
 
+// ---- 16b. The four chord + note styles (SPEC 4.2, D-011): period and first cycle for e = 1, 2, 3, 5 ------------------
+{
+  // Expected steps are built by CONSTRUCTION from the spec's prose, not from its closed forms. Each step is a list of keys; H is in pitch order.
+  const cycle = (style, H, oct) => {
+    const E = [...new Set(Array.from({ length: oct }, (_, o) => H.map(k => k + 12 * o)).flat())].sort((a, b) => a - b);
+    if (style === "chord_walk") return [H, ...E.map(k => [k])];                                   // the chord, then each note of E
+    if (style === "chord_between") return E.flatMap(k => [H, [k]]);                               // chord, note, chord, note ...
+    if (style === "pairs") return E.length === 1 ? [[E[0]]] : E.slice(0, -1).map((k, i) => [k, E[i + 1]]);   // adjacent dyads
+    // stride: bass, then the rest of the chord; the chord part climbs an octave per round (one key held: that key an octave up first)
+    const rest = H.length > 1 ? H.slice(1) : [H[0] + 12];
+    return Array.from({ length: oct }, (_, o) => [[H[0]], rest.map(k => k + 12 * o)]).flat();
+  };
+  const PITCH = { 1: [60], 2: [60, 64], 3: [60, 64, 67], 5: [60, 62, 64, 67, 71] };
+  const play = (style, H, oct) => run({ core: mkCore(), block: 512, total: 60000, base: { order: style, octaves: oct, gate: 50 }, ins: H.map((k, i) => K(100 + i, "k" + i, k, { vel: 60 + 7 * i })) });
+  // source velocity: an octave copy takes the velocity of the held key it was copied from
+  const srcVel = (H, k) => 60 + 7 * H.findIndex(h => [0, 1, 2, 3].some(o => h + 12 * o === k));
+  const wrong = (mutate) => {
+    const bad = [];
+    for (const [style, octs] of [["chord_walk", [1]], ["stride", [1, 2]], ["chord_between", [1]], ["pairs", [1]]]) for (const e of [1, 2, 3, 5]) for (const oct of octs) {
+      const H = PITCH[e], want = cycle(style, H, oct), per = want.length, r = play(style, H, oct), byTick = new Map();
+      for (const x of ons(r)) byTick.set(x.tick, (byTick.get(x.tick) || []).concat(x));
+      const steps = [...byTick.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v.sort((a, b) => a.key - b.key));
+      const ref = mutate ? mutate(want) : want;
+      const ok = steps.length >= 3 * per && steps.slice(0, 3 * per).every((st, i) => st.map(x => x.key).join() === ref[i % per].slice().sort((a, b) => a - b).join() && st.every(x => x.vel === srcVel(H, x.key)));
+      if (!ok) bad.push(`${style}/e${e}/oct${oct}`);
+    }
+    return bad;
+  };
+  plant(wrong(w => w.slice(1).concat(w.slice(0, 1))).length > 0, "the chord + note reference check detects a cycle rotated by one step");
+  const w = wrong();
+  check(w.length === 0, "order styles: chord_walk, stride (octaves 1 and 2), chord_between and pairs match SPEC 4.2 (period, first cycle, source velocities) for e = 1, 2, 3, 5" + (w.length ? " - wrong: " + w.join(" ") : ""));
+}
+
+// Coverage: a session that never reaches the style it names proves nothing, so every window must hold notes.
+{
+  const w = (evs, a, b) => evs.filter(e => e.t === "on" && e.a >= a && e.a < b).length;
+  const wins = [[runSess("styles", 64).evs, [[8000, 14000], [14000, 20000], [20000, 26000], [26000, 32000], [32000, 38000], [38000, 44000]], "styles"],
+    [g1Session([], 64).evs, [[34003, 38501], [38501, 44001], [44001, 46001], [46001, 48003], [48003, 52000]], "G1 tail"]];
+  const empty = wins.flatMap(([evs, ws, n]) => ws.filter(([a, b]) => !w(evs, a, b)).map(([a, b]) => `${n}@${a}-${b}`));
+  check(empty.length === 0, "coverage: the N1 styles session and the G1 tail play notes in every chord_walk/stride/chord_between/pairs/landed/shuffle window" + (empty.length ? " - EMPTY: " + empty.join(" ") : ""));
+}
 const ms = Number((process.hrtime.bigint() - t0) / 1000000n);
 console.log(fail ? `lab_smoke: FAIL (${ms} ms)` : `lab_smoke: OK (${ms} ms)`);
 process.exit(fail);

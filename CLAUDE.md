@@ -98,8 +98,10 @@ headless by plain Node oracles in `tools/`. Oracle: `./verify fast|full`.
   run Arp on MIDI-sidechain notes after 1.0). Arp emits base pitches only, never
   a baked bend. The sustain pedal holds Arp's INPUT; Arp consumes CC 64 rather
   than forwarding it (D-000 Open 3).
-- **The scale is read, never owned:** root + 12-bit mask from horde's global
-  scale; quantized output is always in the scale.
+- **Scale (D-010):** horde's global scale is read, never owned. Arp may also
+  hold its **own** scale in exactly horde's shape (root + root-relative 12-bit
+  mask). Quantized output is always in the **effective** scale (source, mode,
+  anchor).
 - **The pattern bank is data** (D-004): order styles and step patterns load
   from the bank format, and every entry passes the full invariant suite.
   Clean-room: generic algorithms under our own names; nothing copied from

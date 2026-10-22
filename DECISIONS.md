@@ -329,3 +329,97 @@ matched horde's; the mode and tie rules are new.
 **For horde:** an Arp preset may now carry its own `{root, mask}`. That fits
 horde's own rule (consumers transmit `{root, mask}`). It goes in the next
 notice as information, with no ask.
+
+## D-011 — Chord + note order styles; per-step `pick`; the user pattern (RATIFIED by poll, 2026-10-22)
+
+The human asked for "a couple modes that mix chords and notes".
+- **They took all four offered styles:**
+  - `chord_walk`: the chord, then a walk up;
+  - `stride`: bass, then the rest as a chord, oom-pah;
+  - `chord_between`: the chord between single notes;
+  - `pairs`: dyads stepping up.
+- **They added "build your own pattern"**, clarified by a second poll as:
+  - **both notes and rhythm per step**;
+  - **in 1.0, lab first**.
+
+**The design (lead's):**
+- **The four styles** are SPEC §4.2 rows with exact periods.
+- **A per-step `pick` field** (`order` by default, or 1–8, low, high,
+  chord) chooses which held note(s) a step plays. It exists in every
+  pattern, not just the user's.
+  - **Only `order` picks advance `m`**, so explicit picks thread through an
+    order style without consuming it.
+  - This makes "build your own" the general case: one step format serves
+    the bank and the user.
+- **The user pattern** is pattern id `user`, up to 16 steps.
+  - It is **preset data**, not host parameters.
+  - It is set off the audio thread into a preallocated, double-buffered
+    slot, and swaps at the next step.
+  - Its content does not morph; choosing it does.
+
+**Rejected:**
+- order-only or rhythm-only editors (the human chose both);
+- after 1.0 or lab-only.
+
+It is also the natural seed of the post-1.0 step sequencer (ROADMAP's
+step-sequencer question).
+
+**Cutoff:** this is the fourth widening of 1.0. The yield order becomes
+ratchets → **user pattern** → probability → triggers. The human's poll put
+the user pattern after ratchets and before probability.
+
+**For horde (Q-H6):** how should a preset carry a module's small structured
+blob? This goes in the next notice, together with D-010's own-scale note.
+
+## D-012 — `landed`: the order and the timing of the presses (RATIFIED by poll, 2026-10-22)
+
+The human asked for "as played (arp in the pattern of the notes as they
+landed)". The existing `played` already steps in press order, so a poll
+asked which was meant. The human chose **order and timing**, a new mode.
+Rejected:
+- order only (`played` already does it);
+- order with repeats.
+
+**The design** (SPEC §4.7; the lead's, with one rule PROPOSED):
+- **Capture.** A gesture's presses are captured as `(key, vel, ch, q)`, where
+  `q` is the nearest grid step from the first press, with ties rounding up.
+  Repeats count, and presses that land on the same step form a chord.
+- **Lifetime.** The phrase is a recording: it lives until H is empty, and a
+  key released mid-gesture keeps its captured press.
+- **Playback.** The phrase loops at `len`, anchored on its own first press,
+  so `restart` does not apply. Step patterns overlay it, and `m` never
+  advances.
+- **PROPOSED (Q-A6):** `len` rounds up to a whole beat when the rate divides
+  a quarter note.
+- **Capacity:** 32 presses and 64 steps, preallocated.
+
+This is the fifth widening of 1.0. It is an order style and data-light, so
+it sits early in the yield order: it yields after ratchets, together with
+the user pattern.
+
+## D-012a — `shuffle` never repeats back-to-back (2026-10-22, at the human's request)
+
+The human asked for "a random other (random without repeat notes)". The
+`shuffle` order already plays every held note once per cycle in a seeded
+random order (the shuffle-bag model from Phase 0). It allowed one repeat:
+the last note of a cycle could equal the first of the next. SPEC §4.2 now
+closes that with a deterministic rule: when a new cycle would start on the
+note just played, its first two entries swap. So `shuffle` is "random
+without repeats", and no back-to-back repeat ever occurs when 2 or more keys
+are held. New invariant N2, with a plant. Taken as the plain reading of the
+request; no poll was needed.
+
+## D-013 — Spec r2.6 after the second independent review (recorded 2026-10-22; the `lastQ` reset PROPOSED)
+
+The Opus critic, sourced separately from the author, rated the r2.3–r2.4
+additions **REWORK** (5 HIGH, 8 MED, 4 LOW). All findings are folded into
+r2.6; `docs/spec-review-r2.md` holds the per-finding disposition. The two
+that change behaviour the human hears:
+1. **The quantize tie memory resets at every release-all**, so every
+   play-from-here sounds the same. This is PROPOSED, for the human to
+   confirm at ratification.
+2. **A scale morph switches root and degrees together**, as one group, with
+   no hybrid scales mid-morph.
+
+Also: horde ADR-169 must be read before Q-H6 is filed, because it may
+already answer how presets carry module data.

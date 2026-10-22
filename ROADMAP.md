@@ -25,9 +25,10 @@ lives in `DECISIONS.md`; horde's terms are in `intake/` and `SPINUP-BRIEF.md`.
   scope widened by poll twice the same day: the pattern bank (D-004), and
   four Phase 0 additions (D-006).
 - **Cutoff risk:** the 1.0 surface has grown three times since ratification
-  (D-004, D-006, D-007). If the cutoff tightens, **ratchets yield first, then
-  probability, then triggers**. All three are bank data that can ship after
-  1.0, because `spec/bank/` reserves their fields now.
+  (D-004, D-006, D-007, D-011). If the cutoff tightens, **ratchets yield
+  first, then the user pattern, then probability, then triggers**. All are
+  pattern data that can ship after 1.0, because `spec/bank/` reserves their
+  fields now.
 
 ## Phases (each gate is a checkable condition)
 
@@ -105,6 +106,9 @@ mode names, presets or UI text.
 - **The starter pattern bank** (D-004): the order styles and step patterns that
   Q-A3 chose, loaded from the bank format, with per-step probability and
   ratchets (D-006).
+- **The chord + note styles and the user pattern** (D-011): `chord_walk`,
+  `stride`, `chord_between`, `pairs`; per-step `pick`; the `user` pattern
+  in a preallocated, double-buffered slot.
 - **Gate:** each item's invariants are in the suite with planted controls:
   - quantize keeps every note in the scale;
   - swing displaces only the off-steps, by the spec'd fraction, sample-exact;
@@ -172,6 +176,11 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   declared actions and impulses (ADR-267). Ask in the next notice, together
   with "please file through `integrations/hypersaw/`". Blocks M3's trigger
   wiring, not the core.
+- **Q-H6 — How a horde preset carries Arp's user pattern** (D-011): a small
+  structured blob (up to 16 steps × 9 fields), not host parameters. **Read
+  horde ADR-169 first**: module presets "embed by value", and preset identity
+  per corner may already answer this (D-013). Then ask in the next notice.
+  Blocks the M3 preset wiring only.
 - **Q-H5 — Stream-scoped pedal** (D-009). We proposed that horde's VO-12
   sustain `direct` voices only. The ball is horde's, in our
   `integrations/hypersaw/response-note-stream.md`. It blocks nothing in the
