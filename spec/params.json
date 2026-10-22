@@ -1,6 +1,6 @@
 {
   "format": "arp-params/1",
-  "status": "DRAFT r2 2026-10-21 (Phase A, after critic review r1); protected once the human ratifies spec/",
+  "status": "DRAFT r2.3 2026-10-22 (Phase A); protected once the human ratifies spec/",
   "tpq": 15360,
   "note": "Every setting is a morph target (D-000 Open 5). All values are INTEGERS in the snapshot (horde rounds morph blends). kind=continuous blends; kind=discrete resolves to the largest-weight corner with 0.05 hysteresis and applies from the next evaluated step (SPEC §9, Q-A1 PROPOSED); `enabled` applies at offset 0 of its block (SPEC T4/T5). Enums are stored by NAME. Tempo is clamped to [20, 999] bpm (SPEC §1.3).",
   "params": [
@@ -123,9 +123,133 @@
     {
       "key": "quantize",
       "kind": "discrete",
+      "type": "enum",
+      "values": [
+        "off",
+        "scale",
+        "chord_root"
+      ],
+      "default": "off",
+      "ref": "SPEC §6",
+      "note": "off; scale = snap to the scale anchored at its root; chord_root = horde's movable-do 'scale (offset)' mode for an arp: the scale SHAPE anchored on the lowest held key (the root setting is ignored, as in horde ADR-112)"
+    },
+    {
+      "key": "scale_source",
+      "kind": "discrete",
+      "type": "enum",
+      "values": [
+        "global",
+        "own"
+      ],
+      "default": "global",
+      "ref": "SPEC §6",
+      "note": "global = horde's scale (scaleRoot + scaleDeg0..11, B260), read never owned; own = Arp's scale_root + scale_deg0..11 below, in exactly horde's shape (D-010)"
+    },
+    {
+      "key": "scale_root",
+      "kind": "discrete",
+      "type": "int",
+      "min": 0,
+      "max": 11,
+      "default": 0,
+      "ref": "SPEC §6",
+      "note": "C=0 … B=11; horde's scaleRoot shape"
+    },
+    {
+      "key": "scale_deg0",
+      "kind": "discrete",
+      "type": "bool",
+      "default": true,
+      "ref": "SPEC §6",
+      "note": "degree 0: the pitch class 0 semitones above scale_root is in the scale (horde's scaleDeg0; root-relative)"
+    },
+    {
+      "key": "scale_deg1",
+      "kind": "discrete",
       "type": "bool",
       "default": false,
-      "ref": "SPEC §6"
+      "ref": "SPEC §6",
+      "note": "degree 1: the pitch class 1 semitones above scale_root is in the scale (horde's scaleDeg1; root-relative)"
+    },
+    {
+      "key": "scale_deg2",
+      "kind": "discrete",
+      "type": "bool",
+      "default": true,
+      "ref": "SPEC §6",
+      "note": "degree 2: the pitch class 2 semitones above scale_root is in the scale (horde's scaleDeg2; root-relative)"
+    },
+    {
+      "key": "scale_deg3",
+      "kind": "discrete",
+      "type": "bool",
+      "default": false,
+      "ref": "SPEC §6",
+      "note": "degree 3: the pitch class 3 semitones above scale_root is in the scale (horde's scaleDeg3; root-relative)"
+    },
+    {
+      "key": "scale_deg4",
+      "kind": "discrete",
+      "type": "bool",
+      "default": true,
+      "ref": "SPEC §6",
+      "note": "degree 4: the pitch class 4 semitones above scale_root is in the scale (horde's scaleDeg4; root-relative)"
+    },
+    {
+      "key": "scale_deg5",
+      "kind": "discrete",
+      "type": "bool",
+      "default": true,
+      "ref": "SPEC §6",
+      "note": "degree 5: the pitch class 5 semitones above scale_root is in the scale (horde's scaleDeg5; root-relative)"
+    },
+    {
+      "key": "scale_deg6",
+      "kind": "discrete",
+      "type": "bool",
+      "default": false,
+      "ref": "SPEC §6",
+      "note": "degree 6: the pitch class 6 semitones above scale_root is in the scale (horde's scaleDeg6; root-relative)"
+    },
+    {
+      "key": "scale_deg7",
+      "kind": "discrete",
+      "type": "bool",
+      "default": true,
+      "ref": "SPEC §6",
+      "note": "degree 7: the pitch class 7 semitones above scale_root is in the scale (horde's scaleDeg7; root-relative)"
+    },
+    {
+      "key": "scale_deg8",
+      "kind": "discrete",
+      "type": "bool",
+      "default": false,
+      "ref": "SPEC §6",
+      "note": "degree 8: the pitch class 8 semitones above scale_root is in the scale (horde's scaleDeg8; root-relative)"
+    },
+    {
+      "key": "scale_deg9",
+      "kind": "discrete",
+      "type": "bool",
+      "default": true,
+      "ref": "SPEC §6",
+      "note": "degree 9: the pitch class 9 semitones above scale_root is in the scale (horde's scaleDeg9; root-relative)"
+    },
+    {
+      "key": "scale_deg10",
+      "kind": "discrete",
+      "type": "bool",
+      "default": false,
+      "ref": "SPEC §6",
+      "note": "degree 10: the pitch class 10 semitones above scale_root is in the scale (horde's scaleDeg10; root-relative)"
+    },
+    {
+      "key": "scale_deg11",
+      "kind": "discrete",
+      "type": "bool",
+      "default": true,
+      "ref": "SPEC §6",
+      "note": "degree 11: the pitch class 11 semitones above scale_root is in the scale (horde's scaleDeg11; root-relative)"
     },
     {
       "key": "seed",
@@ -268,5 +392,223 @@
       "beats": "1/16",
       "ticks": 960
     }
-  ]
+  ],
+  "ui_scale_names": {
+    "source": "horde docs/design/bend-lab.html SCALES (the vocabulary horde's own scale dropdown uses; read 2026-10-22)",
+    "rule": "UI only, never stored: picking a name writes the twelve degrees; editing any degree reads 'custom'; loading reverse-matches",
+    "scales": [
+      [
+        "chromatic",
+        [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ]
+      ],
+      [
+        "major (ionian)",
+        [
+          0,
+          2,
+          4,
+          5,
+          7,
+          9,
+          11
+        ]
+      ],
+      [
+        "natural minor",
+        [
+          0,
+          2,
+          3,
+          5,
+          7,
+          8,
+          10
+        ]
+      ],
+      [
+        "harmonic minor",
+        [
+          0,
+          2,
+          3,
+          5,
+          7,
+          8,
+          11
+        ]
+      ],
+      [
+        "melodic minor",
+        [
+          0,
+          2,
+          3,
+          5,
+          7,
+          9,
+          11
+        ]
+      ],
+      [
+        "dorian",
+        [
+          0,
+          2,
+          3,
+          5,
+          7,
+          9,
+          10
+        ]
+      ],
+      [
+        "phrygian",
+        [
+          0,
+          1,
+          3,
+          5,
+          7,
+          8,
+          10
+        ]
+      ],
+      [
+        "lydian",
+        [
+          0,
+          2,
+          4,
+          6,
+          7,
+          9,
+          11
+        ]
+      ],
+      [
+        "mixolydian",
+        [
+          0,
+          2,
+          4,
+          5,
+          7,
+          9,
+          10
+        ]
+      ],
+      [
+        "locrian",
+        [
+          0,
+          1,
+          3,
+          5,
+          6,
+          8,
+          10
+        ]
+      ],
+      [
+        "major pentatonic",
+        [
+          0,
+          2,
+          4,
+          7,
+          9
+        ]
+      ],
+      [
+        "minor pentatonic",
+        [
+          0,
+          3,
+          5,
+          7,
+          10
+        ]
+      ],
+      [
+        "blues",
+        [
+          0,
+          3,
+          5,
+          6,
+          7,
+          10
+        ]
+      ],
+      [
+        "whole tone",
+        [
+          0,
+          2,
+          4,
+          6,
+          8,
+          10
+        ]
+      ],
+      [
+        "diminished (h-w)",
+        [
+          0,
+          1,
+          3,
+          4,
+          6,
+          7,
+          9,
+          10
+        ]
+      ],
+      [
+        "phrygian dominant",
+        [
+          0,
+          1,
+          4,
+          5,
+          7,
+          8,
+          10
+        ]
+      ],
+      [
+        "hirajoshi",
+        [
+          0,
+          2,
+          3,
+          7,
+          8
+        ]
+      ],
+      [
+        "in-sen",
+        [
+          0,
+          1,
+          5,
+          7,
+          10
+        ]
+      ]
+    ]
+  }
 }

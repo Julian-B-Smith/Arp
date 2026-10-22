@@ -142,7 +142,7 @@ const SESS = {
   // T8 / T15 every discrete setting changes mid-note
   discrete: () => ({ total: 46000, base: { gate: 200 }, scale: NDOWN,
     cfg: [{ at: 8000, set: { order: "down" } }, { at: 12000, set: { rate: "1/8" } }, { at: 16000, set: { pattern: "roll_end" } }, { at: 20000, set: { octaves: 2 } }, { at: 24000, set: { restart: "bar" } },
-      { at: 28000, set: { restart: "free" } }, { at: 32000, set: { quantize: true } }, { at: 36000, set: { vel_mode: "fixed", seed: 7 } }, { at: 40000, set: { restart: "chord", order: "shuffle" } }],
+      { at: 28000, set: { restart: "free" } }, { at: 32000, set: { quantize: "scale" } }, { at: 36000, set: { vel_mode: "fixed", seed: 7 } }, { at: 40000, set: { restart: "chord", order: "shuffle" } }],
     ins: [K(100, "a", 61), K(100, "b", 64), K(100, "c", 66)] }),
   // T10 reset() mid-run (ids restart), then a new gesture
   reset: () => ({ total: 30000, base: { gate: 150 }, resets: [20000], ins: [K(100, "a", 60), K(100, "b", 64), K(21000, "c", 67)] }),
@@ -253,14 +253,37 @@ function g1Diverges(plants) {
   check(same.length === 0 && diff.length === 0, "D1: same seed -> identical stream; seed 1 vs 2 differs for random, shuffle and probability" + (same.length ? " - unstable: " + same : "") + (diff.length ? " - seed-blind: " + diff : ""));
 }
 
-// ---- 10. Q1: quantized keys are in the mask and in 0-127; ties go down ----------------------
-{
+// ---- 10. Q1-Q4: quantize in horde's scale schema (SPEC §6, D-010) ----------------------------
+// The mask is ROOT-RELATIVE (degree i = i semitones above the root), as horde's quantise() reads it.
+const inScale = (key, root, mask) => ((mask >> (((key - root) % 12) + 12) % 12) & 1) === 1;
+const MAJOR_DEGS = { scale_deg0: true, scale_deg1: false, scale_deg2: true, scale_deg3: false, scale_deg4: true, scale_deg5: true,
+                     scale_deg6: false, scale_deg7: true, scale_deg8: false, scale_deg9: true, scale_deg10: false, scale_deg11: true };
+{ // Q1: every quantized key is in the (global) scale and in 0-127
   const keys = [61, 63, 66, 70, 125, 127].map((k, i) => K(0, "k" + i, k));
-  const sess = (plants, order, pattern) => run({ core: mkCore(plants), block: 256, total: 40000, scale: NDOWN, base: { quantize: true, octaves: 2, order, pattern: pattern || "none" }, ins: keys });
-  const bad = plants => ["up", "chord", "random", "bounce"].some(o => ons(sess(plants, o)).concat(ons(sess(plants, o, "octave_leap"))).some(e => e.key < 0 || e.key > 127 || !((0xAB5 >> (e.key % 12)) & 1)));
+  const sess = (plants, order, pattern) => run({ core: mkCore(plants), block: 256, total: 40000, scale: NDOWN, base: { quantize: "scale", octaves: 2, order, pattern: pattern || "none" }, ins: keys });
+  const bad = plants => ["up", "chord", "random", "bounce"].some(o => ons(sess(plants, o)).concat(ons(sess(plants, o, "octave_leap"))).some(e => e.key < 0 || e.key > 127 || !inScale(e.key, 0, 0xAB5)));
   plant(bad(["skipQuantizeChord"]), "Q1 detects quantize skipped on chord steps");
-  const tie = (k) => ons(run({ core: mkCore(), block: 256, total: 4000, scale: NDOWN, base: { quantize: true }, ins: [K(0, "a", k)] }))[0].key;
-  check(!bad([]) && tie(61) === 60 && tie(66) === 65, "Q1: every quantized key is in the C-major mask and in 0-127 (chord, random, bounce, octave offsets); ties go to the lower key (61->60, 66->65)");
+  check(!bad([]), "Q1: every quantized key is in horde's global C-major scale and in 0-127 (chord, random, bounce, octave offsets)");
+}
+{ // Q2: a tie goes toward the PREVIOUS quantized output (horde's rule); the lower key when there is none
+  // Held C#4 (61, a tie between 60 and 62) and A4 (69), order up: the first 61 has no previous -> 60;
+  // every later 61 follows a 69, and 62 is nearer 69 than 60 is -> 62.
+  const seq = plants => ons(run({ core: mkCore(plants), block: 128, total: 30000, scale: NDOWN, base: { quantize: "scale", order: "up" }, ins: [K(0, "a", 61), K(0, "b", 69)] })).map(e => e.key);
+  const bad = plants => { const q = seq(plants); const c = q.filter((k, i) => i % 2 === 0); return q.length < 6 || c[0] !== 60 || c.slice(1).some(k => k !== 62); };
+  plant(bad(["tieAlwaysDown"]), "Q2 detects ties always resolved downward");
+  check(!bad([]), `Q2: ties resolve toward the previous output: ${seq([]).slice(0, 6).join(" ")} (first 61 -> 60 with nothing before it; later 61 -> 62 after 69)`);
+}
+{ // Q3: scale source = own uses Arp's scale_root + scale_deg* (E-flat major) over horde's global C major
+  const sess = plants => run({ core: mkCore(plants), block: 256, total: 30000, scale: NDOWN, base: Object.assign({ quantize: "scale", scale_source: "own", scale_root: 3, octaves: 2, order: "up" }, MAJOR_DEGS), ins: [64, 67, 71, 72].map((k, i) => K(0, "k" + i, k)) });
+  const bad = plants => { const o = ons(sess(plants)); return o.length < 8 || o.some(e => !inScale(e.key, 3, 0xAB5)); };
+  plant(bad(["ownIgnored"]), "Q3 detects the own scale ignored (the global scale used instead)");
+  check(!bad([]), "Q3: with scale source = own, every key is in Arp's own E-flat major, not horde's global C major");
+}
+{ // Q4: chord_root anchors the scale SHAPE on the lowest held key (horde's movable-do); the root setting is ignored
+  const sess = plants => run({ core: mkCore(plants), block: 256, total: 30000, scale: NDOWN, base: Object.assign({ quantize: "chord_root", scale_source: "own", scale_root: 0, octaves: 2, order: "up" }, MAJOR_DEGS), ins: [62, 65, 69].map((k, i) => K(0, "k" + i, k)) });
+  const bad = plants => { const o = ons(sess(plants)); return o.length < 8 || o.some(e => !inScale(e.key, 2, 0xAB5)); };
+  plant(bad(["chordRootAsRoot"]), "Q4 detects chord_root anchored on the root setting instead of the lowest held key");
+  check(!bad([]), "Q4: chord_root over D F A puts every key in D major (the shape anchored on D, root setting C ignored)");
 }
 
 // ---- 11. R1: rests, misses, ties and trigger-only steps do not advance m ----------------------
