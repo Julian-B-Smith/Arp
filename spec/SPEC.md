@@ -1,11 +1,12 @@
-# Arp — 1.0 specification (DRAFT r2.2, Phase A)
+# Arp — 1.0 specification (DRAFT r2.3, Phase A)
 
 > **Status: DRAFT r2.1, 2026-10-21.** r1 was reviewed by an independent Opus
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
 > folds in every finding; the per-finding record is `docs/spec-review-r1.md`.
 > r2.1 adds §13, which settles the 17 gaps the lab build surfaced. §13 is
 > normative and outranks the section it clarifies. r2.2 adds the output
-> stream tag (D-009, horde ADR-270).
+> stream tag (D-009, horde ADR-270). r2.3 rewrites §6 in horde's scale schema
+> (D-010).
 >
 > - This file becomes a protected path once the human ratifies it (the
 >   ROADMAP Phase A gate).
@@ -399,15 +400,51 @@ At every anchor `m := 0` (H8).
 
 ---
 
-## 6. Scale quantize
-- When `quantize` is on and the mask is non-zero, each output key moves to
-  the nearest in-scale key **within 0–127**. A tie goes to the **lower** key
-  (**PROPOSED**, Q-A5).
-- **Collisions.** When two keys of one step land on one key, it is emitted
-  once, with the channel and velocity of the **earliest** source in the
-  style's order.
-- The scale is read at step evaluation. A scale change never moves a
-  sounding note.
+## 6. Scale quantize: horde's scale schema (D-010)
+
+**The schema.** A scale is `{root, mask}` and nothing else. This is exactly
+horde's shape: `scaleRoot` (0–11) and `scaleDeg0..11`, legacy host ids
+116–128 (horde B260, B391).
+- **The mask is relative to the root.** Degree `i` admits the pitch class
+  `i` semitones above `root`, so a key `x` is in the scale iff
+  `mask` bit `mod(x − root, 12)` is set. That is horde's `quantise()`.
+- **"The mask is the truth, the name is UI."** Arp stores and transmits only
+  `{root, mask}`, never a scale name.
+  - horde's 18 named scales (`params.json` → `ui_scale_names`) are UI
+    vocabulary. Picking one writes the twelve degrees.
+  - A mask that matches no name reads "custom".
+
+**Settings:**
+- `quantize`, one of:
+  - `off`;
+  - `scale`: snap to the scale anchored at its root;
+  - `chord_root`: horde's movable-do "scale (offset)" mode for an arp. The
+    scale **shape** is anchored on the **lowest held key**, so the root
+    setting is ignored (horde ADR-112). With nothing held, the root applies.
+- `scale_source`, one of:
+  - `global`: horde's scale, from the block input. Read, never owned. This
+    is the default.
+  - `own`: Arp's own `scale_root` and `scale_deg0..11`, in the same shape.
+    The default own scale is C major.
+
+All of these are discrete settings and morph targets, so they apply at the
+next step (§9).
+
+**The rule:**
+- Each output key moves to the nearest in-scale key **within 0–127**. A key
+  already in the scale is unchanged. A zero mask disables quantize.
+- **A tie goes toward the previous quantized output** of this instance,
+  `lastQ`. This is horde's rule, from Tonality: the output line is the melody
+  heard, so continuity is owed to it.
+  - With no `lastQ`, or with both candidates equally near it, the tie goes
+    to the **lower** key.
+  - `lastQ` is set by every key that passes through quantize, including chord
+    steps, in their emission order. It resets only at `prepare` and `reset`.
+- **Collisions:** when two keys of one step land on one key, it is emitted
+  once, with the channel and velocity of the earliest source in the style's
+  order.
+- The scale and the mode are read at step evaluation. A scale change never
+  moves a sounding note.
 
 ---
 
@@ -505,7 +542,10 @@ produce no extra and no missing terminal (LIBRARY L0001).
 | G4 | the **tick** of every event is identical at 44.1, 48, 96 and 192 kHz (samples differ by rate) | read a sample-rate-dependent value into tick math |
 | G5 | under re-base jitter (the host position perturbed by ±1/32 beat), every grid step is evaluated exactly once | drop the once-guard |
 | D1 | same seed → same stream; a different seed changes `random` / `shuffle` / `prob` output | put a time-varying value in the draw |
-| Q1 | every quantized key is in the mask and in 0–127 | skip quantize on chord steps |
+| Q1 | every quantized key is in the (global) scale and in 0–127 | skip quantize on chord steps |
+| Q2 | a tie resolves toward the previous quantized output (lower when there is none) | always resolve downward |
+| Q3 | with `scale_source = own`, keys follow Arp's own scale, not the global one | ignore the own scale |
+| Q4 | `chord_root` anchors the scale shape on the lowest held key | anchor on the root setting |
 | R1 | rest, miss, tie and trigger-only steps don't advance `m` | advance `m` on rests |
 | P1 | `prob` 0 never fires and 100 always fires (exact); 30 and 50 are within ±2 % over 10,000 steps | use `<=` (caught at the exact endpoints, since a ±2 % band cannot see it) |
 | T1 | triggers fire once per firing step, at its first on | fire on every ratchet |
@@ -520,8 +560,8 @@ produce no extra and no missing terminal (LIBRARY L0001).
 - **Q-A1:** the discrete morph rule, with hysteresis (§9).
 - **Q-A2:** restart under morph (§9).
 - **Q-A3:** the starter bank (§4.2 orders; `bank/starter.json` patterns).
-- **Q-A5:** the quantize tie direction (§6), and pre-roll (**PROPOSED:**
-  played; the grid extends to negative ticks).
+- **Q-A5:** pre-roll (**PROPOSED:** played; the grid extends to negative
+  ticks). The tie direction is settled by D-010.
 - **Q-H3** (horde): the trigger-lane handoff.
 - **Q-H4** (horde, after 1.0): per-channel and MPE pedals; mapping per-note
   expressions onto Arp's output notes.

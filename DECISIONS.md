@@ -291,3 +291,41 @@ beside the notice. Ball: HYPERSAW.
 untagged, which is a vacuous pass. The clean run failing exposed it, and the
 fix was to carry the field through the normaliser and the G1/D1 stream
 comparisons. Recorded as LIBRARY L0002.
+
+## D-010 — Scale quantize in horde's scale schema (RATIFIED by poll, 2026-10-22)
+
+The human asked for "a scale quantize option that fits into horde's scale
+quantization schema". The lead read horde's records rather than guess:
+- B260 and B391: the global scale is `scaleRoot` plus `scaleDeg0..11` (legacy
+  ids 116–128), lifted out of the bend quantizer;
+- the ruling "the mask is the truth, the name is UI";
+- `bend-lab.html`'s `quantise()`: a root-relative mask, ties toward the
+  previous emitted step, and 18 named scales;
+- ADR-112: movable-do "scale (offset)".
+
+**By poll, the human chose:**
+- **Scale source: global by default, own optional.** `scale_source` is
+  `global` (horde's scale, read never owned) or `own` (Arp's `scale_root` and
+  `scale_deg0..11`, in exactly horde's shape). Rejected: global only.
+- **Modes: off / scale / chord_root.** `chord_root` is horde's movable-do for
+  an arp: the scale shape is anchored on the lowest held key, and the root is
+  ignored. Rejected: off and scale only.
+- **Ties toward the previous quantized output**, as horde does, with the
+  lower key when there is nothing before. This settles Q-A5's tie half and
+  supersedes SPEC r2.1's "ties go down". Rejected: always down, which
+  diverges from horde.
+
+**What changed:**
+- SPEC r2.3 §6, with new invariants Q2–Q4, each with a plant;
+- `params.json`: `quantize` becomes an enum; `scale_source`, `scale_root`,
+  `scale_deg0..11` and `ui_scale_names` (horde's 18) are added;
+- the lab core and UI: an own-scale control, and horde's names on the
+  simulated global scale.
+
+The core's discrete-setting list is now derived from `params.json`, so a new
+discrete setting cannot be missed. Our root-relative degree math already
+matched horde's; the mode and tie rules are new.
+
+**For horde:** an Arp preset may now carry its own `{root, mask}`. That fits
+horde's own rule (consumers transmit `{root, mask}`). It goes in the next
+notice as information, with no ask.

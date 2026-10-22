@@ -23,7 +23,8 @@ in [`ROADMAP.md`](ROADMAP.md).
 - **Shape:** octave range, gate length (past 100% for legato), swing, and velocity (as played, fixed, or accented by
   step).
 - **Holding:** latch, either replacing or adding to the held notes. The sustain pedal holds the arp's input notes.
-- **Scale:** optional quantize to horde's global scale.
+- **Scale:** quantize to horde's global scale or Arp's own, in horde's scale format (a root plus twelve degrees): snap
+  to the scale, or anchor its shape on the chord's lowest note. Ties follow the melody.
 - **Restart:** a setting with three values: on a new chord, on the bar, or free-running.
 - **Pattern bank:** a starter set of extra note-order styles and preset step patterns (rhythm, rests, accents, gate,
   octave jumps), with per-step probability and ratchets. More entries after 1.0.

@@ -59,6 +59,10 @@
   .mx canvas:hover { border-color:var(--dim); }
   .mx canvas.sel { border-color:var(--acc); box-shadow:0 0 0 1px var(--acc); }
   .mx canvas:focus-visible { outline:2px solid var(--acc); outline-offset:1px; }
+  .degs { display:flex; flex-wrap:wrap; gap:3px; }
+  .deg { padding:2px 0; width:34px; font-size:10.5px; }
+  .deg.on { border-color:var(--acc); color:var(--acc); background:color-mix(in srgb, var(--acc) 14%, transparent); }
+  .ownscale { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
   .kbinfo kbd { border:1px solid var(--line); border-bottom-width:2px; border-radius:3px; padding:0 4px; font:inherit; font-size:11px; }
   #grid { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0; }
   .cell { width:64px; border:1px solid var(--line); border-radius:4px; padding:3px 4px; font-size:10.5px; } .cell b { color:var(--dim); margin-right:4px; }
@@ -94,7 +98,8 @@
   <div class="rollhead"><h3>One full cycle, as the core plays it</h3><span class="q" id="pvNote" style="margin:0"></span></div>
   <canvas id="pvRoll" class="roll" height="190" aria-label="Piano roll of one full pattern cycle"></canvas>
   <div class="rollhead"><h3>Live</h3><span class="legend">
-    <span><i style="background:var(--acc)"></i>note (brighter = louder)</span>
+    <span><i style="background:var(--acc)"></i>note (thicker, brighter = louder)</span>
+    <span><i style="background:linear-gradient(var(--hot) 0 30%, var(--acc) 30%)"></i>accented step</span>
     <span><i style="background:var(--line)"></i>rest</span>
     <span><i style="border:1px dashed var(--dim)"></i>tie</span>
     <span><i style="background:var(--hot)"></i>trigger</span></span></div>
@@ -119,8 +124,8 @@
       <div class="bar"><label>A <input type="range" id="morphW" min="0" max="100" value="50" style="width:260px"> B</label><span id="morphWv">B 50% / A 50%</span><span id="cornerNow" class="eff"></span></div>
       <div class="bar"><button id="demoA1">load Q-A1 demo</button><button id="demoA2">load Q-A2 demo</button></div>
     </div>
-    <div class="card"><h2>Listen and decide (Q-A5)</h2>
-      <div class="bar"><label>quantize tie goes <select id="tieSel"><option value="down">to the lower key (spec)</option><option value="up">to the upper key</option></select></label>
+    <div class="card"><h2>Listen and decide: pre-roll</h2>
+      <div class="bar">
         <label><input type="checkbox" id="prerollStart"> start the transport 1 bar early (pre-roll)</label>
         <label><input type="checkbox" id="prerollPlay" checked> play the pre-roll steps</label></div>
     </div>
@@ -141,7 +146,7 @@
 const TPQ = 15360;
 const ARP_PARAMS = {
  "format": "arp-params/1",
- "status": "DRAFT r2 2026-10-21 (Phase A, after critic review r1); protected once the human ratifies spec/",
+ "status": "DRAFT r2.3 2026-10-22 (Phase A); protected once the human ratifies spec/",
  "tpq": 15360,
  "note": "Every setting is a morph target (D-000 Open 5). All values are INTEGERS in the snapshot (horde rounds morph blends). kind=continuous blends; kind=discrete resolves to the largest-weight corner with 0.05 hysteresis and applies from the next evaluated step (SPEC §9, Q-A1 PROPOSED); `enabled` applies at offset 0 of its block (SPEC T4/T5). Enums are stored by NAME. Tempo is clamped to [20, 999] bpm (SPEC §1.3).",
  "params": [
@@ -264,9 +269,133 @@ const ARP_PARAMS = {
   {
    "key": "quantize",
    "kind": "discrete",
+   "type": "enum",
+   "values": [
+    "off",
+    "scale",
+    "chord_root"
+   ],
+   "default": "off",
+   "ref": "SPEC §6",
+   "note": "off; scale = snap to the scale anchored at its root; chord_root = horde's movable-do 'scale (offset)' mode for an arp: the scale SHAPE anchored on the lowest held key (the root setting is ignored, as in horde ADR-112)"
+  },
+  {
+   "key": "scale_source",
+   "kind": "discrete",
+   "type": "enum",
+   "values": [
+    "global",
+    "own"
+   ],
+   "default": "global",
+   "ref": "SPEC §6",
+   "note": "global = horde's scale (scaleRoot + scaleDeg0..11, B260), read never owned; own = Arp's scale_root + scale_deg0..11 below, in exactly horde's shape (D-010)"
+  },
+  {
+   "key": "scale_root",
+   "kind": "discrete",
+   "type": "int",
+   "min": 0,
+   "max": 11,
+   "default": 0,
+   "ref": "SPEC §6",
+   "note": "C=0 … B=11; horde's scaleRoot shape"
+  },
+  {
+   "key": "scale_deg0",
+   "kind": "discrete",
+   "type": "bool",
+   "default": true,
+   "ref": "SPEC §6",
+   "note": "degree 0: the pitch class 0 semitones above scale_root is in the scale (horde's scaleDeg0; root-relative)"
+  },
+  {
+   "key": "scale_deg1",
+   "kind": "discrete",
    "type": "bool",
    "default": false,
-   "ref": "SPEC §6"
+   "ref": "SPEC §6",
+   "note": "degree 1: the pitch class 1 semitones above scale_root is in the scale (horde's scaleDeg1; root-relative)"
+  },
+  {
+   "key": "scale_deg2",
+   "kind": "discrete",
+   "type": "bool",
+   "default": true,
+   "ref": "SPEC §6",
+   "note": "degree 2: the pitch class 2 semitones above scale_root is in the scale (horde's scaleDeg2; root-relative)"
+  },
+  {
+   "key": "scale_deg3",
+   "kind": "discrete",
+   "type": "bool",
+   "default": false,
+   "ref": "SPEC §6",
+   "note": "degree 3: the pitch class 3 semitones above scale_root is in the scale (horde's scaleDeg3; root-relative)"
+  },
+  {
+   "key": "scale_deg4",
+   "kind": "discrete",
+   "type": "bool",
+   "default": true,
+   "ref": "SPEC §6",
+   "note": "degree 4: the pitch class 4 semitones above scale_root is in the scale (horde's scaleDeg4; root-relative)"
+  },
+  {
+   "key": "scale_deg5",
+   "kind": "discrete",
+   "type": "bool",
+   "default": true,
+   "ref": "SPEC §6",
+   "note": "degree 5: the pitch class 5 semitones above scale_root is in the scale (horde's scaleDeg5; root-relative)"
+  },
+  {
+   "key": "scale_deg6",
+   "kind": "discrete",
+   "type": "bool",
+   "default": false,
+   "ref": "SPEC §6",
+   "note": "degree 6: the pitch class 6 semitones above scale_root is in the scale (horde's scaleDeg6; root-relative)"
+  },
+  {
+   "key": "scale_deg7",
+   "kind": "discrete",
+   "type": "bool",
+   "default": true,
+   "ref": "SPEC §6",
+   "note": "degree 7: the pitch class 7 semitones above scale_root is in the scale (horde's scaleDeg7; root-relative)"
+  },
+  {
+   "key": "scale_deg8",
+   "kind": "discrete",
+   "type": "bool",
+   "default": false,
+   "ref": "SPEC §6",
+   "note": "degree 8: the pitch class 8 semitones above scale_root is in the scale (horde's scaleDeg8; root-relative)"
+  },
+  {
+   "key": "scale_deg9",
+   "kind": "discrete",
+   "type": "bool",
+   "default": true,
+   "ref": "SPEC §6",
+   "note": "degree 9: the pitch class 9 semitones above scale_root is in the scale (horde's scaleDeg9; root-relative)"
+  },
+  {
+   "key": "scale_deg10",
+   "kind": "discrete",
+   "type": "bool",
+   "default": false,
+   "ref": "SPEC §6",
+   "note": "degree 10: the pitch class 10 semitones above scale_root is in the scale (horde's scaleDeg10; root-relative)"
+  },
+  {
+   "key": "scale_deg11",
+   "kind": "discrete",
+   "type": "bool",
+   "default": true,
+   "ref": "SPEC §6",
+   "note": "degree 11: the pitch class 11 semitones above scale_root is in the scale (horde's scaleDeg11; root-relative)"
   },
   {
    "key": "seed",
@@ -409,8 +538,227 @@ const ARP_PARAMS = {
    "beats": "1/16",
    "ticks": 960
   }
- ]
+ ],
+ "ui_scale_names": {
+  "source": "horde docs/design/bend-lab.html SCALES (the vocabulary horde's own scale dropdown uses; read 2026-10-22)",
+  "rule": "UI only, never stored: picking a name writes the twelve degrees; editing any degree reads 'custom'; loading reverse-matches",
+  "scales": [
+   [
+    "chromatic",
+    [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11
+    ]
+   ],
+   [
+    "major (ionian)",
+    [
+     0,
+     2,
+     4,
+     5,
+     7,
+     9,
+     11
+    ]
+   ],
+   [
+    "natural minor",
+    [
+     0,
+     2,
+     3,
+     5,
+     7,
+     8,
+     10
+    ]
+   ],
+   [
+    "harmonic minor",
+    [
+     0,
+     2,
+     3,
+     5,
+     7,
+     8,
+     11
+    ]
+   ],
+   [
+    "melodic minor",
+    [
+     0,
+     2,
+     3,
+     5,
+     7,
+     9,
+     11
+    ]
+   ],
+   [
+    "dorian",
+    [
+     0,
+     2,
+     3,
+     5,
+     7,
+     9,
+     10
+    ]
+   ],
+   [
+    "phrygian",
+    [
+     0,
+     1,
+     3,
+     5,
+     7,
+     8,
+     10
+    ]
+   ],
+   [
+    "lydian",
+    [
+     0,
+     2,
+     4,
+     6,
+     7,
+     9,
+     11
+    ]
+   ],
+   [
+    "mixolydian",
+    [
+     0,
+     2,
+     4,
+     5,
+     7,
+     9,
+     10
+    ]
+   ],
+   [
+    "locrian",
+    [
+     0,
+     1,
+     3,
+     5,
+     6,
+     8,
+     10
+    ]
+   ],
+   [
+    "major pentatonic",
+    [
+     0,
+     2,
+     4,
+     7,
+     9
+    ]
+   ],
+   [
+    "minor pentatonic",
+    [
+     0,
+     3,
+     5,
+     7,
+     10
+    ]
+   ],
+   [
+    "blues",
+    [
+     0,
+     3,
+     5,
+     6,
+     7,
+     10
+    ]
+   ],
+   [
+    "whole tone",
+    [
+     0,
+     2,
+     4,
+     6,
+     8,
+     10
+    ]
+   ],
+   [
+    "diminished (h-w)",
+    [
+     0,
+     1,
+     3,
+     4,
+     6,
+     7,
+     9,
+     10
+    ]
+   ],
+   [
+    "phrygian dominant",
+    [
+     0,
+     1,
+     4,
+     5,
+     7,
+     8,
+     10
+    ]
+   ],
+   [
+    "hirajoshi",
+    [
+     0,
+     2,
+     3,
+     7,
+     8
+    ]
+   ],
+   [
+    "in-sen",
+    [
+     0,
+     1,
+     5,
+     7,
+     10
+    ]
+   ]
+  ]
+ }
 };
+
 const ARP_BANK = {
  "format": "arp-bank/1",
  "status": "DRAFT 2026-10-21 — CANDIDATES for the starter bank (Q-A3, decided by playing the lab). Clean-room: names and patterns are ours (D-004).",
@@ -666,8 +1014,10 @@ const ARP_BANK = {
 // each against a fresh core, to prove its detector can go red.
 const ARP_PLANTS = ["dropRelease", "doubleRelease", "sameSampleOff", "clampOffset", "floatPosition",
   "roundNotCeil", "swingParityK", "srTickMath", "noOnceGuard", "timeInDraw", "skipQuantizeChord",
-  "advanceOnRest", "probLE", "trigEveryRatchet", "tieAtTieStep", "noOffReserve", "untaggedOn"];
-const DISCRETE_KEYS = ["order", "pattern", "rate", "octaves", "latch", "vel_mode", "restart", "quantize", "seed"];
+  "advanceOnRest", "probLE", "trigEveryRatchet", "tieAtTieStep", "noOffReserve", "untaggedOn", "tieAlwaysDown", "ownIgnored", "chordRootAsRoot"];
+// Every discrete setting except `enabled` (which applies at offset 0, T4/T5) switches at the next
+// evaluated step (SPEC §9). Derived from params.json, so a new discrete setting cannot be forgotten.
+const DISCRETE_KEYS = ARP_PARAMS.params.filter(p => p.kind === "discrete" && p.key !== "enabled").map(p => p.key);
 const RATE_TICKS = {};
 for (const r of ARP_PARAMS.rate) { RATE_TICKS[r.name] = r.ticks; if (r.alias) RATE_TICKS[r.alias] = r.ticks; }
 const RANK = { off: 0, panic: 1, on: 2, trig: 3, pass: 4 };
@@ -755,7 +1105,7 @@ class ArpCore {
     this.patMap = new Map(this.bank.patterns.map(p => [p.id, p]));
     this.stepDefaults = this.bank.step_defaults || ARP_BANK.step_defaults;
     // lab.opts are the lab's listening toggles (Q-A5), not spec behaviour changes.
-    this.lab = { plant: {}, opts: { quantizeTie: "down", playPreroll: true } };
+    this.lab = { plant: {}, opts: { playPreroll: true } };
     for (const p of ARP_PLANTS) this.lab.plant[p] = false;
     this.sr = 0;
     this._dropped = false; this._doubled = false;   // plant bookkeeping; survives reset() so a plant fires once per instance
@@ -778,7 +1128,7 @@ class ArpCore {
 
   _resetState() {
     this.refs = []; this.ignored = []; this.pedalDown = false;
-    this.enabled = false; this.idCounter = 0;
+    this.enabled = false; this.idCounter = 0; this.lastQ = null;
     this.sounding = []; this.pending = [];
     this.absSample = 0;
     this.clock = "none"; this._start = 0n; this._next = 0n; this._inc = 0n;
@@ -1085,7 +1435,7 @@ class ArpCore {
       trig();
     } else if (fires && st.trig) { kind = "trig"; trig(); }
     else if (P.advanceOnRest) this.m++;
-    this.lastSteps.push({ s: so, kAbs, k, j, mBefore, mAfter: this.m, fires, kind });
+    this.lastSteps.push({ s: so, kAbs, k, j, mBefore, mAfter: this.m, fires, kind, ord });   // ord: lets the UI tie a note to its step (accents)
   }
 
   _play(kAbs, j, pat, st, H, onT, ord, fires) {
@@ -1096,7 +1446,7 @@ class ArpCore {
     for (const nt of notes) {
       let key = nt.key + st.oct * 12;
       if (key < 0 || key > 127) { this.rows.T16++; this.counters.keysDropped++; continue; }
-      if (a.quantize && !(P.skipQuantizeChord && a.order === "chord")) key = this._quant(key);
+      if (a.quantize !== "off" && !(P.skipQuantizeChord && a.order === "chord")) key = this._quant(key, this._scaleOf(a, H));
       if (seen.has(key)) continue;
       seen.add(key);
       const base = a.vel_mode === "fixed" ? S.vel_fixed : nt.vel;
@@ -1149,16 +1499,36 @@ class ArpCore {
     }
     return [E[indexOf(a.order, e, mod(m, periodOf(a.order, e, oct)))]];
   }
-  _quant(key) {
-    const sc = this.scale, mask = sc.mask & 0xFFF;
-    if (!mask) return key;
-    const inMask = x => (mask >> mod(x - sc.root, 12)) & 1;
-    if (inMask(key)) return key;
-    for (let d = 1; d <= 12; d++) {
-      const pair = this.lab.opts.quantizeTie === "up" ? [key + d, key - d] : [key - d, key + d];   // Q-A5: ties go to the lower key by default
-      for (const c of pair) if (c >= 0 && c <= 127 && inMask(c)) return c;
+  // SPEC §6 (D-010) — horde's scale schema: {root, mask}, the mask RELATIVE to the root (degree i
+  // = the pitch class i semitones above it), exactly as horde's quantise() reads scaleRoot/scaleDeg.
+  // Source: horde's global scale (block input), or Arp's own scale_root + scale_deg0..11.
+  // chord_root is horde's movable-do "scale (offset)" mode for an arp: the scale SHAPE is anchored on
+  // the lowest held key and the root setting is ignored (horde ADR-112).
+  _scaleOf(a, H) {
+    let root, mask;
+    const P = this.lab.plant;
+    if (a.scale_source === "own" && !P.ownIgnored) { root = a.scale_root; mask = 0; for (let i = 0; i < 12; i++) if (a["scale_deg" + i]) mask |= 1 << i; }
+    else { root = this.scale.root; mask = this.scale.mask & 0xFFF; }
+    if (a.quantize === "chord_root" && H.length && !P.chordRootAsRoot) root = mod(H[0].key, 12);   // H is sorted by key: H[0] is the lowest held
+    return { root, mask };
+  }
+  // Nearest in-scale key within 0-127. A TIE goes toward the previous quantized output (horde's
+  // rule, from Tonality: the output line is the melody heard, so continuity is owed to it); with
+  // nothing quantized yet, or equally near, the lower key. lastQ resets only at prepare/reset.
+  _quant(key, sc) {
+    if (!sc.mask) return key;
+    const inMask = x => (sc.mask >> mod(x - sc.root, 12)) & 1;
+    let out = key;
+    if (!inMask(key)) {
+      for (let d = 1; d <= 127; d++) {
+        const lo = key - d, hi = key + d, okLo = lo >= 0 && inMask(lo), okHi = hi <= 127 && inMask(hi);
+        if (okLo && okHi) { out = (!this.lab.plant.tieAlwaysDown && this.lastQ !== null && Math.abs(hi - this.lastQ) < Math.abs(lo - this.lastQ)) ? hi : lo; break; }
+        if (okLo) { out = lo; break; }
+        if (okHi) { out = hi; break; }
+      }
     }
-    return key;
+    this.lastQ = out;
+    return out;
   }
 
   // ---------------------------------------------------------------- note emission and the ONE release path
@@ -1309,11 +1679,13 @@ class ArpCore {
     const ins = eng.q.splice(0);
     const evs = eng.core.process({ n: BLOCK, transport: eng.host.at(at), settings: effective(), scale: state.scale, in: ins });
     const base = eng.t0 + at / eng.sr;
-    for (const e of evs) schedule(e, base + e.s / eng.sr);
     for (const s of eng.core.lastSteps) {
       eng.stepQ.push({ time: base + s.s / eng.sr, j: s.j, kind: s.kind, pat: eng.core.active.pattern });
       roll.steps.push({ time: base + s.s / eng.sr, j: s.j, kind: s.kind });
+      roll.stepOf.set(s.ord, { pat: eng.core.active.pattern, j: s.j });
+      if (roll.stepOf.size > 4096) roll.stepOf.delete(roll.stepOf.keys().next().value);   // bounded
     }
+    for (const e of evs) schedule(e, base + e.s / eng.sr);
     eng.next += BLOCK;
   }
   function schedule(e, when) {
@@ -1442,6 +1814,7 @@ class ArpCore {
   function buildSettings() {
     const box = $("settings"); box.textContent = "";
     for (const p of ARP_PARAMS.params) {
+      if (p.key === "scale_root" || p.key.startsWith("scale_deg")) continue;   // drawn by buildOwnScale()
       const row = h("div", { class: "row" }), eff = h("span", { class: "eff" });
       let input;
       const commit = v => { state.cur[p.key] = v; };
@@ -1475,15 +1848,53 @@ class ArpCore {
   }
   function syncControls(from) { for (const p of ARP_PARAMS.params) controls[p.key].set(from[p.key]); }
 
+  // ---- horde's scale shape: {root, mask}; names are UI only ("the mask is the truth, the name is UI") ----
+  const SCALE_NAMES = ARP_PARAMS.ui_scale_names.scales;            // horde's 18, from params.json
+  const degToMask = degs => degs.reduce((m, i) => m | (1 << i), 0);
+  const nameOfMask = mask => { const hit = SCALE_NAMES.find(([, d]) => degToMask(d) === mask); return hit ? hit[0] : "custom"; };
+  const ownMask = S => { let m = 0; for (let i = 0; i < 12; i++) if (S["scale_deg" + i]) m |= 1 << i; return m; };
+  // Arp's OWN scale (used when scale source = own): a name picker that WRITES root + twelve degrees,
+  // a root, and twelve degree toggles labelled with the pitch they admit. Editing a toggle reads "custom".
+  function buildOwnScale() {
+    const box = $("settings");
+    const nameSel = h("select", {}, h("option", { value: "custom", text: "custom" }), ...SCALE_NAMES.map(([n]) => h("option", { value: n, text: n })));
+    const rootSel = h("select", {}, ...NAMES.map((n, i) => h("option", { value: String(i), text: n })));
+    const degBox = h("div", { class: "degs" }), degBtn = [];
+    for (let i = 0; i < 12; i++) {
+      const b = h("button", { class: "deg", title: "degree " + i });
+      b.addEventListener("click", () => { state.cur["scale_deg" + i] = !state.cur["scale_deg" + i]; paint(); });
+      degBtn.push(b); degBox.appendChild(b);
+    }
+    function paint() {
+      const S = state.cur, m = ownMask(S);
+      nameSel.value = nameOfMask(m); rootSel.value = String(S.scale_root);
+      degBtn.forEach((b, i) => { b.textContent = NAMES[(S.scale_root + i) % 12]; b.classList.toggle("on", !!S["scale_deg" + i]); });
+    }
+    nameSel.addEventListener("change", () => {
+      const hit = SCALE_NAMES.find(([n]) => n === nameSel.value); if (!hit) return;
+      for (let i = 0; i < 12; i++) state.cur["scale_deg" + i] = hit[1].includes(i);
+      paint();
+    });
+    rootSel.addEventListener("change", () => { state.cur.scale_root = Number(rootSel.value); paint(); });
+    controls.scale_root = { set: v => { state.cur.scale_root = v; paint(); } };
+    for (let i = 0; i < 12; i++) controls["scale_deg" + i] = { set: v => { state.cur["scale_deg" + i] = !!v; paint(); } };
+    const row = h("div", { class: "row own" }, h("label", { text: "own scale" }), h("div", { class: "ownscale" }, nameSel, h("span", { text: "root" }), rootSel), h("span"), h("span"));
+    box.appendChild(row); box.appendChild(h("div", { class: "row own" }, h("label", { text: "degrees" }), degBox, h("span"), h("span")));
+    paint();
+  }
+
   // ---- scale ---------------------------------------------------------------------
-  const SCALES = { "C major": [0xAB5, 0], "A minor": [0x5AD, 9], "pentatonic": [0x295, 0], "all keys": [0xFFF, 0], "none (mask 0)": [0, 0] };
+  // horde's GLOBAL scale, simulated here (in horde it is the instrument's setting; Arp only reads it).
   function buildScale() {
     const box = $("scale"); box.textContent = "";
-    const sel = h("select", {}, ...Object.keys(SCALES).map(n => h("option", { value: n, text: n })));
-    sel.addEventListener("change", () => { const [m, r] = SCALES[sel.value]; state.scale = { root: r, mask: m }; paint(); });
+    const sel = h("select", {}, ...SCALE_NAMES.map(([n]) => h("option", { value: n, text: n })), h("option", { value: "none", text: "none (mask 0)" }));
+    const rootSel = h("select", {}, ...NAMES.map((n, i) => h("option", { value: String(i), text: n })));
+    sel.value = nameOfMask(state.scale.mask); rootSel.value = String(state.scale.root);
+    const set = () => { const hit = SCALE_NAMES.find(([n]) => n === sel.value); state.scale = { root: Number(rootSel.value), mask: hit ? degToMask(hit[1]) : 0 }; paint(); };
+    sel.addEventListener("change", set); rootSel.addEventListener("change", set);
     const pcs = h("span", { class: "pcs" });
     function paint() { pcs.textContent = NAMES.map((n, i) => ((state.scale.mask >> ((i - state.scale.root + 12) % 12)) & 1) ? n : "-").join(" "); }
-    box.append(h("label", { text: "scale (read, never owned)" }), sel, pcs); paint();
+    box.append(h("label", { text: "horde's global scale (read only)" }), sel, h("span", { text: "root" }), rootSel, pcs); paint();
   }
 
   // ---- step grid + trigger lamps -------------------------------------------------
@@ -1523,7 +1934,6 @@ class ArpCore {
 
   // ---- listening toggles (Q-A5) --------------------------------------------------
   function buildLab() {
-    $("tieSel").addEventListener("change", ev => { eng.core.lab.opts.quantizeTie = ev.target.value; });
     $("prerollPlay").addEventListener("change", ev => { eng.core.lab.opts.playPreroll = ev.target.checked; });
     $("prerollStart").addEventListener("change", ev => { state.preroll = ev.target.checked; });
     $("bpm").addEventListener("change", ev => { state.bpm = clamp(Number(ev.target.value) || 120, 20, 999); ev.target.value = String(state.bpm); eng.hostQ.push({ bpm: state.bpm }); });
@@ -1539,9 +1949,16 @@ class ArpCore {
   // playing host at 120 bpm with the current settings, fed the held keys (or an example
   // chord). So it shows what the core WOULD play, never a hand-drawn approximation, and it
   // never touches the live engine. The live roll just records what the scheduler sends.
-  const roll = { notes: [], byId: new Map(), steps: [], trigs: [] };
+  const roll = { notes: [], byId: new Map(), steps: [], trigs: [], stepOf: new Map() };
+  // The pattern step's own velocity % (the accent), found from the step a note came from:
+  // every on carries its step's `ord`, and lastSteps maps ord -> pattern position j.
+  const stepVelPct = (patId, j) => { const pat = ARP_BANK.patterns.find(x => x.id === patId); const st = pat && pat.steps[j]; return st && st.vel !== undefined ? st.vel : ARP_BANK.step_defaults.vel; };
   const LIVE_SPAN = 4;                       // seconds of history in the live roll
-  function rollOn(e, when) { const n = { key: e.key, vel: e.vel, on: when, off: null }; roll.notes.push(n); roll.byId.set(e.ref.id, n); }
+  function rollOn(e, when) {
+    const st = roll.stepOf.get(e.ord);
+    const n = { key: e.key, vel: e.vel, acc: st ? stepVelPct(st.pat, st.j) : 100, on: when, off: null };
+    roll.notes.push(n); roll.byId.set(e.ref.id, n);
+  }
   function rollOff(e, when) { const n = roll.byId.get(e.ref.id); if (n) { n.off = when; roll.byId.delete(e.ref.id); } }
   const EXAMPLE_CHORD = [60, 63, 67];        // C3 minor in Live's naming, used when nothing is held
   const gcd = (a, b) => b ? gcd(b, a % b) : a;
@@ -1583,11 +2000,12 @@ class ArpCore {
     const ins = held.keys.map((h, i) => ({ t: "on", s: i, ref: "pv:" + h.key, key: h.key, vel: h.vel || 100, ch: 0 }));
     const endTick = (n + 1) * L, samplesPerTick = 60 * sr / (120 * TPQ);
     const total = Math.ceil((endTick + L) * samplesPerTick) + 4096;
-    const notes = [], byId = new Map(), trigs = [], stepKinds = new Map();
+    const notes = [], byId = new Map(), trigs = [], stepKinds = new Map(), ordJ = new Map();
     for (let at = 0; at < total; at += 4096) {
       const evs = core.process({ n: 4096, transport: host.at(at), settings, scale: state.scale, in: at ? [] : ins });
+      for (const st of core.lastSteps) ordJ.set(st.ord, st.j);   // before the ons: an on may share its step's block
       for (const e of evs) {
-        if (e.t === "on") { const x = { key: e.key, vel: e.vel, on: e.tick, off: null }; notes.push(x); byId.set(e.ref.id, x); }
+        if (e.t === "on") { const x = { key: e.key, vel: e.vel, acc: ordJ.has(e.ord) ? stepVelPct(S.pattern, ordJ.get(e.ord)) : 100, on: e.tick, off: null }; notes.push(x); byId.set(e.ref.id, x); }
         else if (e.t === "off") { const x = byId.get(e.ref.id); if (x) { x.off = e.tick !== undefined ? e.tick : x.on + 1; byId.delete(e.ref.id); } }
         else if (e.t === "trig") trigs.push({ tick: e.tick, lane: e.lane });
       }
@@ -1649,9 +2067,14 @@ class ArpCore {
     for (const n of notes) {
       const a = X(n.on), b = X(n.off === null ? x1 : n.off);
       if (b < GUT || a > GUT + plotW) continue;
-      g.globalAlpha = 0.35 + 0.65 * (n.vel / 127); g.fillStyle = C.acc;
-      g.fillRect(Math.max(a, GUT), Y(n.key) + 1, Math.max(2, b - Math.max(a, GUT) - 1), Math.max(2, rh - 2));
-      g.globalAlpha = 1; g.strokeStyle = C.bg; g.lineWidth = 1; g.strokeRect(Math.max(a, GUT) + 0.5, Y(n.key) + 1.5, Math.max(1, b - Math.max(a, GUT) - 2), Math.max(1, rh - 3));
+      const x = Math.max(a, GUT), wN = Math.max(2, b - x - 1);
+      const hN = Math.max(2, (rh - 2) * (0.4 + 0.6 * n.vel / 127)), yN = Y(n.key) + (rh - hN) / 2;   // louder = thicker
+      g.globalAlpha = 0.45 + 0.55 * (n.vel / 127); g.fillStyle = C.acc; g.fillRect(x, yN, wN, hN);
+      g.globalAlpha = 1; g.strokeStyle = C.bg; g.lineWidth = 1; g.strokeRect(x + 0.5, yN + 0.5, Math.max(1, wN - 1), Math.max(1, hN - 1));
+      if (n.acc > 100) {   // an accented step: a hot cap on the note and a tick above it
+        g.fillStyle = C.hot; g.fillRect(x, yN, wN, Math.min(2, hN));
+        g.beginPath(); g.moveTo(x, yN - 1); g.lineTo(x + 4, yN - 1); g.lineTo(x + 2, yN - 4); g.closePath(); g.fill();
+      }
     }
     // triggers: a marker on the bottom strip, with its lane
     for (const t of trigs) {
@@ -1745,9 +2168,9 @@ class ArpCore {
     for (let k = 0; k < d.n; k++) { const st = d.stepKinds.get(k); if (!st || st.kind === "rest") g.fillRect(X(k * d.L), P, Math.max(1, X((k + 1) * d.L) - X(k * d.L)), H); }
     g.globalAlpha = 1;
     for (const n of d.notes) {
-      const a = X(n.on), b = X(Math.min(n.off === null ? d.win : n.off, d.win));
-      g.globalAlpha = 0.4 + 0.6 * (n.vel / 127); g.fillStyle = C.acc;
-      g.fillRect(a, Y(n.key), Math.max(1.5, b - a - 0.5), 2);
+      const a = X(n.on), b = X(Math.min(n.off === null ? d.win : n.off, d.win)), th = 1 + 2 * n.vel / 127;   // louder = thicker
+      g.globalAlpha = 0.45 + 0.55 * (n.vel / 127); g.fillStyle = n.acc > 100 ? C.hot : C.acc;
+      g.fillRect(a, Y(n.key) + 1 - th / 2, Math.max(1.5, b - a - 0.5), th);
     }
     g.globalAlpha = 1; g.fillStyle = C.hot;
     for (const t of d.trigs) g.fillRect(X(t.tick), hgt - P - 2, 1.5, 3);
@@ -1773,7 +2196,7 @@ class ArpCore {
   function status(msg) { $("status").textContent = msg; }
 
   function init() {
-    buildKeyboard(); buildSettings(); buildScale(); buildLamps(); buildMorph(); buildLab(); renderGrid(); buildMatrix(); initMidi();
+    buildKeyboard(); buildSettings(); buildOwnScale(); buildScale(); buildLamps(); buildMorph(); buildLab(); renderGrid(); buildMatrix(); initMidi();
     requestAnimationFrame(frame);   // paint from load, so the pattern preview shows before audio starts
     status("Press Start audio (or any key / Play) - browsers need a gesture before they will make sound.");
   }
