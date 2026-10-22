@@ -144,28 +144,21 @@ const SESS = {
   panic: () => ({ total: 24000, base: { gate: 150 }, ins: [K(100, "a", 60), K(100, "b", 64), K(100, "c", 67), { at: 15000, t: "panic" }, K(17000, "d", 60)] }),
   // T8 / T15 every discrete setting changes mid-note
   discrete: () => ({ total: 46000, base: { gate: 200 }, scale: NDOWN,
-    cfg: [{ at: 8000, set: { order: "down" } }, { at: 12000, set: { rate: "1/8" } }, { at: 16000, set: { pattern: "roll_end" } }, { at: 20000, set: { octaves: 2 } }, { at: 24000, set: { restart: "bar" } },
-      { at: 28000, set: { restart: "free" } }, { at: 32000, set: { quantize: "scale" } }, { at: 36000, set: { vel_mode: "fixed", seed: 7 } }, { at: 40000, set: { restart: "chord", order: "shuffle" } }],
+    cfg: [{ at: 8000, set: { order: "down" } }, { at: 12000, set: { rate: "1/8" } }, { at: 16000, set: { pattern: "roll_end" } }, { at: 20000, set: { steps: 2 } }, { at: 21000, set: { step_size: 7 } }, { at: 24000, set: { restart: "bar" } },
+      { at: 28000, set: { restart: "free" } }, { at: 32000, set: { quantize: "scale" } }, { at: 34000, set: { step_unit: "degrees" } }, { at: 36000, set: { vel_mode: "fixed", seed: 7 } }, { at: 40000, set: { restart: "chord", order: "shuffle" } }],
     ins: [K(100, "a", 61), K(100, "b", 64), K(100, "c", 66)] }),
-  // SPEC 4.2 / 4.6: the four chord + note styles, a user pattern edited mid-run, landed, shuffle, with quantize ties in play
-  styles: () => ({ total: 44000, scale: NDOWN, userPattern: UP1, base: { order: "chord_walk", pattern: "user", gate: 120, octaves: 2 },
-    cfg: [{ at: 8000, set: { order: "stride" } }, { at: 12000, set: { quantize: "scale" } }, { at: 14000, set: { order: "chord_between" } }, { at: 20000, set: { order: "pairs" } },
-      { at: 26000, set: { order: "landed" } }, { at: 32000, set: { order: "shuffle", pattern: "tied_legato" } }, { at: 38000, set: { order: "chord_walk", pattern: "user" } }],
+  // SPEC 4.2 / 4.6 / 4.7: the four chord + note styles, a user pattern edited mid-run, converge, shuffle, transposition steps in both units, with quantize ties in play
+  styles: () => ({ total: 44000, scale: NDOWN, userPattern: UP1, base: { order: "chord_walk", pattern: "user", gate: 120, steps: 2, step_size: 7 },
+    cfg: [{ at: 8000, set: { order: "stride" } }, { at: 12000, set: { quantize: "scale" } }, { at: 16000, set: { step_unit: "degrees", step_size: 2 } }, { at: 14000, set: { order: "chord_between" } }, { at: 20000, set: { order: "pairs" } },
+      { at: 26000, set: { order: "converge" } }, { at: 32000, set: { order: "shuffle", pattern: "tied_legato" } }, { at: 38000, set: { order: "chord_walk", pattern: "user" } }],
     userEdits: [{ at: 17003, p: { length: 5, steps: [{ pick: "high" }, { tie: true }, { pick: "chord", ratchet: 3 }, {}, { pick: 2, trig: 1 }] } }],
     ins: [K(100, "a", 60), K(100, "b", 66), K(900, "c", 70), O(15000, "b"), K(16200, "d", 63), O(30000, "a"), O(30000, "c"), O(30000, "d"), K(33000, "e", 61), K(33400, "f", 69)] }),
-  // SPEC 4.7: landed, with a repeated press, a mid-gesture release, a rate change, a transport stop/start (the phrase re-anchors), a second gesture
-  landed: () => {
-    const host = X.simHost({ sr: 8000, bpm: 120, startBeats: 0, playing: true });
-    host.set(26000, { playing: false }); host.set(30000, { playing: true, seekBeats: 0 });
-    return { total: 44000, host, base: { order: "landed", pattern: "gallop", gate: 150, octaves: 2 }, cfg: [{ at: 18000, set: { rate: "1/8" } }],
-      ins: [K(100, "a", 60), K(2400, "b", 64), K(4100, "c", 67), K(6200, "a2", 60), O(9000, "b"), K(10200, "d", 72), O(21000, "a"), O(21000, "a2"), O(21000, "c"), O(21000, "d"), K(31000, "e", 55), K(33300, "f", 59)] };
-  },
   // T10 reset() mid-run (ids restart), then a new gesture
   reset: () => ({ total: 30000, base: { gate: 150 }, resets: [20000], ins: [K(100, "a", 60), K(100, "b", 64), K(21000, "c", 67)] }),
   // T11 the sounding table is full (a small table keeps the session short)
   overflow: () => ({ total: 12000, core: () => mkCore([], { caps: { sounding: 3 } }), base: { order: "chord", gate: 200 }, ins: [60, 62, 64, 65, 67, 69].map((k, i) => K(100, "k" + i, k)) }),
   // T16 keys outside 0-127, and a note shorter than one sample (SPEC 1.1 deferral): 999 bpm, 1/64, gate 1 %
-  short: () => ({ total: 8000, bpm: 999, base: { rate: "1/64", gate: 1, octaves: 2, order: "up" }, ins: [K(100, "a", 60), K(100, "b", 125)] }),
+  short: () => ({ total: 8000, bpm: 999, base: { rate: "1/64", gate: 1, steps: 2, order: "up" }, ins: [K(100, "a", 60), K(100, "b", 125)] }),
 };
 // A user pattern that uses every field: picks, a tie, a ratchet, a trigger, a rest, a probability and an octave.
 const UP1 = { length: 8, steps: [{ pick: "order" }, { pick: 3, ratchet: 2, vel: 130 }, { tie: true }, { pick: "low", gate: 50 }, { pick: "high", trig: 2 },
@@ -202,10 +195,10 @@ function g1Session(plants, block) {
   const host = X.simHost({ sr: 8000, bpm: 120, startBeats: 0, playing: true });
   host.set(9500, { bpm: 133.7 }); host.set(15003, { bpm: 90.5 }); host.set(22001, { playing: false }); host.set(26007, { playing: true, seekBeats: 3 }); host.set(33000, { seekBeats: 0.5 });
   return run({ core: mkCore(plants), block, host, total: 52000, scale: NDOWN, userPattern: UP1, base: { order: "random", pattern: "roll_end", swing: 620, gate: 130, seed: 42, rate: "1/32" },
-    // the tail adds the four chord + note styles, a user pattern (edited mid-step), landed and quantize with real ties (F# between F and G)
+    // the tail adds the four chord + note styles, a user pattern (edited mid-step), converge, transposition steps in both units and quantize with real ties (F# between F and G)
     userEdits: [{ at: 40007, p: { length: 3, steps: [{ pick: "chord" }, { pick: 2, ratchet: 2 }, { pick: "low" }] } }],
     cfg: [{ at: 9001, set: { order: "shuffle", pattern: "sparse_chance" } }, { at: 18007, set: { rate: "1/16", latch: "replace" } }, { at: 30011, set: { order: "bounce", pattern: "tied_legato", rate: "1/32" } },
-      { at: 34003, set: { order: "stride", pattern: "user", octaves: 2, quantize: "scale" } }, { at: 38501, set: { order: "landed", pattern: "none" } }, { at: 44001, set: { order: "chord_walk", pattern: "user" } },
+      { at: 34003, set: { order: "stride", pattern: "user", steps: 2, step_size: 7, quantize: "scale" } }, { at: 38501, set: { order: "converge", pattern: "none", step_unit: "degrees", step_size: 2 } }, { at: 44001, set: { order: "chord_walk", pattern: "user" } },
       { at: 46001, set: { order: "chord_between" } }, { at: 48003, set: { order: "pairs" } }],
     ins: [K(37, "a", 60), K(41, "b", 64), K(3011, "c", 67), O(12003, "a"), { at: 13000, t: "pedal", down: true }, O(14001, "b"), K(17777, "d", 72), O(19000, "c"), { at: 24000, t: "pedal", down: false }, K(25100, "e", 55), K(36000, "f", 59), { at: 38000, t: "panic" }, K(38500, "g", 62), K(41000, "h", 66), O(45000, "h"), K(47000, "i", 69)] });
 }
@@ -224,7 +217,7 @@ function g1Diverges(plants) {
   const r = g1Diverges([]);
   const g1 = g1Session([], 64), n = g1.evs.length;
   const qd = g1.evs.filter(e => e.t === "on" && e.a >= 36000);   // steps evaluated well after quantize switched on
-  check(r === null && n > 100 && qd.length > 20 && qd.every(e => inScale(e.key, 0, 0xAB5)), `G1: ${n} events, absolute samples identical at block sizes 4096/512/64/7/1 (swing, ratchets, prob, tempo change, stop/start, jumps, latch, pedal, panic, quantize ties, user pattern, the new styles, landed)` + (r ? " - " + r : ""));
+  check(r === null && n > 100 && qd.length > 20 && qd.every(e => inScale(e.key, 0, 0xAB5)), `G1: ${n} events, absolute samples identical at block sizes 4096/512/64/7/1 (swing, ratchets, prob, tempo change, stop/start, jumps, latch, pedal, panic, quantize ties, user pattern, the new styles, transposition steps in semitones and degrees)` + (r ? " - " + r : ""));
 }
 
 // ---- 5. G2: ons land at cdiv of their exact tick position --------------------------------
@@ -283,10 +276,10 @@ const MAJOR_DEGS = { scale_deg0: true, scale_deg1: false, scale_deg2: true, scal
                      scale_deg6: false, scale_deg7: true, scale_deg8: false, scale_deg9: true, scale_deg10: false, scale_deg11: true };
 { // Q1: every quantized key is in the (global) scale and in 0-127
   const keys = [61, 63, 66, 70, 125, 127].map((k, i) => K(0, "k" + i, k));
-  const sess = (plants, order, pattern) => run({ core: mkCore(plants), block: 256, total: 40000, scale: NDOWN, base: { quantize: "scale", octaves: 2, order, pattern: pattern || "none" }, ins: keys });
-  const bad = plants => ["up", "chord", "random", "bounce"].some(o => ons(sess(plants, o)).concat(ons(sess(plants, o, "octave_leap"))).some(e => e.key < 0 || e.key > 127 || !inScale(e.key, 0, 0xAB5)));
+  const sess = (plants, order, pattern, unit) => run({ core: mkCore(plants), block: 256, total: 40000, scale: NDOWN, base: { quantize: "scale", steps: 2, step_size: 5, step_unit: unit || "semitones", order, pattern: pattern || "none" }, ins: keys });
+  const bad = plants => ["up", "chord", "random", "bounce"].some(o => ons(sess(plants, o)).concat(ons(sess(plants, o, "octave_leap")), ons(sess(plants, o, "none", "degrees"))).some(e => e.key < 0 || e.key > 127 || !inScale(e.key, 0, 0xAB5)));
   // the EFFECTIVE scale (SPEC §11 Q1, r2.6): under chord_root it is the global shape anchored on the lowest held key (C# here), whose own pitch class is always admitted
-  const badEff = plants => ons(run({ core: mkCore(plants), block: 256, total: 20000, scale: NDOWN, base: { quantize: "chord_root", order: "chord", octaves: 2 }, ins: [61, 64, 66].map((k, i) => K(0, "k" + i, k)) }))
+  const badEff = plants => ons(run({ core: mkCore(plants), block: 256, total: 20000, scale: NDOWN, base: { quantize: "chord_root", order: "chord", steps: 1 }, ins: [61, 64, 66].map((k, i) => K(0, "k" + i, k)) }))
     .some(e => e.key < 0 || e.key > 127 || !inScale(e.key, 1, 0xAB5 | 1));
   plant(bad(["skipQuantizeChord"]) && badEff(["skipQuantizeChord"]), "Q1 detects quantize skipped on chord steps (global and chord_root scales)");
   check(!bad([]) && !badEff([]), "Q1: every quantized key is in the effective scale (global C major; chord_root anchored on the lowest held key) and in 0-127 (chord, random, bounce, octave offsets)");
@@ -300,13 +293,13 @@ const MAJOR_DEGS = { scale_deg0: true, scale_deg1: false, scale_deg2: true, scal
   check(!bad([]), `Q2: ties resolve toward the previous output: ${seq([]).slice(0, 6).join(" ")} (first 61 -> 60 with nothing before it; later 61 -> 62 after 69)`);
 }
 { // Q3: scale source = own uses Arp's scale_root + scale_deg* (E-flat major) over horde's global C major
-  const sess = plants => run({ core: mkCore(plants), block: 256, total: 30000, scale: NDOWN, base: Object.assign({ quantize: "scale", scale_source: "own", scale_root: 3, octaves: 2, order: "up" }, MAJOR_DEGS), ins: [64, 67, 71, 72].map((k, i) => K(0, "k" + i, k)) });
+  const sess = plants => run({ core: mkCore(plants), block: 256, total: 30000, scale: NDOWN, base: Object.assign({ quantize: "scale", scale_source: "own", scale_root: 3, steps: 1, order: "up" }, MAJOR_DEGS), ins: [64, 67, 71, 72].map((k, i) => K(0, "k" + i, k)) });
   const bad = plants => { const o = ons(sess(plants)); return o.length < 8 || o.some(e => !inScale(e.key, 3, 0xAB5)); };
   plant(bad(["ownIgnored"]), "Q3 detects the own scale ignored (the global scale used instead)");
   check(!bad([]), "Q3: with scale source = own, every key is in Arp's own E-flat major, not horde's global C major");
 }
 { // Q4: chord_root anchors the scale SHAPE on the lowest held key (horde's movable-do); the root setting is ignored
-  const sess = plants => run({ core: mkCore(plants), block: 256, total: 30000, scale: NDOWN, base: Object.assign({ quantize: "chord_root", scale_source: "own", scale_root: 0, octaves: 2, order: "up" }, MAJOR_DEGS), ins: [62, 65, 69].map((k, i) => K(0, "k" + i, k)) });
+  const sess = plants => run({ core: mkCore(plants), block: 256, total: 30000, scale: NDOWN, base: Object.assign({ quantize: "chord_root", scale_source: "own", scale_root: 0, steps: 1, order: "up" }, MAJOR_DEGS), ins: [62, 65, 69].map((k, i) => K(0, "k" + i, k)) });
   const bad = plants => { const o = ons(sess(plants)); return o.length < 8 || o.some(e => !inScale(e.key, 2, 0xAB5)); };
   plant(bad(["chordRootAsRoot"]), "Q4 detects chord_root anchored on the root setting instead of the lowest held key");
   check(!bad([]), "Q4: chord_root over D F A puts every key in D major (the shape anchored on D, root setting C ignored)");
@@ -376,33 +369,6 @@ const MAJOR_DEGS = { scale_deg0: true, scale_deg1: false, scale_deg2: true, scal
   check(clampOk(0), "U1: setUserPattern clamps length 1-16 and every field, reads an unknown pick as order; getUserPattern returns the stored copy");
 }
 
-// ---- 11c. L1: `landed` replays the captured presses at their snapped steps (SPEC 4.7) -----------------------
-{
-  // 1/16 at 120 bpm, sr 8000: a step is 1000 samples (3840 ticks); TPQ/L = 4. Two gestures; ref = a time-stepped model of the spec text.
-  const PR = [["A", 1000, 60, 90], ["B", 5010, 64, 70], ["C", 6800, 67, 110], ["F", 6990, 69, 95], ["A2", 9980, 60, 50]];   // q = 0, 4, 6, 6 (a chord with C), 9 (a repeat of the first key)
-  const PR2 = [["D", 34300, 62, 80], ["E", 36700, 65, 100]];                                                              // second gesture: t0 = 34.3, so step 0 is step 35 (never back to 34); q = 0, 2
-  const PR3 = [["G", 52300, 71, 85], ["H", 54300, 74, 105]];                                                              // third gesture, host PLAYING: the first press lands 0.3 of a step late and must sound at the NEXT step (53), not a loop later; q = 0, 2
-  const ins = [...PR, ...PR2].map(([r, at, k, v]) => K(at, r, k, { vel: v })).concat(PR3.map(([r, at, k, v]) => K(at, r, k, { vel: v })), [O(12500, "B"), ...["A", "C", "F", "A2"].map(r => O(30000, r)), O(50000, "D"), O(50000, "E"), O(62000, "G"), O(62000, "H")]);
-  const ref = () => {
-    const out = [];
-    const gest = [{ ps: PR, end: 30000 }, { ps: PR2, end: 50000 }, { ps: PR3, end: 62000 }];
-    for (let k = 0; k < 70; k++) {
-      const T = k * 1000, g = gest.find(g => g.ps[0][1] <= T && T < g.end);
-      if (!g || k < Math.floor(g.ps[0][1] / 1000) + (g.ps[0][1] % 1000 ? 1 : 0)) continue;   // no keys held, or before the anchor (first step at/after the gesture start)
-      const got = g.ps.filter(p => p[1] <= T).map(([, at, key, vel]) => ({ q: Math.floor((2 * (at - g.ps[0][1]) + 1000) / 2000), key, vel }));
-      const len = Math.ceil((Math.max(...got.map(x => x.q)) + 1) / 4) * 4, k0 = Math.ceil(g.ps[0][1] / 1000), q = (((k - k0) % len) + len) % len;
-      for (const x of got) if (x.q === q) out.push(`${k} ${x.key} ${x.vel}`);
-    }
-    return out;
-  };
-  const sess = plants => run({ core: mkCore(plants), block: 64, total: 70000, base: { order: "landed", gate: 50 }, ins });
-  const bad = plants => { const r = sess(plants), got = ons(r).map(e => `${e.tick / 3840} ${e.key} ${e.vel}`); return got.slice().sort().join("|") !== ref().sort().join("|") || n1(r.evs).length > 0; };
-  plant(bad(["landedIgnoreTiming"]), "L1 detects the captured timing ignored (presses played in order, one per step)");
-  plant(bad(["landedSnapBack"]), "L1 detects a first press that snaps BACK to an evaluated step (its note a whole loop late)");
-  const r = sess([]);
-  check(!bad([]) && ref().length > 15, `L1: ${ons(r).length} landed ons match the time-stepped reference: presses at steps 0, 4, 6 (a chord), 9 (a repeat), len 12 (rounded up to a beat), a mid-gesture release keeps its press, a new gesture records anew, a press 0.3 step late sounds at the next step`);
-}
-
 // ---- 11d. N2: shuffle never repeats a key back to back, and plays every key once per cycle (SPEC 4.2, D-012a) --------
 {
   const sess = (plants, e, seed) => ons(run({ core: mkCore(plants), sr: 8000, bpm: 999, block: 4096, total: 250 * 1100, base: { order: "shuffle", rate: "1/64", gate: 20, seed }, ins: [60, 62, 64, 67, 71].slice(0, e).map((k, i) => K(0, "k" + i, k)) })).map(x => x.key);
@@ -469,10 +435,10 @@ const MAJOR_DEGS = { scale_deg0: true, scale_deg1: false, scale_deg2: true, scal
 // ---- 13b. S1: every emitted NoteOn is on the `arp` stream (SPEC §1, D-009, horde ADR-270) -------
 // The plant tags most ons and drops the tag on a few, so the detector must check EVERY on, not one.
 {
-  const sess = plants => run({ core: mkCore(plants), block: 64, total: 60000, base: { order: "bounce", octaves: 2, pattern: "roll_end" }, ins: [K(0, "a", 60), K(0, "b", 64), K(0, "c", 67)] });
+  const sess = plants => run({ core: mkCore(plants), block: 64, total: 60000, base: { order: "bounce", steps: 2, step_size: 7, pattern: "roll_end" }, ins: [K(0, "a", 60), K(0, "b", 64), K(0, "c", 67)] });
   const bad = plants => { const ons = sess(plants).evs.filter(e => e.t === "on"); return ons.length < 20 || ons.some(e => e.stream !== "arp"); };
   plant(bad(["untaggedOn"]), "S1 detects a NoteOn emitted without the arp stream tag");
-  check(!bad([]), `S1: all ${sess([]).evs.filter(e => e.t === "on").length} NoteOns carry stream "arp" (bounce, 2 octaves, ratchets)`);
+  check(!bad([]), `S1: all ${sess([]).evs.filter(e => e.t === "on").length} NoteOns carry stream "arp" (bounce, 2 transposition steps, ratchets)`);
 }
 
 // ---- 14. K1: ties engage at gate 80 by look-ahead ----------------------------------------------
@@ -528,8 +494,8 @@ const MAJOR_DEGS = { scale_deg0: true, scale_deg1: false, scale_deg2: true, scal
     // played: press order, not pitch order
     const pressed = keys.slice().reverse(), got = ons(play("played", pressed)).map(x => x.key);
     if (!got.slice(0, 3 * e).every((k, i) => k === pressed[i % e])) wrong.push(`played/e${e}`);
-    // chord: every key at once, +12 per cycle (octaves 2 -> period 2)
-    const ch = play("chord", keys, { octaves: 2 }), byA = new Map(); for (const x of ons(ch)) byA.set(x.a, (byA.get(x.a) || []).concat(x.key));
+    // chord: every key at once, period 1; with 1 step of +12 the second pass is the chord an octave up
+    const ch = play("chord", keys, { steps: 1 }), byA = new Map(); for (const x of ons(ch)) byA.set(x.a, (byA.get(x.a) || []).concat(x.key));
     const cyc = [...byA.values()].slice(0, 6);
     if (!cyc.every((c, i) => c.join() === keys.map(k => k + 12 * (i % 2)).join())) wrong.push(`chord/e${e}`);
     // random: only held keys; shuffle: every e-block is a permutation
@@ -538,44 +504,84 @@ const MAJOR_DEGS = { scale_deg0: true, scale_deg1: false, scale_deg2: true, scal
     const shf = ons(play("shuffle", keys)).map(x => x.key);
     for (let c = 0; c + e <= Math.min(shf.length, 10 * e); c += e) if (shf.slice(c, c + e).slice().sort((x, y) => x - y).join() !== keys.join()) wrong.push(`shuffle/e${e}`);
   }
-  // octaves 2 with overlapping copies: E is sorted UNIQUE (60,72,84), `played` keeps duplicates (60,72,72,84)
-  const u = ons(play("up", [60, 72], { octaves: 2 })).map(x => x.key).slice(0, 6), pl = ons(play("played", [60, 72], { octaves: 2 })).map(x => x.key).slice(0, 8);
-  if (u.join() !== "60,72,84,60,72,84") wrong.push("up/unique-E");
-  if (pl.join() !== "60,72,72,84,60,72,72,84") wrong.push("played/duplicates");
-  check(wrong.length === 0, "order styles: all 12 match SPEC 4.2 (period and first cycle) for e = 1, 2, 3, 5; unique-E and played-duplicates at octaves 2" + (wrong.length ? " - wrong: " + wrong.join(" ") : ""));
+  check(wrong.length === 0, "order styles: all 12 match SPEC 4.2 (period and first cycle) for e = 1, 2, 3, 5 (E = the held keys, no octave copies)" + (wrong.length ? " - wrong: " + wrong.join(" ") : ""));
 }
 
 // ---- 16b. The four chord + note styles (SPEC 4.2, D-011): period and first cycle for e = 1, 2, 3, 5 ------------------
+// Expected steps are built by CONSTRUCTION from the spec's prose, not from its closed forms. Each step is a list of keys; H is in pitch order.
+// There are no octave copies (r2.7): E is the held keys, and range comes from transposition passes (X1 below).
+const baseCycle = (style, H) => {
+  const E = H.slice(), up = E, rev = E.slice().reverse();
+  if (style === "chord_walk") return [H, ...E.map(k => [k])];                                   // the chord, then each note of E
+  if (style === "chord_between") return E.flatMap(k => [H, [k]]);                               // chord, note, chord, note ...
+  if (style === "pairs") return E.length === 1 ? [[E[0]]] : E.slice(0, -1).map((k, i) => [k, E[i + 1]]);   // adjacent dyads
+  if (style === "stride") return [[H[0]], H.length > 1 ? H.slice(1) : [H[0] + 12]];             // bass, then the rest of the chord (one key held: that key an octave up)
+  if (style === "chord") return [H];
+  const conv = []; for (let lo = 0, hi = E.length - 1; lo <= hi;) { conv.push(E[lo++]); if (lo <= hi) conv.push(E[hi--]); }
+  const e = E.length;
+  return { up, down: rev, bounce: e === 1 ? [E[0]] : [...up, ...rev.slice(1, -1)], bounce2: [...up, ...rev], converge: conv, diverge: conv.slice().reverse(),
+    pedal_low: e === 1 ? [E[0]] : up.slice(1).flatMap(x => [E[0], x]), pedal_high: e === 1 ? [E[0]] : rev.slice(1).flatMap(x => [E[e - 1], x]) }[style].map(k => [k]);
+};
 {
-  // Expected steps are built by CONSTRUCTION from the spec's prose, not from its closed forms. Each step is a list of keys; H is in pitch order.
-  const cycle = (style, H, oct) => {
-    const E = [...new Set(Array.from({ length: oct }, (_, o) => H.map(k => k + 12 * o)).flat())].sort((a, b) => a - b);
-    if (style === "chord_walk") return [H, ...E.map(k => [k])];                                   // the chord, then each note of E
-    if (style === "chord_between") return E.flatMap(k => [H, [k]]);                               // chord, note, chord, note ...
-    if (style === "pairs") return E.length === 1 ? [[E[0]]] : E.slice(0, -1).map((k, i) => [k, E[i + 1]]);   // adjacent dyads
-    // stride: bass, then the rest of the chord; the chord part climbs an octave per round (one key held: that key an octave up first)
-    const rest = H.length > 1 ? H.slice(1) : [H[0] + 12];
-    return Array.from({ length: oct }, (_, o) => [[H[0]], rest.map(k => k + 12 * o)]).flat();
-  };
   const PITCH = { 1: [60], 2: [60, 64], 3: [60, 64, 67], 5: [60, 62, 64, 67, 71] };
-  const play = (style, H, oct) => run({ core: mkCore(), block: 512, total: 60000, base: { order: style, octaves: oct, gate: 50 }, ins: H.map((k, i) => K(100 + i, "k" + i, k, { vel: 60 + 7 * i })) });
-  // source velocity: an octave copy takes the velocity of the held key it was copied from
-  const srcVel = (H, k) => 60 + 7 * H.findIndex(h => [0, 1, 2, 3].some(o => h + 12 * o === k));
+  const play = (style, H) => run({ core: mkCore(), block: 512, total: 60000, base: { order: style, gate: 50 }, ins: H.map((k, i) => K(100 + i, "k" + i, k, { vel: 60 + 7 * i })) });
+  const srcVel = (H, k) => 60 + 7 * H.indexOf(k);   // a note takes the velocity of the held key it came from
   const wrong = (mutate) => {
     const bad = [];
-    for (const [style, octs] of [["chord_walk", [1]], ["stride", [1, 2]], ["chord_between", [1]], ["pairs", [1]]]) for (const e of [1, 2, 3, 5]) for (const oct of octs) {
-      const H = PITCH[e], want = cycle(style, H, oct), per = want.length, r = play(style, H, oct), byTick = new Map();
+    for (const style of ["chord_walk", "stride", "chord_between", "pairs"]) for (const e of [1, 2, 3, 5]) {
+      const H = PITCH[e], want = baseCycle(style, H), per = want.length, r = play(style, H), byTick = new Map();
       for (const x of ons(r)) byTick.set(x.tick, (byTick.get(x.tick) || []).concat(x));
       const steps = [...byTick.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v.sort((a, b) => a.key - b.key));
       const ref = mutate ? mutate(want) : want;
-      const ok = steps.length >= 3 * per && steps.slice(0, 3 * per).every((st, i) => st.map(x => x.key).join() === ref[i % per].slice().sort((a, b) => a - b).join() && st.every(x => x.vel === srcVel(H, x.key)));
-      if (!ok) bad.push(`${style}/e${e}/oct${oct}`);
+      // stride with one key: the rest is that key +12, whose source velocity is the held key's
+      const ok = steps.length >= 3 * per && steps.slice(0, 3 * per).every((st, i) => st.map(x => x.key).join() === ref[i % per].slice().sort((a, b) => a - b).join() && st.every(x => x.vel === srcVel(H, H.includes(x.key) ? x.key : x.key - 12)));
+      if (!ok) bad.push(`${style}/e${e}`);
     }
     return bad;
   };
   plant(wrong(w => w.slice(1).concat(w.slice(0, 1))).length > 0, "the chord + note reference check detects a cycle rotated by one step");
   const w = wrong();
-  check(w.length === 0, "order styles: chord_walk, stride (octaves 1 and 2), chord_between and pairs match SPEC 4.2 (period, first cycle, source velocities) for e = 1, 2, 3, 5" + (w.length ? " - wrong: " + w.join(" ") : ""));
+  check(w.length === 0, "order styles: chord_walk, stride (period 2, no octave cycling), chord_between and pairs match SPEC 4.2 (period, first cycle, source velocities) for e = 1, 2, 3, 5" + (w.length ? " - wrong: " + w.join(" ") : ""));
+}
+
+// ---- 16c. X1: transposition steps (SPEC 4.7, D-014) ---------------------------------------------------------------
+{
+  const C3 = [60, 64, 67].map((k, i) => K(0, "k" + i, k));
+  const keysOf = (r, n) => ons(r).map(e => e.key).slice(0, n);
+  const run1 = (plants, base, extra) => run(Object.assign({ core: mkCore(plants), block: 256, total: 40000, base: Object.assign({ gate: 50 }, base), ins: C3 }, extra));
+  // (a) up over C E G, 2 steps of +7 semitones: each pass is the base pass shifted; after the last shifted pass it returns to pass 0
+  const wantA = "60,64,67,67,71,74,74,78,81,60,64,67,67,71,74";
+  const badA = plants => keysOf(run1(plants, { order: "up", steps: 2, step_size: 7 }), 15).join() !== wantA;
+  plant(badA(["transposeMerged"]), "X1 detects the passes merged into one range (r2.6 octaves)");
+  check(!badA([]), "X1(a): up over C E G, 2 steps of +7 semitones: C E G | G B D | D F# A | C E G");
+  // (b) steps = 0 never shifts, whatever the step size
+  const badB = plants => { const k = keysOf(run1(plants, { order: "up", steps: 0, step_size: 7 }), 12); return k.length < 12 || k.some((v, i) => v !== [60, 64, 67][i % 3]); };
+  plant(badB(["stepsZeroShifts"]), "X1 detects a shift with steps = 0");
+  check(!badB([]), "X1(b): steps = 0 never transposes (step_size +7 ignored)");
+  // (c) degrees move in-scale keys: C major, steps 1, +2 degrees: C E G | E G B; negative and scale-off cases ride along
+  const cfgC = { quantize: "scale", order: "up", steps: 1, step_unit: "degrees" };
+  const degs = (plants, size, extra) => keysOf(run1(plants, Object.assign({}, cfgC, { step_size: size }, extra), { scale: NDOWN }), 6).join();
+  const badC = plants => degs(plants, 2) !== "60,64,67,64,67,71" || degs(plants, -1) !== "60,64,67,59,62,65" || degs(plants, 2, { quantize: "off" }) !== "60,64,67,62,66,69";
+  plant(badC(["degreesAsSemis"]), "X1 detects degrees counted as semitones while a scale is on");
+  check(!badC([]), "X1(c): degrees count in-scale keys: C major +2 -> C E G | E G B, -1 -> C E G | B D F, and with quantize off a degree is a semitone");
+  // (d) an explicit pick takes the current pass's shift. Pattern [order, low]: the order stream climbs 60 64 67 then pass 1 (+12) while `low` follows the pass
+  const bank = { step_defaults: X.ARP_BANK.step_defaults, patterns: [...X.ARP_BANK.patterns, { id: "pk2", name: "pk2", length: 2, steps: [{}, { pick: "low" }] }] };
+  const wantD = "60,60,64,60,67,72,72,72,76,72,79,60,60,60";   // the pass is read from m at the pick: after the 3rd order play of pass 0 m = 3, so the next pick is already pass 1
+  const badD = plants => keysOf(run({ core: mkCore(plants, { bank }), block: 256, total: 40000, base: { order: "up", pattern: "pk2", steps: 1, step_size: 12, gate: 50 }, ins: C3 }), 14).join() !== wantD;
+  plant(badD(["transposeMerged"]), "X1 detects a picked note that does not follow its pass");
+  check(!badD([]), "X1(d): a `low` pick takes the pass current at its step (t from m): 60 60 64 60 67 | 72 72 72 76 72 79 | 60 60 60");
+  // (e) every deterministic style: pass t is the base cycle shifted by t*7, over 2 steps and 2 full loops
+  const STY = ["up", "down", "bounce", "bounce2", "converge", "diverge", "pedal_low", "pedal_high", "chord", "chord_walk", "stride", "chord_between", "pairs"];
+  const badE = [];
+  for (const style of STY) for (const H of [[60, 64, 67], [60, 62, 64, 67, 71]]) {
+    const cyc = baseCycle(style, H), per = cyc.length, want = [];
+    for (let loop = 0; loop < 2; loop++) for (let t = 0; t < 3; t++) for (const st of cyc) want.push(st.map(k => k + 7 * t).sort((a, b) => a - b).join());
+    const r = run({ core: mkCore(), block: 512, total: 120000, base: { order: style, steps: 2, step_size: 7, gate: 40 }, ins: H.map((k, i) => K(100 + i, "k" + i, k)) });
+    const byTick = new Map(); for (const x of ons(r)) byTick.set(x.tick, (byTick.get(x.tick) || []).concat(x.key));
+    const got = [...byTick.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v.sort((a, b) => a - b).join());
+    if (got.length < want.length || got.slice(0, want.length).join("|") !== want.join("|")) badE.push(`${style}/e${H.length}`);
+  }
+  check(badE.length === 0, "X1(e): all 13 deterministic styles (e = 3, 5): each pass is the base cycle shifted by t * 7 semitones, 3 passes then back to 0" + (badE.length ? " - wrong: " + badE.join(" ") : ""));
 }
 
 // Coverage: a session that never reaches the style it names proves nothing, so every window must hold notes.
@@ -584,7 +590,7 @@ const MAJOR_DEGS = { scale_deg0: true, scale_deg1: false, scale_deg2: true, scal
   const wins = [[runSess("styles", 64).evs, [[8000, 14000], [14000, 20000], [20000, 26000], [26000, 32000], [32000, 38000], [38000, 44000]], "styles"],
     [g1Session([], 64).evs, [[34003, 38501], [38501, 44001], [44001, 46001], [46001, 48003], [48003, 52000]], "G1 tail"]];
   const empty = wins.flatMap(([evs, ws, n]) => ws.filter(([a, b]) => !w(evs, a, b)).map(([a, b]) => `${n}@${a}-${b}`));
-  check(empty.length === 0, "coverage: the N1 styles session and the G1 tail play notes in every chord_walk/stride/chord_between/pairs/landed/shuffle window" + (empty.length ? " - EMPTY: " + empty.join(" ") : ""));
+  check(empty.length === 0, "coverage: the N1 styles session and the G1 tail play notes in every chord_walk/stride/chord_between/pairs/converge/shuffle window (both transposition units)" + (empty.length ? " - EMPTY: " + empty.join(" ") : ""));
 }
 const ms = Number((process.hrtime.bigint() - t0) / 1000000n);
 console.log(fail ? `lab_smoke: FAIL (${ms} ms)` : `lab_smoke: OK (${ms} ms)`);

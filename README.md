@@ -20,7 +20,7 @@ in [`ROADMAP.md`](ROADMAP.md).
 
 - **Modes:** up, down, up-down (with and without repeated ends), as played, chord, and random (seeded, so it repeats).
 - **Rate:** tempo-synced by horde's division names, with dotted and triplet values.
-- **Shape:** octave range, gate length (past 100% for legato), swing, and velocity (as played, fixed, or accented by
+- **Shape:** transposition steps (the pattern repeats shifted, by semitones or scale degrees, like Ableton's), gate length (past 100% for legato), swing, and velocity (as played, fixed, or accented by
   step).
 - **Holding:** latch, either replacing or adding to the held notes. The sustain pedal holds the arp's input notes.
 - **Scale:** quantize to horde's global scale or Arp's own, in horde's scale format (a root plus twelve degrees): snap

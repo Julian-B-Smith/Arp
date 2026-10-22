@@ -161,7 +161,7 @@
 const TPQ = 15360;
 const ARP_PARAMS = {
  "format": "arp-params/1",
- "status": "DRAFT r2.5 2026-10-22 (Phase A); protected once the human ratifies spec/",
+ "status": "DRAFT r2.7 2026-10-22 (Phase A); protected once the human ratifies spec/",
  "tpq": 15360,
  "note": "Every setting is a morph target (D-000 Open 5). All values are INTEGERS in the snapshot (horde rounds morph blends). kind=continuous blends; kind=discrete resolves to the largest-weight corner with 0.05 hysteresis and applies from the next evaluated step (SPEC §9, Q-A1 PROPOSED); `enabled` applies at offset 0 of its block (SPEC T4/T5). Enums are stored by NAME. Tempo is clamped to [20, 999] bpm (SPEC §1.3).",
  "params": [
@@ -192,8 +192,7 @@ const ARP_PARAMS = {
     "chord_walk",
     "stride",
     "chord_between",
-    "pairs",
-    "landed"
+    "pairs"
    ],
    "default": "up",
    "ref": "SPEC §4.2"
@@ -215,13 +214,36 @@ const ARP_PARAMS = {
    "ref": "SPEC §2.1"
   },
   {
-   "key": "octaves",
+   "key": "steps",
    "kind": "discrete",
    "type": "int",
-   "min": 1,
-   "max": 4,
-   "default": 1,
-   "ref": "SPEC §4.2"
+   "min": 0,
+   "max": 8,
+   "default": 0,
+   "ref": "SPEC §4.7",
+   "note": "transposition steps, Ableton-style: the whole pattern repeats shifted by step_size each pass, `steps` times, then returns; 0 = none (D-014)"
+  },
+  {
+   "key": "step_size",
+   "kind": "discrete",
+   "type": "int",
+   "min": -48,
+   "max": 48,
+   "default": 12,
+   "ref": "SPEC §4.7",
+   "note": "shift per pass, in step_unit"
+  },
+  {
+   "key": "step_unit",
+   "kind": "discrete",
+   "type": "enum",
+   "values": [
+    "semitones",
+    "degrees"
+   ],
+   "default": "semitones",
+   "ref": "SPEC §4.7",
+   "note": "degrees = in-scale keys of the effective scale (§6); with no scale active, a degree is a semitone"
   },
   {
    "key": "gate",
@@ -1035,8 +1057,8 @@ const ARP_BANK = {
 const ARP_PLANTS = ["dropRelease", "doubleRelease", "sameSampleOff", "clampOffset", "floatPosition",
   "roundNotCeil", "swingParityK", "srTickMath", "noOnceGuard", "timeInDraw", "skipQuantizeChord",
   "advanceOnRest", "probLE", "trigEveryRatchet", "tieAtTieStep", "noOffReserve", "untaggedOn", "tieAlwaysDown", "ownIgnored", "chordRootAsRoot",
-  "pickAdvancesM", "ignorePick", "swapMidStep", "landedIgnoreTiming", "shuffleBoundaryRepeat",
-  "lastQNoReset", "collisionKeepsLast", "prepareResetsUser", "userFirstWins", "landedSnapBack"];
+  "pickAdvancesM", "ignorePick", "swapMidStep", "shuffleBoundaryRepeat",
+  "lastQNoReset", "collisionKeepsLast", "prepareResetsUser", "userFirstWins", "transposeMerged", "degreesAsSemis", "stepsZeroShifts"];
 // Every discrete setting except `enabled` (which applies at offset 0, T4/T5) switches at the next
 // evaluated step (SPEC §9). Derived from params.json, so a new discrete setting cannot be forgotten.
 const DISCRETE_KEYS = ARP_PARAMS.params.filter(p => p.kind === "discrete" && p.key !== "enabled").map(p => p.key);
@@ -1070,7 +1092,6 @@ function draw(seed, x, lane, epoch) {
 
 // ---- step `pick` (SPEC 4.3) and the user pattern's shape (SPEC 4.6) ----
 const USER_MAX = 16;
-const PHRASE_PRESSES = 32, PHRASE_MAX_Q = 63;   // SPEC 4.7: 32 captured presses, q <= 63 (phrase length <= 64)
 // `pick` is "order" | 1..8 (a number) | "low" | "high" | "chord"; anything else is "order" (SPEC 4.6: unknown pick -> order).
 function normPick(v) {
   if (v === "order" || v === "low" || v === "high" || v === "chord") return v;
@@ -1079,14 +1100,14 @@ function normPick(v) {
 }
 
 // ---- order styles (SPEC 4.2) ----
-function periodOf(order, e, oct) {
+function periodOf(order, e) {
   switch (order) {
     case "bounce": return e === 1 ? 1 : 2 * e - 2;
     case "bounce2": return 2 * e;
-    case "chord": return oct;
+    case "chord": return 1;
     case "pedal_low": case "pedal_high": return e === 1 ? 1 : 2 * (e - 1);
     case "chord_walk": return e + 1;
-    case "stride": return 2 * oct;
+    case "stride": return 2;
     case "chord_between": return 2 * e;
     case "pairs": return e === 1 ? 1 : e - 1;
     default: return e;   // up down played converge diverge shuffle (random has no period)
@@ -1164,10 +1185,8 @@ class ArpCore {
     this.D = BigInt(60 * this.sr * 1000);
     this.capEv = this.caps.events || Math.max(1024, 4 * maxBlock);
     this.rows = {}; for (let i = 1; i <= 16; i++) this.rows["T" + i] = 0;   // coverage evidence for the smoke: a row counts only when it really acted
-    this.counters = { heldOverflow: 0, refOverflow: 0, soundingOverflow: 0, pendingOverflow: 0, eventOverflow: 0, refused: 0, keysDropped: 0, phraseOverflow: 0 };
+    this.counters = { heldOverflow: 0, refOverflow: 0, soundingOverflow: 0, pendingOverflow: 0, eventOverflow: 0, refused: 0, keysDropped: 0 };
     if (this.lab.plant.prepareResetsUser) { this._up.fresh = false; this._upLatest = null; this._userFill(this._up.slots[this._up.r], null); }   // plant: prepare wipes preset data (SPEC 4.6 r2 H3)
-    // SPEC 4.7: the `landed` phrase buffer (32 presses) is preallocated; _resetState() empties it.
-    this.phrase = { active: false, n: 0, qmax: 0, t0: 0n, k0: 0, p: Array.from({ length: PHRASE_PRESSES }, () => ({ key: 0, vel: 0, ch: 0, q: 0 })) };
     this._resetState();
   }
 
@@ -1219,7 +1238,6 @@ class ArpCore {
     this.active = null; this.L = 0; this.stepSeq = 0;
     this.prevCont = null; this._fnext = undefined;
     this.barTicks = 4 * TPQ; this.barPhase = 0;
-    if (this.phrase) { this.phrase.active = false; this.phrase.n = 0; this.phrase.qmax = 0; }
   }
 
   // reset(): T10. Returns the NoteOffs the adapter must deliver to the engine directly.
@@ -1358,17 +1376,7 @@ class ArpCore {
     this.freeRunning = false; this.epoch = 0;
     this.lastEvaluated = null;
     this._reanchor(0, false);
-    // SPEC-GAP: the spec is silent on the phrase at a transport edge. Its old positions are meaningless on the new
-    // clock, so the phrase is kept and re-anchored: its step 0 is the first grid step of the new position.
-    if (this.phrase.active) this._phraseAnchor(this.lastEvaluated + 1);
   }
-  // SPEC 4.7 / 13b: phrase step 0 is the first grid step AT OR AFTER t0 (cdiv), so the first press never snaps back to a step
-  // already evaluated. Plant landedSnapBack: the old nearest-step rounding, which silenced the first note for a whole loop.
-  _k0Of(t) {
-    const LD = BigInt(this.L) * this.D;
-    return Number(this.lab.plant.landedSnapBack ? floorDivB(2n * t + LD, 2n * LD) : cdivB(t, LD));
-  }
-  _phraseAnchor(k) { this.phrase.k0 = k; this.phrase.t0 = BigInt(k * this.L) * this.D; }
   // Re-anchor at the current position (T5/T6): m := 0; chord anchors only if an anchor exists or keys are held.
   _reanchor(s, resetEvaluated) {
     const LD = BigInt(this.L) * this.D;
@@ -1385,7 +1393,6 @@ class ArpCore {
     const shift = this._posAt(s);
     if (this.freeRunning && (this.sounding.length || this.pending.length)) this.rows.T14++;
     this._start -= shift; this._ver++;
-    if (this.phrase.active) { this.phrase.t0 -= shift; this.phrase.k0 = this._k0Of(this.phrase.t0); }
     for (const x of this.sounding) if (x.offPos !== null) x.offPos -= shift;
     for (const p of this.pending) { p.pos -= shift; if (p.offPos !== undefined) p.offPos -= shift; }
     this.epoch = (this.epoch + 1) >>> 0;
@@ -1397,11 +1404,6 @@ class ArpCore {
 
   // ---------------------------------------------------------------- input (SPEC 3)
   _input(e, s) {
-    try { this._input1(e, s); } finally { this._phraseCheck(); }
-  }
-  // SPEC 4.7: the phrase lives until H is empty (every key, pedal and latch hold released).
-  _phraseCheck() { if (!this.refs.length) { this.phrase.active = false; this.phrase.n = 0; this.phrase.qmax = 0; } }
-  _input1(e, s) {
     switch (e.t) {
       case "on": this._noteOn(e, s); if (this.sounding.length) this.rows.T3++; break;
       case "off": this._noteOff(e); if (this.sounding.length) this.rows.T3++; break;
@@ -1431,25 +1433,7 @@ class ArpCore {
     if (sameKey >= this.caps.refsPerKey) { this.counters.refOverflow++; ignore(); return; }
     this.refs.push({ id, key, vel: e.vel === undefined ? 100 : e.vel, ch: e.ch || 0, state: "down", abs: this._absBase + s });
     // gesture start (SPEC 3): no DOWN/PEDAL ref beforehand; under append a press that joins a latched set is not one (4.5)
-    const gesture = noActive && !(a.latch === "append" && hadLatched);
-    if (gesture) this._gesture(s);
-    this._capture(s, gesture, key, e.vel === undefined ? 100 : e.vel, e.ch || 0);   // after _gesture: a free-clock re-base has put posNum at 0 here
-  }
-  // SPEC 4.7: every NoteOn of a gesture is recorded as (key, vel, ch, q), q = its nearest grid step from the first press.
-  // Recorded whatever the order setting is, so switching to `landed` mid-gesture plays what landed.
-  _capture(s, start, key, vel, ch) {
-    const ph = this.phrase, LD = BigInt(this.L) * this.D, t = this._posAt(s);
-    if (start || !ph.active) { ph.active = true; ph.n = 0; ph.qmax = 0; ph.t0 = t; ph.k0 = this._k0Of(t); }
-    const q = Number(floorDivB(2n * (t - ph.t0) + LD, 2n * LD));
-    if (ph.n >= PHRASE_PRESSES || q > PHRASE_MAX_Q) { this.counters.phraseOverflow++; return; }
-    const x = ph.p[ph.n++]; x.key = key; x.vel = vel; x.ch = ch; x.q = q;
-    if (q > ph.qmax) ph.qmax = q;
-  }
-  // The phrase length in steps: qmax + 1, rounded UP to a whole beat when the rate divides a beat (Q-A6 PROPOSED), else exact; <= 64.
-  _phraseLen() {
-    const ph = this.phrase; let len = ph.qmax + 1;
-    if (TPQ % this.L === 0) { const b = TPQ / this.L; len = Math.ceil(len / b) * b; }
-    return Math.min(len, 64);
+    if (noActive && !(a.latch === "append" && hadLatched)) this._gesture(s);
   }
   _gesture(s) {
     if (!this.enabled) return;
@@ -1489,7 +1473,6 @@ class ArpCore {
     if (S.rate !== this.active.rate) { this._switchRate(kAbs); return; }   // T15: applies at the next step of the OLD rate (SPEC 9)
     this.lastEvaluated = kAbs;
     this._adopt();
-    this._phraseCheck();
     const a = this.active;
     if (a.restart === "chord" && this.anchorK === null) return;             // no anchor yet (SPEC 2.5)
     if (!this.lab.opts.playPreroll && kAbs * this.L < 0) return;
@@ -1500,7 +1483,6 @@ class ArpCore {
     this.active.rate = this.incoming.rate; this.L = this._rateTicks(this.active.rate);
     const kNew = Number(cdivB(gOld, BigInt(this.L) * this.D));
     this.lastEvaluated = kNew - 1;
-    if (this.phrase.active) this._phraseAnchor(kNew);   // SPEC-GAP: a rate change re-anchors the phrase (its q's are now steps of the new rate)
     if (this.sounding.length) this.rows.T15++;
     const r = this.active.restart;
     if (r === "chord") { if (this.anchorK !== null) { this.anchorK = kNew; this.m = 0; } }
@@ -1552,11 +1534,8 @@ class ArpCore {
     if (st.tie && !P.tieAtTieStep) { kind = "tie"; trig(); }   // the tie was honoured by look-ahead at the playing step
     else if (st.on && fires && H.length) {
       kind = "play";
-      const notes = this._play(kAbs, j, pat, st, H, onT, ord, fires);
-      // SPEC-GAP: a `landed` position with no press plays nothing; the step still counts as on/fires for its trigger (the trigger-only
-      // case of 4.3 step 4 gives the same result), and an EMPTY phrase (keys held before the core saw them) is all rests.
-      if (!notes) kind = "rest";   // `landed` at a position with no press: a rest from the order (SPEC 4.7)
-      if ((this._pickOf(st) === "order" && a.order !== "landed") || P.pickAdvancesM) this.m++;   // `landed` is timed, never counted   // SPEC 4.3: only `order` picks consume the order stream, even when every key was dropped
+      this._play(kAbs, j, pat, st, H, onT, ord, fires);
+      if (this._pickOf(st) === "order" || P.pickAdvancesM) this.m++;   // SPEC 4.3: only `order` picks consume the order stream, even when every key was dropped
       trig();
     } else if (fires && st.trig) { kind = "trig"; trig(); }
     else if (P.advanceOnRest) this.m++;
@@ -1568,24 +1547,35 @@ class ArpCore {
 
   _play(kAbs, j, pat, st, H, onT, ord, fires) {
     const P = this.lab.plant, a = this.active, S = this.incoming, L = this.L, D = this.D;
-    const notes = this._notes(a, H, kAbs, this._pickOf(st));
+    // Plant transposeMerged: the r2.6 merged-octaves range (copies of H at 0..steps shifts, one sorted list) instead of repeated passes (X1).
+    const merged = P.transposeMerged && a.steps > 0;
+    const Hn = merged ? this._mergedCopies(H, a) : H;
+    const notes = this._notes(a, Hn, kAbs, this._pickOf(st));
     if (!notes.length) return 0;
-    // SPEC 4.3: step octave, then DROP keys outside 0-127 (T16), then quantize only the kept keys.
-    const kept = [];
-    for (const nt of notes) {
-      const key = nt.key + st.oct * 12;
+    // SPEC 4.7: the pass index t (`pass`) shifts every key of the step by t * step_size, in semitones or in-scale keys (degrees).
+    const pass = merged ? 0 : this._pass(a, Hn.length), shift = pass * a.step_size;
+    const degrees = a.step_unit === "degrees" && !P.degreesAsSemis && pass !== 0;
+    const qOn = a.quantize !== "off" && !(P.skipQuantizeChord && a.order === "chord");
+    const sc = qOn ? this._scaleOf(a, H) : null;
+    const items = notes.map(nt => ({ nt, q: null }));   // list order = the style's order (collisions keep the earliest)
+    // SPEC 4.3 / 6: the step octave and the pass shift, DROP outside 0-127 (T16), then quantize only the kept keys, in ASCENDING
+    // pre-quantize key order, each chained to the last output (lastQ), all at evaluation.
+    // Degrees (SPEC 4.7): quantize FIRST, move shift in-scale keys, THEN the step octave, then drop; the result is in the scale
+    // by construction, so it is not quantized again, and it sets lastQ like any quantized key.
+    for (const it of items.slice().sort((u, v) => u.nt.key - v.nt.key)) {
+      let key;
+      if (degrees) {
+        const k1 = qOn ? this._quant(it.nt.key, sc) : it.nt.key;
+        key = this._degreeMove(k1, shift, sc) + st.oct * 12;
+      } else key = it.nt.key + st.oct * 12 + shift;
       if (key < 0 || key > 127) { this.rows.T16++; this.counters.keysDropped++; continue; }
-      kept.push({ key, nt, q: key });
-    }
-    // SPEC 6 (r2 H1): quantize in ASCENDING pre-quantize key order, each key chained to the last output (lastQ), all at
-    // evaluation -- so a refused or capped on still counts and the block partition cannot change it.
-    if (a.quantize !== "off" && !(P.skipQuantizeChord && a.order === "chord")) {
-      const sc = this._scaleOf(a, H);
-      for (const x of kept.slice().sort((u, v) => u.key - v.key)) x.q = this._quant(x.key, sc);
+      if (degrees) { if (qOn && sc.mask) this.lastQ = key; it.q = key; }   // SPEC-GAP: lastQ = the final (octave-shifted) output key
+      else it.q = qOn ? this._quant(key, sc) : key;
     }
     // collisions keep the earliest source in the style's order (the list order, not the quantize order)
     const out = [], seen = new Map();
-    for (const x of kept) {
+    for (const x of items) {
+      if (x.q === null) continue;
       const base = a.vel_mode === "fixed" ? S.vel_fixed : x.nt.vel, vel = clamp(fdiv(base * st.vel + 50, 100), 1, 127);
       if (seen.has(x.q)) { if (P.collisionKeepsLast) { const o = seen.get(x.q); o.vel = vel; o.ch = x.nt.ch; } continue; }
       const o = { key: x.q, vel, ch: x.nt.ch };
@@ -1619,44 +1609,40 @@ class ArpCore {
     this.pending.push(p);
   }
 
-  // The notes a step plays (SPEC 4.2 order styles, 4.3 pick). H is sorted by key, so H[0] is the lowest held.
-  // Several returned notes behave as a `chord` step: one on per key, collisions resolved after quantize in
-  // _play (earliest in this list wins), and m advances once per step whatever the count.
+  // SPEC 4.7: the pass a step belongs to, t = mod(fdiv(m, P), steps + 1), P the style's period from the live H (random: e).
+  _pass(a, e) { const n = this.lab.plant.stepsZeroShifts ? Math.max(a.steps, 2) : a.steps; return n > 0 ? mod(fdiv(this.m, periodOf(a.order, e)), n + 1) : 0; }   // plant stepsZeroShifts: steps = 0 still transposes
+  // Plant transposeMerged: H copied at 0..steps * step_size into ONE sorted unique list (r2.6's octaves, generalised).
+  _mergedCopies(H, a) {
+    const map = new Map();
+    for (let j = 0; j <= a.steps; j++) for (const h of H) { const key = h.key + j * a.step_size; if (!map.has(key)) map.set(key, Object.assign({}, h, { key })); }
+    return [...map.values()].sort((x, y) => x.key - y.key);
+  }
+  // Move n in-scale keys up (n > 0) or down from k, counting only keys the scale admits; no scale (or a zero mask) is chromatic.
+  // May return a key outside 0-127: the caller drops it.
+  _degreeMove(k, n, sc) {
+    if (!n) return k;
+    const dir = n > 0 ? 1 : -1, ok = x => !sc || !sc.mask || ((sc.mask >> mod(x - sc.root, 12)) & 1) === 1;
+    for (let c = Math.abs(n); c > 0; c--) { do k += dir; while (k >= 0 && k <= 127 && !ok(k)); if (k < 0 || k > 127) return k; }
+    return k;
+  }
+  // The notes a step plays (SPEC 4.2 order styles, 4.3 pick), before transposition. H is the held keys in pitch order, so H[0] is
+  // the lowest. Several returned notes behave as a `chord` step: one on per key, collisions resolved after quantize in _play
+  // (earliest in this list wins), and m advances once per step whatever the count.
   _notes(a, H, kAbs, pick) {
-    const oct = a.octaves, m = this.m, at = (h, shift = 0) => ({ key: h.key + shift, vel: h.vel, ch: h.ch });
-    if (pick === "chord") return H.map(h => at(h));
-    if (pick === "order" && a.order === "chord") { const p = m % oct; return H.map(h => at(h, 12 * p)); }
-    if (pick === "order" && a.order === "landed") {
-      const ph = this.phrase, out = [];
-      if (!ph.n) return out;
-      if (this.lab.plant.landedIgnoreTiming) { out.push(at(ph.p[mod(kAbs - ph.k0, ph.n)])); return out; }   // plant: press order, one per step
-      const q = mod(kAbs - ph.k0, this._phraseLen());
-      for (let o = 0; o < oct; o++) for (let i = 0; i < ph.n; i++) if (ph.p[i].q === q) out.push(at(ph.p[i], 12 * o));
-      return out;
-    }
-    if (pick === "order" && a.order === "played") {
-      const hp = H.slice().sort((x, y) => x.abs - y.abs || x.key - y.key), pp = [];
-      for (let o = 0; o < oct; o++) for (const h of hp) pp.push(at(h, 12 * o));
-      return [pp[m % pp.length]];
-    }
-    const map = new Map();   // E = sorted unique of all octave copies; source = the first held key that generates it
-    for (let o = 0; o < oct; o++) for (const h of H) { const key = h.key + 12 * o; if (!map.has(key)) map.set(key, at(h, 12 * o)); }
-    const E = [...map.values()].sort((x, y) => x.key - y.key), e = E.length;
+    const m = this.m, at = (h, shift = 0) => ({ key: h.key + shift, vel: h.vel, ch: h.ch });
+    const E = H.map(h => at(h)), e = E.length;   // no octave copies (r2.7): range comes from transposition passes
+    if (pick === "chord") return E;
     if (pick !== "order") return [E[typeof pick === "number" ? mod(pick - 1, e) : pick === "low" ? 0 : e - 1]];
+    if (a.order === "chord") return E;
+    if (a.order === "played") { const hp = H.slice().sort((x, y) => x.abs - y.abs || x.key - y.key); return [at(hp[m % hp.length])]; }
     if (a.order === "random") return [E[this._draw(a.seed, kAbs, 0) % e]];
     if (a.order === "shuffle") return [this._shuffleCycle(E, a.seed, fdiv(m, e))[mod(m, e)]];
-    const p = mod(m, periodOf(a.order, e, oct));
+    const p = mod(m, periodOf(a.order, e));
     switch (a.order) {
-      case "chord_walk": return p === 0 ? H.map(h => at(h)) : [E[p - 1]];
-      case "chord_between": return p % 2 === 0 ? H.map(h => at(h)) : [E[(p - 1) / 2]];
+      case "chord_walk": return p === 0 ? E : [E[p - 1]];
+      case "chord_between": return p % 2 === 0 ? E : [E[(p - 1) / 2]];
       case "pairs": return e === 1 ? [E[0]] : [E[p], E[p + 1]];   // e = 1: the single note (r2.6)
-      case "stride": {
-        if (p % 2 === 0) return [at(H[0])];   // the bass: lowest held, never shifted
-        // One key held: the rest is that key +12*(1 + fdiv(p,2)) (r2.6) -- the base set {H[0]+12}, then the octave shift
-        // (so a lone C3 strides C3, C4, C3, C5 at oct 2).
-        const rest = H.length > 1 ? H.slice(1).map(h => at(h)) : [at(H[0], 12)];
-        return rest.map(h => at(h, 12 * fdiv(p, 2)));
-      }
+      case "stride": return p === 0 ? [E[0]] : e > 1 ? E.slice(1) : [at(H[0], 12)];   // the bass, then the rest; one key held: that key +12
     }
     return [E[indexOf(a.order, e, p)]];
   }
@@ -2234,23 +2220,18 @@ class ArpCore {
   const rateTicks = name => { const r = ARP_PARAMS.rate.find(x => x.name === name || x.alias === name); return r ? r.ticks : 3840; };
   // SPEC 4.2 periods. Because rests do not consume a note (R1), the joint cycle in steps is
   // the pattern length times however many pattern passes it takes the order to come round.
-  function orderPeriod(order, held, oct, L) {
-    const E = new Set(); for (const k of held) for (let o = 0; o < oct; o++) E.add(k + 12 * o);
-    const e = E.size;
+  function orderPeriod(order, held) {
+    const e = new Set(held).size;            // E = the held keys (no octave copies since r2.7)
     if (!e) return 1;
     if (order === "chord_walk") return e + 1;
-    if (order === "stride") return 2 * oct;
+    if (order === "stride") return 2;
     if (order === "chord_between") return 2 * e;
     if (order === "pairs") return e === 1 ? 1 : e - 1;
-    // landed (SPEC 4.7), approximated for the preview: the held keys pressed one grid step apart, so qmax + 1 = held.length,
-    // rounded up to a whole beat when the rate divides one.
-    if (order === "landed") { const b = L && TPQ % L === 0 ? TPQ / L : 1; return Math.min(64, Math.ceil(held.length / b) * b); }
     if (order === "bounce") return e === 1 ? 1 : 2 * e - 2;
     if (order === "bounce2") return 2 * e;
     if (order === "pedal_low" || order === "pedal_high") return e === 1 ? 1 : 2 * (e - 1);
-    if (order === "chord") return oct;
-    if (order === "played") return held.length * oct;
-    return e;                                // up, down, converge, diverge, random, shuffle
+    if (order === "chord") return 1;
+    return e;                                // up, down, played, converge, diverge, random, shuffle
   }
   function heldForPreview() {
     let H = [];
@@ -2262,12 +2243,11 @@ class ArpCore {
     const pat = patternById(S.pattern);
     const steps = pat.steps.map(raw => Object.assign({}, ARP_BANK.step_defaults, raw));
     const L = rateTicks(S.rate), Ls = steps.length;
-    const landed = S.order === "landed";
-    const P = orderPeriod(S.order, held.keys.map(h => h.key), S.octaves, L);
-    // Only `order` picks consume the order stream (SPEC 4.3), and `landed` never does: neither counts toward the order cycle.
+    // One order cycle repeated over steps + 1 transposition passes (SPEC 4.7), so the whole loop is P * (steps + 1) order plays.
+    const P = orderPeriod(S.order, held.keys.map(h => h.key)) * (S.steps + 1);
+    // Only `order` picks consume the order stream (SPEC 4.3), so an explicit-pick step is a play for rhythm but not for the cycle.
     const plays = steps.filter(st => st.on && !st.tie && (st.pick === undefined || st.pick === "order")).length;
-    const cyc = landed ? Ls * P / gcd(Ls, P) : plays ? Ls * (P / gcd(P, plays)) : Ls;
-    const full = landed ? held.keys.length + cyc : cyc;   // landed: the recording pass (one press per step), then one full loop
+    const full = plays ? Ls * (P / gcd(P, plays)) : Ls;
     const n = Math.max(1, Math.min(full, cap, Math.floor(64 * TPQ / L)));   // at most `cap` steps / 64 beats
     const sr = 48000, core = new ArpCore(); core.setUserPattern(userObj()); core.prepare(sr, 4096);
     core.lab.opts = Object.assign({}, eng.core.lab.opts);
@@ -2276,9 +2256,8 @@ class ArpCore {
     // `played` sees the real press order.
     const host = simHost({ sr, bpm: 120, startBeats: -L / (2 * TPQ), playing: true });
     const settings = Object.assign({}, S, { enabled: true });
-    // `landed` records WHEN keys land, so its preview presses them one grid step apart (an approximation: your real timing is not reproduced).
     const endTick = (n + 1) * L, samplesPerTick = 60 * sr / (120 * TPQ);
-    const ins = held.keys.map((h, i) => ({ t: "on", at: landed ? Math.round(i * L * samplesPerTick) : i, ref: "pv:" + h.key, key: h.key, vel: h.vel || 100, ch: 0 }));
+    const ins = held.keys.map((h, i) => ({ t: "on", at: i, ref: "pv:" + h.key, key: h.key, vel: h.vel || 100, ch: 0 }));
     const total = Math.ceil((endTick + L) * samplesPerTick) + 4096;
     const notes = [], byId = new Map(), trigs = [], stepKinds = new Map(), ordJ = new Map();
     for (let at = 0; at < total; at += 4096) {
@@ -2305,7 +2284,6 @@ class ArpCore {
     try { pvData = computePreview(S, held); } catch (err) { pvData = null; $("pvNote").textContent = "preview failed: " + err.message; return; }
     const d = pvData;
     $("pvNote").textContent = (d.example ? "Example chord C3 E♭3 G3 (hold keys to use yours). " : "Your held keys. ") +
-      (S.order === "landed" ? "Landed preview: presses your keys one step apart, in the order you pressed them (real landed replays your own timing). " : "") +
       (d.full > d.n ? "The cycle is " + d.full + " steps; showing the first " + d.n + ". " : d.n + " steps per cycle. ") +
       (S.order === "random" || S.order === "shuffle" || patternById(S.pattern).steps.some(x => x.prob !== undefined && x.prob !== 100) ? "Random draws are seeded, but not the live ones." : "");
     drawPreview();
@@ -2391,7 +2369,7 @@ class ArpCore {
 
   // ---- order × pattern matrix: a thumbnail of every combination ---------------------
   // Each cell is computePreview() — the real core, offline — for that order and pattern with
-  // every OTHER setting as it is now, so the thumbnails change as you change octaves, gate,
+  // every OTHER setting as it is now, so the thumbnails change as you change steps, gate,
   // swing, rate or your held keys. Every order x pattern render (the user column included) is spread over frames (a few ms per frame)
   // so the page stays responsive; a change of inputs restarts the queue.
   const MX_STEPS = 32;            // a thumbnail shows at most the first 32 steps of its cycle
@@ -2419,7 +2397,7 @@ class ArpCore {
     const key = JSON.stringify([base, held.keys.map(h => h.key), state.scale, eng.core.lab.opts, state.user.length, state.user.steps]);
     if (key !== mxKey) {
       mxKey = key; mxQueue = [...mxCells.keys()];
-      $("mxNote").textContent = (held.example ? "Example chord C3 E♭3 G3." : "Your held keys.") + " The landed row presses your keys one step apart.";
+      $("mxNote").textContent = (held.example ? "Example chord C3 E♭3 G3." : "Your held keys.");
     }
     const t0 = performance.now();
     while (mxQueue.length && performance.now() - t0 < 6) {

@@ -1,4 +1,4 @@
-# Arp — 1.0 specification (DRAFT r2.6, Phase A)
+# Arp — 1.0 specification (DRAFT r2.7, Phase A)
 
 > **Status: DRAFT r2.1, 2026-10-21.** r1 was reviewed by an independent Opus
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -7,8 +7,9 @@
 > normative and outranks the section it clarifies. r2.2 adds the output
 > stream tag (D-009, horde ADR-270). r2.3 rewrites §6 in horde's scale schema
 > (D-010). r2.4 adds four chord + note order styles, the per-step `pick`, and
-> the user pattern (§4.6) (D-011). r2.5 adds `landed`, the order and timing
-> of the presses (§4.7) (D-012). r2.6 folds in the second independent review
+> the user pattern (§4.6) (D-011). r2.5 added `landed` (D-012); r2.7 defers it past 1.0
+> (`docs/deferred/landed.md`) and replaces `octaves` with Ableton-style **steps** (§4.7, D-014).
+> r2.6 folded in the second independent review
 > (5 HIGH, 8 MED, 4 LOW; `docs/spec-review-r2.md`, D-013).
 >
 > - This file becomes a protected path once the human ratifies it (the
@@ -284,14 +285,11 @@ Arp on with a chord already held plays it (H13).
 - On a jump, `lastEvaluated` is reset to the step before the new position.
 
 ### 4.2 Order styles
-**The sorted list** (no duplicates):
+**The sorted list:** `E` = the held keys in pitch order (H, §3); `e = |E|`.
+There are no octave copies. Range comes from **transposition steps**
+(§4.7), which repeat the whole pattern shifted.
 
-    E = sorted(unique(H ∪ (H+12) ∪ … ∪ (H+12·(oct−1))))
-
-`e = |E|`, and `oct` is the `octaves` setting (1–4).
-
-**The press-order list:** `Pp` = the held keys in press order, followed by the
-same list +12, +24 and so on, for `oct` blocks. Duplicates are kept.
+**The press-order list:** `Pp` = the held keys in press order.
 
 **Order position:** `p = mod(m, period)`. With `e = 0`, no note plays (§4.3).
 
@@ -302,18 +300,17 @@ same list +12, +24 and so on, for `oct` blocks. Duplicates are kept.
 | `bounce` | e = 1: 1; else 2e−2 | p < e ? E[p] : E[2e−2−p] |
 | `bounce2` | 2e | p < e ? E[p] : E[2e−1−p] |
 | `played` | \|Pp\| | Pp[p] |
-| `chord` | oct | every key of H, +12·p; collisions after quantize resolve per §6 |
+| `chord` | 1 | every key of H; collisions after quantize resolve per §6 |
 | `random` | — | E[ draw(seed, kAbs, 0, epoch) mod e ] |
 | `shuffle` | e | P_c[p], c = fdiv(m, e); P_c = Fisher–Yates of E using draw(seed, c·256 + i, 1, epoch) for i = e−1 … 1; **no back-to-back repeat**: for c > 0, e ≥ 2, if P_c[0] = P_{c−1}[e−1], swap P_c[0] and P_c[1] (deterministic). This is "random without repeats" (D-012a) |
 | `converge` | e | E[0], E[e−1], E[1], E[e−2], … (q-th = q even ? E[q/2] : E[e−1−(q−1)/2]) |
 | `diverge` | e | converge read backwards: q-th = converge[e−1−q] |
 | `pedal_low` | e = 1: 1; else 2(e−1) | p even → E[0]; p odd → E[1 + (p−1)/2] |
 | `pedal_high` | e = 1: 1; else 2(e−1) | p even → E[e−1]; p odd → E[e−2 − (p−1)/2] |
-| `chord_walk` | e + 1 | p = 0 → every key of H (the chord, base octave); p ≥ 1 → E[p−1] |
-| `stride` | 2·oct | p even → H[0] (the bass, lowest held; the octave cycle never shifts it); p odd → the **rest** of H, +12·fdiv(p, 2), as a chord. With one key held, the rest is that key +12·(1 + fdiv(p, 2)). A step's `oct` offset applies to every key of the step, the bass included |
+| `chord_walk` | e + 1 | p = 0 → every key of H (the chord); p ≥ 1 → E[p−1] |
+| `stride` | 2 | p = 0 → H[0] (the bass, lowest held); p = 1 → the **rest** of H, as a chord. With one key held, the rest is that key +12. A step's `oct` offset and the transposition (§4.7) apply to every key of the step, the bass included |
 | `chord_between` | 2e | p even → every key of H; p odd → E[(p−1)/2] |
 | `pairs` | e = 1: 1; else e − 1 | e = 1: {E[0]}; else {E[p], E[p+1]}, a dyad |
-| `landed` | the phrase length (§4.7) | the press(es) captured at phrase position q, in **time**, not by `m` (§4.7) |
 
 **Chord + note styles (D-011).** These four mix chords and single notes. In
 each of them, a step that plays several keys behaves as a `chord` step does:
@@ -358,7 +355,8 @@ grid tick, using **that block's settings snapshot** (H6). For step `s = steps[j]
    honoured by look-ahead (§5). Fire the trigger if `fires ∧ s.trig ≠ 0`.
 3. **Else if `s.on ∧ fires ∧ e > 0`**: **play**.
    - Take the note(s) at `p` (`pick = order`), or the step's explicit pick.
-   - Apply `s.oct·12`.
+   - Apply `s.oct·12` and the pass transposition `t` (§4.7, in semitones;
+     in degrees, §4.7's own order applies).
    - **Drop** any key outside 0–127 (counted; H10, T16), **before** quantize.
    - Quantize the kept keys (§6).
    - Schedule the ons (§5). If `pick = order`, `m += 1`, even if every key
@@ -419,54 +417,49 @@ At every anchor `m := 0` (H8).
 - **The `pick` encoding:** the JSON string `"order"`, `"low"`, `"high"` or
   `"chord"`, or an integer 1–8. Anything else is read as `"order"`.
 
-### 4.7 `landed`: the order and the timing of the presses (D-012)
-`landed` replays **the gesture as it landed**: which keys were pressed, in
-what order, and **when**, each snapped to the grid, looped while the gesture
-lives.
+### 4.7 Transposition steps (Ableton-style; D-014)
+These replace r2.6's `octaves`. They follow Ableton's arpeggiator
+Transposition: the **whole pattern repeats, shifted**, rather than one merged
+range.
 
-- **Capture.** At a gesture start (§3), the **phrase** is cleared and
-  anchored:
-  - the first `NoteOn` sets `t0`, its exact position on the active clock;
-  - every `NoteOn` of the gesture, the first included, is captured as
-    `(key, vel, ch, q)`;
-  - `q = fdiv(2·(t − t0) + L, 2·L)` is its nearest grid step from `t0`, with
-    ties rounding up;
-  - **repeated presses count each time**, including a re-press of a key;
-  - presses that snap to the same `q` form a chord at that position;
-  - capacity is **32 captured presses** per phrase (later presses are
-    ignored, counted).
-- **Lifetime.**
-  - The phrase lives until H becomes empty, i.e. until every key, pedal and
-    latch hold is released. Releasing one key mid-gesture **keeps** its
-    captured press: the phrase is a recording, not the live held set.
-  - Under latch, the phrase lives as long as the latch holds.
-  - The next gesture start clears it and records anew.
-- **Phrase length** `len`, PROPOSED (Q-A6, decided by playing):
-  - start from `qmax + 1`, where `qmax` is the largest captured `q`;
-  - if `mod(TPQ, L) = 0`, round **up** to a whole beat, a multiple of
-    `TPQ / L` steps;
-  - otherwise keep it exact;
-  - the result never exceeds 64 steps (presses beyond step 63 are ignored,
-    counted).
-- **Playback.**
-  - Phrase step 0 is the **first grid step at or after `t0`** (`kAbs0 = cdiv(t0, L)`), as a `chord`
-    restart anchors. So the first press always sounds at once, at most one step late, and never
-    snaps back to a step already passed. Later presses keep their `q` relative to `t0`.
-  - At step kAbs, the phrase position is `q = mod(kAbs − kAbs0, len)`.
-  - **`landed` ignores `restart`**: the phrase is anchored by its own first
-    press.
-  - If the phrase holds presses at `q`, they are the step's keys, each with
-    its captured `vel` and `ch`, then octave copies per `octaves` (+12·i for
-    i < oct, all at once, as a chord).
-  - Positions with no press are **rests from the order**: no note, and the
-    step pattern's fields cannot create one.
-  - `landed` never advances `m`; it is timed, not counted.
-  - With `pick ≠ order`, the explicit pick reads E as usual (§4.3).
-- **Step patterns** overlay as for any order:
-  - `on`/`tie`/`prob` gate the step;
-  - `vel`/`gate`/`oct`/`ratchet`/`trig` shape it.
-  - A step-pattern rest silences a captured press at that step.
-- **Velocity.** The captured `vel` is the `played` base (§4.4).
+**Settings:**
+- `steps`: 0–8, default 0 (no transposition);
+- `step_size`: −48…+48, default **+12**;
+- `step_unit`: `semitones` (the default) or `degrees`.
+
+**The pass index.** A **pass** is one full cycle of the order style:
+`period` positions, or `e` for `random`, which has no period of its own. The
+transposition of a step is
+
+    t = mod(fdiv(m, P), steps + 1)
+
+- `P` is the order style's period, recomputed from the live H at each step,
+  as `p` is.
+- Pass 0 is untransposed. Pass t shifts by `t · step_size` units. After
+  `steps` shifted passes, it returns to pass 0.
+- So `up` over C E G with 2 steps of +7 semitones plays
+  `C E G | G B D | D F♯ A | C E G …`.
+- With `steps = 0` the pattern never transposes, and `t` is always 0.
+- An explicit `pick` (§4.3) takes the **current** pass's `t`, so a picked
+  bass note shifts with its pass.
+- Because `t` derives from `m`, it resets wherever `m` does (every anchor,
+  §4.5).
+
+**Applying t**, in the play rule (§4.3), to every key of the step:
+- **`semitones`:** `key + t · step_size`, together with the step's
+  `oct·12`, **before** the out-of-range drop and before quantize. So
+  quantize can pull a shifted note into the scale.
+- **`degrees`:** the key is first quantized to the effective scale (§6).
+  It then moves `t · step_size` **in-scale keys** up or down that scale,
+  counting only keys in the scale. Then the step's `oct·12` is added, and
+  keys outside 0–127 are dropped.
+  - With quantize `off`, or a zero mask, a degree is one semitone (the
+    chromatic scale).
+  - A degree-transposed key is in the scale by construction, and it sets
+    `lastQ` like any quantized key.
+
+**Morph:** `steps`, `step_size` and `step_unit` are discrete settings (§9),
+applied from the next evaluated step.
 
 ## 5. Note timing
 
@@ -676,8 +669,8 @@ produce no extra and no missing terminal (LIBRARY L0001).
 | Q4 | `chord_root` anchors the scale shape on the lowest held key | anchor on the root setting |
 | R1 | rest, miss, tie, trigger-only and explicit-`pick` steps don't advance `m` | advance `m` on rests; advance `m` on explicit picks |
 | N2 | `shuffle` never plays the same key twice in a row (e ≥ 2), and every key once per cycle | skip the boundary swap |
-| L1 | `landed` replays the captured presses at their snapped steps, in order, with captured velocity, looping at `len`; repeated presses count | ignore the captured timing (play in press order, one per step) |
 | Q5 | with ties toward a previous note above the tie, ties resolve UP; G1 holds with quantize ties in play; `lastQ` resets at release-all | always down; update `lastQ` at emission; never reset `lastQ` |
+| X1 | transposition steps: pass t of every style is the base pass shifted by t·step_size (semitones), or moved t·step_size in-scale keys (degrees); `steps = 0` never shifts; the pass returns to 0 after `steps` | merge copies into one range (r2.6 octaves); count degrees as semitones while a scale is on |
 | U1 | the user pattern plays its steps' picks (k-th, low, high, chord) and rhythm exactly; a `setUserPattern` takes effect at the next step | ignore `pick`; swap mid-step |
 | P1 | `prob` 0 never fires and 100 always fires (exact); 30 and 50 are within ±2 % over 10,000 steps | use `<=` (caught at the exact endpoints, since a ±2 % band cannot see it) |
 | T1 | triggers fire once per firing step, at its first on | fire on every ratchet |
@@ -692,8 +685,8 @@ produce no extra and no missing terminal (LIBRARY L0001).
 - **Q-A1:** the discrete morph rule, with hysteresis (§9).
 - **Q-A2:** restart under morph (§9).
 - **Q-A3:** the starter bank (§4.2 orders; `bank/starter.json` patterns).
-- **Q-A6:** `landed`'s phrase length: exact, or rounded up to a whole beat
-  (PROPOSED: rounded up).
+- **Q-A7:** which pass an explicit pick takes (§13b item 7; PROPOSED: the next
+  order note's pass).
 - **Q-A5:** pre-roll (**PROPOSED:** played; the grid extends to negative
   ticks). The tie direction is settled by D-010.
 - **Q-H3** (horde): the trigger-lane handoff.
@@ -763,22 +756,24 @@ says otherwise.
 before ratifying.
 
 ### 13b. Clarifications from the r2.6 lab build (normative)
-1. **`landed` at a transport edge or a rate change:** the phrase is kept. It
-   re-anchors at the first grid step of the new position or rate, its `q`
-   values are read as steps of the current rate, and `len` is recomputed.
-2. **`landed`'s first press never snaps back** to an already-evaluated step:
-   see §4.7, where `kAbs0 = cdiv(t0, L)`. The lab build had found that the
-   literal "rounded" reading silenced the first note for a whole loop.
-3. **A `landed` position with no press** plays no note, but the step's
-   trigger still fires (§4.3 step 4).
-4. **`landed` with an empty phrase** (keys held before the core saw them) is
-   all rests until the next gesture.
-5. **A free-clock re-base while a phrase is live** shifts `t0` with the
-   clock and recomputes `kAbs0` by the same rule.
-6. **`chord_root`'s always-admitted anchor** applies only when the mask is
+1. **`chord_root`'s always-admitted anchor** applies only when the mask is
    non-zero. A zero mask still disables quantize.
-7. **The lab's "clear"** restores the default user pattern (8 plain steps).
-8. **There is no plant for "`lastQ` updated at emission".** In the lab,
+2. **The lab's "clear"** restores the default user pattern (8 plain steps).
+3. **There is no plant for "`lastQ` updated at emission".** In the lab,
    evaluation and emission interleave in time order at every block size, so
    G1 cannot diverge on it. The rule is enforced by construction (`_quant`
    runs inside step evaluation). The C++ M1 suite revisits this.
+4. **`lastQ` under degree transposition** is the final output key, after the
+   degree move and the octave shift. It is set only while quantize is on
+   with a non-zero mask. A key dropped as out of range leaves `lastQ` at its
+   first quantize result.
+5. **A degree move that runs off 0–127** drops the key (counted, T16).
+6. **Pass 0 in degrees mode** takes the ordinary path. Quantizing first
+   changes nothing there.
+7. **Which pass an explicit pick takes, PROPOSED (Q-A7, decided by
+   playing).** A pick reads `t` from `m` at its own step: the pass of the
+   **next** order note. A pick that *leads* a pass shifts with it, while a
+   pick right after a pass's last order note already belongs to the next
+   pass. The smoke pins it: `60 60 64 60 67 | 72 72 72 76 72 79 | 60 60 60`.
+   The alternative, the pass of the *previous* order note, gets the opposite
+   case wrong.

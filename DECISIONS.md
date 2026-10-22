@@ -423,3 +423,28 @@ that change behaviour the human hears:
 
 Also: horde ADR-169 must be read before Q-H6 is filed, because it may
 already answer how presets carry module data.
+
+## D-014 — `landed` deferred past 1.0; `octaves` becomes Ableton-style transposition steps (RATIFIED, 2026-10-22)
+
+**`landed` is deferred.** The human said: "remove as landed and hold it for
+after 1.0". This supersedes D-012 for 1.0. The design, the lab-build
+lessons (the first-press snap-back fix) and the open loop-length question
+are preserved in `docs/deferred/landed.md`. The last commit with the working
+implementation is on branch `lab/chord-modes-user-pattern`, and is recorded
+in that branch's trace. It is removed from the spec, params, lab core, smoke
+and UI. D-012a (`shuffle` without back-to-back repeats) stays.
+
+**Steps replace octaves.** The human said: "taking a cue from ableton …
+instead of 'octaves' it should be 'steps' and there should be a step size
+that defaults to 12 semis". By poll:
+- **Transpose per repeat (Ableton-style)**: each full pass of the order
+  style repeats shifted by `step_size`, for `steps` passes, then returns.
+  Rejected: a merged range (r2.6's `octaves`, generalised).
+- **The step size is in semitones or scale degrees.** `step_unit` is
+  `semitones` or `degrees`; degrees count in-scale keys of the effective
+  scale. Rejected: semitones only.
+
+The settings are `steps` 0–8 (default 0), `step_size` −48…+48 (default +12)
+and `step_unit`. This is SPEC r2.7 §4.7, with invariant X1. Order styles now
+walk just the held keys; `chord` and `stride` lose their octave cycling,
+because transposition supplies the range.

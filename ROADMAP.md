@@ -86,7 +86,7 @@ mode names, presets or UI text.
   identity type is a local placeholder behind the FOUNDATIONS surface until
   that brief resolves (survey Q6).
 - Modes (up, down, up-down ± repeated ends, as played, chord, random/seeded),
-  synced rate by division name, octave range, gate length (including above
+  synced rate by division name, transposition steps (D-014), gate length (including above
   100 %), latch (replace and append), the pedal as input hold. Every rule in
   `docs/prior-art.md` §2 becomes a test.
 - **Invariant suite**, each detector with a planted must-fail control:
@@ -143,6 +143,8 @@ mode names, presets or UI text.
 Scoped at the post-1.0 gate with the human: where the step sequencer begins
 (Q-P1), the free rate in Hz, horde's FX-device use on MIDI-sidechain notes
 (ADR-254), and the generators (`seqgen`).
+- **`landed`** — replay the order AND timing of the presses (D-012, deferred by D-014); the full
+  design and its lab lessons are in `docs/deferred/landed.md`.
 
 ## Queue
 
