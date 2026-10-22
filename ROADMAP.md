@@ -46,7 +46,7 @@ mode names, presets or UI text.
 - **Gate:** `docs/prior-art.md` exists, dated and cited; DECISIONS records what
   it changes (reuse / avoid / differentiate). Name findings go to the human.
 
-### Phase A — Spec + lab twin
+### Phase A — Spec + lab twin ← current
 - `spec/`: the scope list (manifest `scope_1_0`) and the parameter manifest:
   every key, unit, range, default, and its morph behaviour (continuous blends;
   discrete switches at a threshold). Also:
