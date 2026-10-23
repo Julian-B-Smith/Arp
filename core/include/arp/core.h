@@ -2,9 +2,8 @@
 // events out, each at a sample offset. Pure: it reads no clock, makes no system call, and after
 // prepare() allocates nothing. Framework-free; the adapter (CLAP/VST3/AU, horde) owns the rest.
 //
-// M1a scope (ROADMAP T-003): order `up`, the plain one-step pattern, restart `chord`, sync time,
-// the held set, the host and free clocks, the single release path and the event caps. Every
-// setting outside that scope is accepted and ignored (see core.cpp, "SPEC-GAP: M1a").
+// Scope so far (ROADMAP T-003, T-004, T-005 M2a): the seam, all order styles and step fields, time mode, scale quantize,
+// the degree unit, swing and velocity. Every setting outside that scope is accepted and ignored (see core.cpp, "SPEC-GAP: M2b").
 #pragma once
 
 #include <array>
@@ -75,6 +74,24 @@ struct Plants {
   bool drawIgnoresEpoch = false; // SPEC 2.4 H7c: the free-clock epoch is left out of the draw (random / shuffle / prob replay on every chord)
   bool timeStepsWhileRinging = false; // SPEC 2.5/2.6: in time mode steps (trigger-only ones too) keep firing with H empty while a note rings (the old 2.4 idle)
   bool sameRefDropsPress = false;// intake 1: a NoteOn whose ref is already known (any state) is dropped, and an ignored ref never expires
+  // ---- M2a ----
+  bool skipQuantizeChord = false;   // Q1: a step that plays several keys (a chord step) is not quantized
+  bool tieAlwaysDown = false;       // Q2 / Q5: a tie always resolves to the lower key, whatever lastQ says
+  bool ownIgnored = false;          // Q3: scale_source = own still reads the global scale
+  bool chordRootAsRoot = false;     // Q4: chord_root anchors the scale shape on the scale_root setting, not on the lowest held key
+  bool lastQAtEmission = false;     // Q5: lastQ updates when an on is EMITTED, not when its step is evaluated (a refused on then never counts)
+  bool lastQNoReset = false;        // Q5: release-all (and reset / prepare) leaves lastQ alone
+  bool collisionKeepsLast = false;  // SPEC 6: two keys landing on one key keep the LAST source's velocity and channel, not the earliest
+  bool degreesAsSemitones = false;  // X1: the transposition steps' degrees count as semitones while a scale is on
+  bool stepDegreesAsSemitones = false;  // ST1: the step offset's degrees count as semitones while a scale is on
+  bool semitoneAfterQuantize = false;   // SPEC 4.7 stage 1: the semitone part is added AFTER quantize instead of before it
+  bool degreeBeforeQuantize = false;    // SPEC 4.7 stage 4: the degree move runs BEFORE quantize instead of after it
+  bool lastQPreMove = false;        // SPEC 4.7 stage 6: lastQ is the quantized key before the degree move, not the final key
+  bool droppedKeySetsLastQ = false; // SPEC 4.7 stage 6: a key dropped at stage 5 still sets lastQ (to its quantized value)
+  bool noStage2Drop = false;        // SPEC 4.7 stage 2: only the final range check drops a key (r2.7's single drop)
+  bool swingParityK = false;        // G3: swing parity follows k = kAbs - anchor instead of kAbs
+  bool timeIgnoresSwing = false;    // TM1: time mode plays every step straight
+  bool releaseKeepsPending = false; // SPEC 5.1 / 8: release-all leaves the pending queue alone (a swung on or trigger survives a Panic)
 };
 #endif
 
@@ -150,6 +167,9 @@ class Core {
     std::int32_t key = 0, vel = 0, ch = 0;
     std::int32_t lane = 0;   // > 0: this entry is a TRIGGER on that lane (SPEC 8), not a note
     std::int64_t ord = 0;
+#ifdef ARP_PLANTS
+    bool setsLastQ = false;  // lastQAtEmission: lastQ follows this on when it is emitted
+#endif
   };
   enum class Clock : std::uint8_t { None, Host, Free };
   static constexpr int kSoundingSlack = 16;   // physical room for notes dying inside their own on sample
@@ -251,6 +271,11 @@ class Core {
   bool hasLastEvaluated_ = false, hasAnchor_ = false;
   std::int64_t lastEvaluated_ = 0, anchorK_ = 0, m_ = 0;
   std::int64_t stepSeq_ = 0;
+
+  // scale quantize (SPEC 6): the block's global scale, read at step evaluation, and lastQ, the tie chain (reset at every release-all)
+  Scale scale_{};
+  std::int64_t lastQ_ = 0;
+  bool hasLastQ_ = false;
 
   // enable state: moduleOn_ is `enabled`, enabled_ is "the arp is running" (module on and arp_enabled)
   bool moduleOn_ = false, enabled_ = false;

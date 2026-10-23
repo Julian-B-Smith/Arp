@@ -1,15 +1,14 @@
-// core.cpp - Arp's note processor, M1b scope (ROADMAP T-003, T-004).
+// core.cpp - Arp's note processor, M2a scope (ROADMAP T-003, T-004, T-005).
 //
 // Implemented: SPEC 1 (block I/O, 1.1 event order, 1.2 identity, 1.3 capacities), 2.1-2.6 (tick grid, exact three-band
 // position, host + free clocks, epoch, TIME MODE with the smooth step-time sweep), 3 (held set), 4.1 (counters,
 // once-guard), 4.2 all 16 order styles, 4.3 every step-pattern field (bank embedded from spec/bank/starter.json, plus the
-// user pattern, 4.6), 4.4 velocity, 4.5 restart `chord`, 4.7 transposition steps and step offsets IN SEMITONES, 5.1-5.2
-// (on-times, span, ratchets, ties by look-ahead, gate incl. > 100 %, T2), 7 (terminals), 8 (triggers), 9, 10.
+// user pattern, 4.6), 4.4 velocity, 4.5 restart `chord`, 4.7 transposition steps and step offsets in semitones AND degrees
+// (the six-stage order), 5.1-5.2 (on-times with swing, span, ratchets, ties by look-ahead, gate incl. > 100 %, T2), 6 scale
+// quantize (global or own scale, `scale` / `chord_root`, the lastQ tie chain), 7 (terminals), 8 (triggers), 9, 10.
 //
-// SPEC-GAP: M2 - settings outside that scope are ACCEPTED AND IGNORED, never half-implemented:
-//   step_unit = degrees (global or per pattern: played as SEMITONES until the effective scale exists, M2),
-//   restart bar / free (play as `chord`), repeats, quantize / scale_*, chord_* and the chord stage,
-//   swing (every step is straight; the SPEC 5.1 on-time formula is in place for M2 to feed).
+// SPEC-GAP: M2b - settings outside that scope are ACCEPTED AND IGNORED, never half-implemented:
+//   restart bar / free (play as `chord`), repeats, chord_* and the chord stage, the morph timing of discrete settings.
 //
 // Everything is fixed-capacity: the only allocations are in prepare().
 // (__FINITE_MATH_ONLY__ is predefined as 0 normally and 1 under -ffinite-math-only, so test its VALUE.)
@@ -36,9 +35,6 @@ namespace {
 
 constexpr std::int64_t kNever = INT64_MAX;
 constexpr std::int32_t kReleaseVel = 64;
-// SPEC-GAP: M1a - `swing` is accepted and ignored: every step is straight (500 permille). The on-time
-// formula below is already SPEC 5.1's, so M2 only has to read the clamped setting in place of this constant.
-constexpr std::int64_t kStraightSwing = 500;
 
 // The step length in ticks of a rate. An out-of-range enum value (a corrupt snapshot) falls back to the default 1/16
 // rather than reading outside the table.
@@ -73,6 +69,38 @@ std::int64_t periodOf(Order o, int e, bool tables) {
 
 // converge: E[0], E[e-1], E[1], E[e-2], ...
 std::int64_t convergeIndex(std::int64_t q, int e) { return q % 2 == 0 ? q / 2 : e - 1 - (q - 1) / 2; }
+
+// SPEC 6: a key is in the scale iff the root-relative mask has bit mod(key - root, 12) set (horde's quantise()).
+bool inScale(std::uint32_t mask, std::int32_t root, std::int64_t key) { return ((mask >> mod(key - root, 12)) & 1u) != 0; }
+
+// SPEC 6: the nearest in-scale key within 0-127; a key already in the scale is unchanged. A tie between the key below and the
+// key above goes toward the previous quantized output (lastQ); with none, or both candidates equally near it, to the LOWER key.
+// A key past 0-127 (only a plant feeds one) with no candidate is returned unchanged for the caller's range check to drop.
+std::int64_t quantizeKey(std::int64_t key, std::int32_t root, std::uint32_t mask, bool hasLast, std::int64_t last, bool tieDown) {
+  if (inScale(mask, root, key)) return key;
+  for (std::int64_t d = 1; d <= 127; ++d) {
+    const std::int64_t lo = key - d, hi = key + d;
+    const bool okLo = lo >= 0 && lo <= 127 && inScale(mask, root, lo), okHi = hi >= 0 && hi <= 127 && inScale(mask, root, hi);
+    if (okLo && okHi) {
+      const std::int64_t dl = lo > last ? lo - last : last - lo, dh = hi > last ? hi - last : last - hi;
+      return (!tieDown && hasLast && dh < dl) ? hi : lo;
+    }
+    if (okLo) return lo;
+    if (okHi) return hi;
+  }
+  return key;
+}
+
+// SPEC 4.7 stage 4: move n in-scale keys up (n > 0) or down, counting only keys the scale admits. A zero mask is the chromatic
+// scale: a degree is one semitone. May return a key outside 0-127: stage 5 drops it.
+std::int64_t degreeMove(std::int64_t key, std::int64_t n, std::int32_t root, std::uint32_t mask) {
+  const std::int64_t dir = n > 0 ? 1 : -1;
+  for (std::int64_t c = n < 0 ? -n : n; c > 0; --c) {
+    do key += dir; while (key >= 0 && key <= 127 && mask != 0 && !inScale(mask, root, key));
+    if (key < 0 || key > 127) return key;
+  }
+  return key;
+}
 
 std::int32_t normPick(std::int32_t v) { return v >= kPickOrder && v <= kPickChord ? v : kPickOrder; }
 
@@ -193,6 +221,7 @@ void Core::resetState() {
   anchorK_ = 0;
   m_ = 0;
   stepSeq_ = 0;
+  if (!ARP_PLANT(lastQNoReset)) hasLastQ_ = false;   // SPEC 6: lastQ resets at reset / prepare too (T10)
   timeMode_ = false;
   D_ = static_cast<std::int64_t>(60) * sr_ * 1000;
   gO_ = 0;
@@ -415,6 +444,7 @@ EventSpan Core::process(const Block& b) {
   flushOwed();
   n_ = b.n;
   S_ = b.settings;
+  scale_ = b.scale;   // SPEC 6: horde's scale is read, never owned; steps evaluated in this block quantize to it
   absBase_ = absSample_;
   const Transport& tr = b.transport;
   // SPEC 4.6: a published user pattern is taken ONCE per process(): it applies from the first step evaluated in this block
@@ -1011,16 +1041,16 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
   // -- the pattern: a bank entry, or the user pattern as it stood when this block began
   const PatternStep* steps;
   std::int64_t plen, pSize;
+  StepUnit pUnit;
   if (a.pattern == Pattern::User) {
     const UserPattern& u = userSlots_[static_cast<std::size_t>(r_)];
-    steps = u.steps; plen = u.length; pSize = u.stepSize;
+    steps = u.steps; plen = u.length; pSize = u.stepSize; pUnit = u.stepUnit;
   } else {
     const std::size_t bi = static_cast<std::size_t>(a.pattern) < static_cast<std::size_t>(kBankCount) ? static_cast<std::size_t>(a.pattern) : 0;
-    steps = kBank[bi].steps; plen = kBank[bi].length; pSize = kBank[bi].stepSize;
+    steps = kBank[bi].steps; plen = kBank[bi].length; pSize = kBank[bi].stepSize; pUnit = kBank[bi].stepUnit;
   }
-  // SPEC-GAP: M2 - a degree unit (global or per pattern) needs the effective scale: it plays as semitones for now.
-  if (ARP_PLANT(stepSizeIgnored)) pSize = 12;
-  if (ARP_PLANT(stepOffsetReadsGlobal)) pSize = a.stepSize;
+  if (ARP_PLANT(stepSizeIgnored)) { pSize = 12; pUnit = StepUnit::Semitones; }
+  if (ARP_PLANT(stepOffsetReadsGlobal)) { pSize = a.stepSize; pUnit = a.stepUnit; }
 #ifdef ARP_PLANTS
   if (plants.timeBarsCount && timeMode_ && a.restart != Restart::Chord) {   // plant (r2.8): bars of 61,440 us count in time mode
     const std::int64_t bar = fdiv(kAbs * L_, 61440);
@@ -1040,10 +1070,14 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
   // SPEC 4.3 step 1: prob 0 never fires and 100 always does, exactly (a draw is a uniform 32-bit number mod 100)
   const std::uint32_t dv = draw(a.seed, kAbs, 2) % 100;
   const bool fires = ARP_PLANT(probLE) ? dv <= static_cast<std::uint32_t>(st.prob) : dv < static_cast<std::uint32_t>(st.prob);
-  // SPEC 5.1: on-times anchor at kAbs * L (never k * L); swing parity comes from kAbs.
-  const std::int64_t swingDelay = fdiv(L * (2 * kStraightSwing - 1000), 1000);   // 0 until M2
+  // SPEC 5.1: on-times anchor at kAbs * L (never k * L); swing parity comes from kAbs. `swing` is continuous: read here, at
+  // evaluation, and one value shapes every on, span and tie look-ahead of this step. SPEC-GAP (observation, not a conflict): a
+  // swing change between two steps leaves the earlier step's span/off computed with the old value while the later step's own
+  // on is placed with the new one; the literal reading is kept (each step is frozen at its own evaluation).
+  const std::int64_t swing = clampi(S_.swing, 500, 750);
+  const std::int64_t swingDelay = (timeMode_ && ARP_PLANT(timeIgnoresSwing)) ? 0 : fdiv(L * (2 * swing - 1000), 1000);
   const std::int64_t srSkew = ARP_PLANT(srTickMath) ? sr_ / 44100 : 0;
-  auto onTick = [&](std::int64_t x) { return gtick(x) + (mod(x, 2) == 1 ? swingDelay : 0) + srSkew; };
+  auto onTick = [&](std::int64_t x) { return gtick(x) + (mod(ARP_PLANT(swingParityK) ? x - anchorK_ : x, 2) == 1 ? swingDelay : 0) + srSkew; };
   const std::int64_t on0 = onTick(kAbs);
   auto trigger = [&]() { if (fires && st.trig > 0) queueTrigger(I128::mul(on0, D), st.trig, ord); };   // at the FIRST on, once per step (SPEC 8)
 
@@ -1078,24 +1112,83 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
     Note nl[kMaxHeldKeys];
     const int nn = notesFor(Es, es, kAbs, pick, nl);
     // -- SPEC 4.7: the pass index t = mod(fdiv(m, P), steps + 1), P the order style's period over the live H; an explicit
-    // pick takes the CURRENT pass (13b.7). Semitones only in M1b: S = t * step_size + step * the PATTERN's step_size.
+    // pick takes the CURRENT pass (13b.7). Two offsets, the pass shift (t * step_size in the GLOBAL step_unit) and the step
+    // offset (step * the PATTERN's step_size in the pattern's unit), each a semitone part or a degree part; the parts sum by
+    // kind into S semitones and G degrees.
     std::int64_t nSteps = a.steps;
     if (ARP_PLANT(stepsZeroShifts)) nSteps = std::max<std::int64_t>(nSteps, 2);
     const std::int64_t pass = (mergedOn || nSteps <= 0) ? 0 : mod(fdiv(m_, periodOf(a.order, es, ARP_PLANT(orderTables))), nSteps + 1);
-    const std::int64_t S = pass * a.stepSize + static_cast<std::int64_t>(st.step) * pSize;
-    // -- the keys: shift, DROP outside 0-127 (T16), collisions keep the earliest in the style's order
-    struct Out { std::int32_t key, vel, ch; };
+    std::int64_t S = 0, G = 0;
+    (a.stepUnit == StepUnit::Degrees && !ARP_PLANT(degreesAsSemitones) ? G : S) += pass * a.stepSize;
+    (pUnit == StepUnit::Degrees && !ARP_PLANT(stepDegreesAsSemitones) ? G : S) += static_cast<std::int64_t>(st.step) * pSize;
+    // -- SPEC 6: the effective scale. Source: horde's (the block input) or Arp's own; chord_root anchors the shape on the lowest
+    // held key and always admits that key's own pitch class (13b.1: only when the mask is non-zero; a zero mask disables quantize).
+    std::int32_t qRoot = 0;
+    std::uint32_t qMask = 0;
+    if (a.quantize != Quantize::Off) {
+      if (a.scaleSource == ScaleSource::Own && !ARP_PLANT(ownIgnored)) {
+        qRoot = static_cast<std::int32_t>(mod(a.scaleRoot, 12));
+        for (int d = 0; d < 12; ++d) qMask |= a.scaleDeg[d] ? 1u << d : 0u;
+      } else {
+        qRoot = static_cast<std::int32_t>(mod(scale_.root, 12));
+        qMask = scale_.mask & 0xFFFu;
+      }
+      if (a.quantize == Quantize::ChordRoot) {
+        if (!ARP_PLANT(chordRootAsRoot)) qRoot = static_cast<std::int32_t>(mod(E[0].key, 12));   // E is ascending: E[0] is the lowest held key
+        if (qMask != 0) qMask |= 1u;
+      }
+    }
+    const bool qOn = qMask != 0 && !(ARP_PLANT(skipQuantizeChord) && nn > 1);
+    // -- the keys, SPEC 4.7 "Applying offsets": per key, in ASCENDING pre-quantize order, each key through all six stages before
+    // the next starts (so a tie in stage 3 reads lastQ as the previous key left it): 1. key + S; 2. drop outside 0-127 (T16);
+    // 3. quantize; 4. move G in-scale keys; 5. drop outside 0-127; 6. lastQ := the final key, only if the key survived.
+    // Collisions (two keys landing on one) keep the EARLIEST source in the style's order, which is the list order.
+    int byKey[kMaxHeldKeys];
+    for (int i = 0; i < nn; ++i) {
+      int at = i;
+      while (at > 0 && nl[byKey[at - 1]].key > nl[i].key) { byKey[at] = byKey[at - 1]; --at; }
+      byKey[at] = i;
+    }
+    std::int64_t fin[kMaxHeldKeys];
+    bool finSetsLastQ[kMaxHeldKeys] = {};
+    const std::uint32_t degMask = qOn ? qMask : 0;   // quantize off or a zero mask: a degree is one semitone
+    for (int oi = 0; oi < nn; ++oi) {
+      const int i = byKey[oi];
+      fin[i] = -1;
+      std::int64_t key = nl[i].key + (ARP_PLANT(semitoneAfterQuantize) ? 0 : S);
+      if (!ARP_PLANT(noStage2Drop) && (key < 0 || key > 127)) { ++counters_.rows[16]; ++counters_.keysDropped; continue; }
+      if (ARP_PLANT(degreeBeforeQuantize)) key = degreeMove(key, G, qRoot, degMask);
+      if (qOn) key = quantizeKey(key, qRoot, qMask, hasLastQ_, lastQ_, ARP_PLANT(tieAlwaysDown));
+      const std::int64_t quantized = key;
+      if (ARP_PLANT(semitoneAfterQuantize)) key += S;
+      if (!ARP_PLANT(degreeBeforeQuantize)) key = degreeMove(key, G, qRoot, degMask);
+      if (key < 0 || key > 127) {
+        ++counters_.rows[16];
+        ++counters_.keysDropped;
+        if (qOn && ARP_PLANT(droppedKeySetsLastQ)) { lastQ_ = quantized; hasLastQ_ = true; }
+        continue;
+      }
+      if (qOn) {
+        if (ARP_PLANT(lastQAtEmission)) { finSetsLastQ[i] = true; }
+        else { lastQ_ = ARP_PLANT(lastQPreMove) ? quantized : key; hasLastQ_ = true; }
+      }
+      fin[i] = key;
+    }
+    struct Out { std::int32_t key, vel, ch; bool setsLastQ; };
     Out outs[kMaxHeldKeys];
     int no = 0;
     for (int i = 0; i < nn; ++i) {
-      const std::int64_t key = nl[i].key + S;
-      if (key < 0 || key > 127) { ++counters_.rows[16]; ++counters_.keysDropped; continue; }
-      bool seen = false;
-      for (int q = 0; q < no; ++q) seen = seen || outs[q].key == key;
-      if (seen) continue;
+      if (fin[i] < 0) continue;
+      int dup = -1;
+      for (int q = 0; q < no; ++q) if (outs[q].key == fin[i]) dup = q;
       // SPEC 4.4: round-half-up in integers
       const std::int64_t base = a.velMode == VelMode::Fixed ? clampi(S_.velFixed, 1, 127) : nl[i].vel;
-      outs[no++] = Out{static_cast<std::int32_t>(key), static_cast<std::int32_t>(clampi(fdiv(base * st.vel + 50, 100), 1, 127)), nl[i].ch};
+      const auto vel = static_cast<std::int32_t>(clampi(fdiv(base * st.vel + 50, 100), 1, 127));
+      if (dup >= 0) {
+        if (ARP_PLANT(collisionKeepsLast)) { outs[dup].vel = vel; outs[dup].ch = nl[i].ch; }
+        continue;
+      }
+      outs[no++] = Out{static_cast<std::int32_t>(fin[i]), vel, nl[i].ch, finSetsLastQ[i]};
     }
     // -- SPEC 5.2: ties by look-ahead: the consecutive tie steps after this one, cyclic, at most length - 1, ignoring prob
     std::int64_t t = 0;
@@ -1122,6 +1215,9 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
         p.vel = outs[q].vel;
         p.ch = outs[q].ch;
         p.ord = ord;
+#ifdef ARP_PLANTS
+        p.setsLastQ = outs[q].setsLastQ;
+#endif
         queueOn(p);
       }
       if (ARP_PLANT(trigEveryRatchet) && i > 0 && fires && st.trig > 0) queueTrigger(I128::mul(subOn, D), st.trig, ord);   // plant: the trigger on every ratchet
@@ -1206,6 +1302,9 @@ void Core::emitOn(const Pending& p, std::int32_t s) {
   x.offPos = p.offPos;
   x.hasOff = true;
   x.onAbs = absBase_ + s;
+#ifdef ARP_PLANTS
+  if (p.setsLastQ) { lastQ_ = p.key; hasLastQ_ = true; }   // lastQAtEmission
+#endif
   Event ev;
   ev.type = EventType::NoteOn;
   ev.offset = s;
@@ -1252,7 +1351,8 @@ bool Core::release(const NoteRef& ref, std::int32_t s) {
 
 // Release-all (T4, T6, T7, T10): walks the sounding table and CLEARS the pending queue (SPEC 7).
 void Core::releaseAll(std::int32_t s) {
-  pendN_ = 0;
+  if (!ARP_PLANT(releaseKeepsPending)) pendN_ = 0;
+  if (!ARP_PLANT(lastQNoReset)) hasLastQ_ = false;   // SPEC 6 (r2 H2): every release-all forgets lastQ, so each play-from-here sounds the same
   NoteRef snapshot[kMaxSounding + kSoundingSlack];
   const int n = soundN_;
   for (int i = 0; i < n; ++i) snapshot[i] = sounding_[static_cast<std::size_t>(i)].ref;

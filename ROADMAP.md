@@ -128,7 +128,7 @@ not a parity target.
 - **Gate:** R1, U1, X1 and ST1 (their semitone parts), TM1–TM3, K1, T1, P1, N2, S1 and the order-style tables,
   each with its plant; the M1a suite still green; a critic review with no open HIGH.
 
-### M2 — C++ core: scale, feel, restart, morph, chord stage (T-005)
+### M2 — C++ core: scale, feel, restart, morph, chord stage (T-005) ← current
 - **Scope:**
   - quantize: global or own scale, `scale` or `chord_root`, the `lastQ`
     tie chain and its resets (§6);
@@ -207,6 +207,18 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 - **Scope:** `core/`, `tests/core/`, the trace.
 - **Acceptance criteria:** the M1b gate above.
 - **Out of scope:** everything listed for M2.
+
+### T-005 — M2: scale, feel, restart, morph, chord stage
+- **Status:** in progress (2026-10-23), on `m2/core-scale-feel`, branched from M1b's branch while PR #19 awaits merge.
+  The M2 PR opens against `main` only after #19 merges (no stacked PR: REFLECTIONS).
+- **Dispatches (one implementer at a time, same files):**
+  - **M2a:** quantize (§6: Q1–Q5), the degree unit (X1 and ST1, degree parts; the six-stage offset order, §4.7),
+    swing (G3; TM1's swing term), velocity modes and accents.
+  - **M2b:** restart and repeats (§4.5, §4.8: RP1), the morph timing of discrete and continuous settings (§9:
+    N1 over morph-driven switches, plus known answers), the chord stage (§14: CH1).
+- **Scope:** `core/`, `tests/core/`, the traces.
+- **Acceptance criteria:** the M2 gate above.
+- **Out of scope:** the cross-check (T-006), horde admission (M3), anything past the functionality freeze.
 
 ## Open questions (blocking — ask the human or horde)
 

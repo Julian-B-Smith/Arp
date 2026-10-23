@@ -62,6 +62,16 @@ inline bool setPlant(Plants& p, const std::string& name) {
       {"inactiveReanchors", &Plants::inactiveReanchors},
       {"timeEntryNoStart", &Plants::timeEntryNoStart},
       {"latchReplaceKeeps", &Plants::latchReplaceKeeps}, {"sameRefDropsPress", &Plants::sameRefDropsPress}, {"t11EvictsFirst", &Plants::t11EvictsFirst}, {"prepareForgetsNotes", &Plants::prepareForgetsNotes},
+      // ---- M2a ----
+      {"skipQuantizeChord", &Plants::skipQuantizeChord},       {"tieAlwaysDown", &Plants::tieAlwaysDown},
+      {"ownIgnored", &Plants::ownIgnored},                     {"chordRootAsRoot", &Plants::chordRootAsRoot},
+      {"lastQAtEmission", &Plants::lastQAtEmission},           {"lastQNoReset", &Plants::lastQNoReset},
+      {"collisionKeepsLast", &Plants::collisionKeepsLast},     {"degreesAsSemitones", &Plants::degreesAsSemitones},
+      {"stepDegreesAsSemitones", &Plants::stepDegreesAsSemitones}, {"semitoneAfterQuantize", &Plants::semitoneAfterQuantize},
+      {"degreeBeforeQuantize", &Plants::degreeBeforeQuantize}, {"lastQPreMove", &Plants::lastQPreMove},
+      {"droppedKeySetsLastQ", &Plants::droppedKeySetsLastQ},   {"noStage2Drop", &Plants::noStage2Drop},
+      {"swingParityK", &Plants::swingParityK},                 {"timeIgnoresSwing", &Plants::timeIgnoresSwing},
+      {"releaseKeepsPending", &Plants::releaseKeepsPending},
   };
   for (const Entry& e : table)
     if (name == e.name) { p.*(e.flag) = true; return true; }
@@ -173,9 +183,11 @@ struct Session {
   std::vector<Change> cfg;                 // settings changes, applied from sample `at` on
   std::vector<InEv> ins;
   std::vector<int> resets;                 // samples at which reset() is called between blocks
+  std::vector<int> prepares;               // samples at which prepare() is called again between blocks (T10: it wipes the state)
   std::function<int(int)> jitter;          // host-position jitter in ticks, per block start
   std::function<void(int pos, Transport&)> tweak;   // edit the transport the host reports (e.g. no tempo, an absurd tempo)
   Scale scale{};
+  std::vector<std::pair<int, Scale>> scaleAt;   // horde's global scale changes from sample `at` on (the last entry <= the block start wins)
   Caps caps{};
   Plant plants;
   bool finalReset = true;
@@ -250,7 +262,9 @@ inline Run run(const Session& s, int block) {
   for (int e : host->edges(0, s.total)) cuts.push_back(e);
   for (const Change& ch : cfg) cuts.push_back(ch.at);
   for (int r : s.resets) cuts.push_back(r);
+  for (int r : s.prepares) cuts.push_back(r);
   for (const auto& ed : s.userEdits) cuts.push_back(ed.first);
+  for (const auto& sc : s.scaleAt) cuts.push_back(sc.first);
   cuts.erase(std::remove_if(cuts.begin(), cuts.end(), [&](int x) { return x <= 0 || x >= s.total; }), cuts.end());
   std::sort(cuts.begin(), cuts.end());
   cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
@@ -266,6 +280,7 @@ inline Run run(const Session& s, int block) {
       for (const Event& e : offs) out.evs.push_back(norm(e, pos, epoch));
       ++epoch;
     }
+    if (std::find(s.prepares.begin(), s.prepares.end(), pos) != s.prepares.end() && !c.prepare(s.sr, s.maxBlock)) { std::fprintf(stderr, "harness: re-prepare refused\n"); std::abort(); }
     for (const auto& ed : s.userEdits) if (ed.first == pos) c.setUserPattern(ed.second);
     while (ci < cuts.size() && cuts[ci] <= pos) ++ci;
     const int n = std::min(block, (ci < cuts.size() ? cuts[ci] : s.total) - pos);
@@ -280,6 +295,7 @@ inline Run run(const Session& s, int block) {
     b.settings = s.base;
     for (const Change& ch : cfg) if (ch.at <= pos) ch.f(b.settings);
     b.scale = s.scale;
+    for (const auto& sc : s.scaleAt) if (sc.first <= pos) b.scale = sc.second;
     b.in = std::span<const Event>(inb.data(), inb.size());
     EventSpan res;
     if (s.countAllocs) { AllocScope sc; res = c.process(b); out.allocs += sc.count(); } else res = c.process(b);

@@ -95,7 +95,7 @@ struct Transport {
   double loopEndBeats = 0;
 };
 
-// horde's global scale, read-only (SPEC 6). Unused until quantize lands (M2).
+// horde's global scale, read-only (SPEC 6): the block input Arp quantizes to when scale_source = global.
 struct Scale {
   std::int32_t root = 0;    // 0..11
   std::uint16_t mask = 0;   // 12 bits, root-relative

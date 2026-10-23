@@ -25,6 +25,7 @@
 #include "harness.h"
 #include "test_int128.h"
 #include "test_m1b.h"
+#include "test_m2a.h"
 
 using namespace arp_test;
 
@@ -104,11 +105,13 @@ Session sFree() {   // the free clock: transport stopped, live play; T14 on a ge
 Session sStyles() { return m1bSession("styles"); }
 Session sPatterns() { return m1bSession("patterns"); }
 Session sTimeMode() { return m1bSession("timemode"); }
+Session sScaleFeel() { return m2aSession("scalefeel"); }
+Session sTies() { return m2aSession("ties"); }
 
 const std::vector<std::pair<const char*, Session (*)()>> kSessions = {
     {"held", sHeld}, {"enable", sEnable}, {"transport", sTransport}, {"panic", sPanic}, {"discrete", sDiscrete},
     {"reset", sReset}, {"overflow", sOverflow}, {"short", sShort}, {"cap", sCap}, {"free", sFree},
-    {"styles", sStyles}, {"patterns", sPatterns}, {"timemode", sTimeMode}};
+    {"styles", sStyles}, {"patterns", sPatterns}, {"timemode", sTimeMode}, {"scalefeel", sScaleFeel}, {"ties", sTies}};
 
 Session sessionNamed(const char* name, const Plant& plants = {}) {
   for (const auto& kv : kSessions)
@@ -320,12 +323,13 @@ Session atRate(Session s, int sr) {
   for (auto& c : s.cfg) c.at = sc(c.at);
   for (auto& u : s.userEdits) u.first = sc(u.first);
   for (auto& r : s.resets) r = sc(r);
+  for (auto& a : s.scaleAt) a.first = sc(a.first);
   return s;
 }
 std::string g4M1bDiverges(const Plant& plants, const char* name) {
   std::string ref;
   for (int sr : {48000, 44100, 96000, 192000}) {
-    Session s = atRate(m1bSession(name), sr);
+    Session s = atRate(sessionNamed(name), sr);
     s.plants = plants;
     const Run r = run(s, 1024);
     if (r.evs.size() < 100) return "too few events at " + std::to_string(sr);
@@ -337,11 +341,11 @@ std::string g4M1bDiverges(const Plant& plants, const char* name) {
 
 void testG4() {
   std::puts("G4: event ticks identical at 44.1 / 48 / 96 / 192 kHz");
-  for (const char* name : {"styles", "patterns"}) {
+  for (const char* name : {"styles", "patterns", "scalefeel"}) {
     const std::string bad = g4M1bDiverges({"srTickMath"}, name);
-    plant(!bad.empty(), std::string("G4 detects a sample-rate-dependent value in tick math on the M1b session '") + name + "': " + bad);
+    plant(!bad.empty(), std::string("G4 detects a sample-rate-dependent value in tick math on the session '") + name + "': " + bad);
     const std::string d = g4M1bDiverges({}, name);
-    check(d.empty(), std::string("G4: the M1b session '") + name + "' (every order style / every pattern field, sync mode) has identical event ticks at 44.1, 48, 96 and 192 kHz" + d);
+    check(d.empty(), std::string("G4: the session '") + name + "' (sync mode: M1b order styles and pattern fields, M2a quantize / degrees / swing) has identical event ticks at 44.1, 48, 96 and 192 kHz" + d);
   }
   plant(!g4Diverges({"srTickMath"}).empty(), "G4 detects a sample-rate-dependent value read into tick math: " + g4Diverges({"srTickMath"}));
   const std::string d = g4Diverges({});
@@ -983,6 +987,7 @@ int main(int argc, char** argv) {
   testPrepareOwesOffs();
   testHostFloats();
   runM1bTests();
+  runM2aTests();
   testTiming();
   testUpModel();
   std::printf("%s: %d passed, %d failed\n", tally().fail ? "FAIL" : "OK", tally().pass, tally().fail);
