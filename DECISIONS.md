@@ -696,3 +696,21 @@ Both were proven on plants: an edit to SPEC.md, a new file, an edit to
 params.json, and the intake pin after the refactor all go red; the clean
 tree is green. A deliberate spec change is now three steps: the human's
 gate, a decision record, and a re-pin of `spec/MANIFEST` in the same change.
+
+## D-024 — Spec errata E1 and E3 approved; E2 fixed in code (RATIFIED by poll, 2026-10-23)
+
+The M1a C++ build found three places where the ratified spec's text should
+change (`docs/spec-errata.md`). The human approved two amendments by poll:
+- **E1 (§2.3):** an input event or block outside the window is **refused
+  and counted** (`badInput`), never an assertion abort. The audio thread
+  must not stop.
+- **E3 (§1.3):** the sounding table is 128 plus a **slack of 16** for notes
+  released inside their own first sample, which the 1-sample minimum keeps
+  alive. If the slack is full, the new on is refused and counted.
+
+**E2 needs no amendment.** `prepare()` could not emit T10's offs; instead
+the core keeps the owed offs in construction-time storage and delivers them
+at offset 0 of the first `process()` after `prepare()`. The spec as written
+(T10) holds, and no adapter call order can strand a note (critic M1a MED-2).
+
+`spec/MANIFEST` is re-pinned in the same change, as D-023 requires.

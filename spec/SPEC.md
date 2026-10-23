@@ -1,6 +1,6 @@
 # Arp — 1.0 specification (RATIFIED 2026-10-23, r2.12)
 
-> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022).** This is a protected path: any change needs the human's
+> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024).** This is a protected path: any change needs the human's
 > gate and a decision record. Revision history: r1 (2026-10-21) to r2.12 (2026-10-22); four independent reviews
 > (`docs/spec-review-r1..r4.md`).
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -123,7 +123,7 @@ sample (H4).
 |---|---|---|
 | held keys | 32 | a new key is ignored, and so is its later NoteOff (counted) |
 | live refs per held key | 4 | an extra ref is ignored, and so is its NoteOff (counted) |
-| sounding output notes | 128 | T11 |
+| sounding output notes | 128, plus a small slack (16) for notes released inside their own first sample and held by the 1-sample minimum (§1.1; erratum E3, D-024) | T11; if the slack is full, the new on is refused (counted) |
 | pending ons (§5.1) | 512 | the step's remaining ons are refused (counted) |
 | output events per block | `max(1024, 4·maxBlock)`, with **128 slots reserved for NoteOffs** | a NoteOn that would eat into the reserve is **refused**: it is never emitted and never enters the sounding table (counted, T13). A NoteOff always fits. |
 
@@ -188,8 +188,8 @@ has offset
     s = cdiv(x − start, inc)
 
 It belongs to this block iff `0 ≤ s < n`. That makes the block a half-open
-window. **Offsets are never clamped**; one outside the window is an assertion
-failure.
+window. **Offsets are never clamped.** An input event, or a block, whose offset or `n` falls outside the
+window is **refused and counted** (`badInput`), never an abort: the audio thread must not stop (erratum E1, D-024).
 
 **G1:** for an exact host, every event lands on the same absolute sample at
 any block partition.

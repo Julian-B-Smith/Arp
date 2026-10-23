@@ -7,7 +7,7 @@ lives in `DECISIONS.md`; horde's terms are in `intake/` and `SPINUP-BRIEF.md`.
 ## Status
 
 - **Phase:** **Phase A DONE 2026-10-23**: the spec is RATIFIED (D-022) and protected, and functionality is frozen (D-018).
-  **M1 (the C++ core) is next.**
+  **M1a (the C++ skeleton, T-003) is current**; then M1b, M2, M3 (ROADMAP §Phases).
 - **Oracle:** `./verify fast` = kit integrity, leak gate, private-name gate,
   structure, manifest, intake pin, and the **lab smoke** (SPEC §11: N1, G1–G5,
   D1, Q1–Q4, R1, P1, T1, S1, K1, C1, the order styles; each proven on a planted
@@ -78,43 +78,73 @@ mode names, presets or UI text.
   exactly one terminal over a scripted session; output identical across block
   sizes), each detector with a planted control.
 
-### M1 — C++ core: held set, modes, grid, terminals ← current
-- `core/`: a C++20 library, **self-contained and framework-free, buildable without horde** (horde copies it in at
-  our V1, D-015). Buffers sized at prepare. The NoteRef-compatible
+### M1a — C++ core: the skeleton and the seam — gate met 2026-10-23 (T-003)
+The C++20 core proves the hard parts first, on the smallest feature set. It is
+the RATIFIED `spec/SPEC.md` made real, judged by its invariants; the lab is
+not a parity target.
+- **`core/`:** a CMake library, self-contained and framework-free, buildable
+  without horde (horde copies it in at our V1, D-015). C++20, standard
+  library only, no allocation after `prepare`. The NoteRef-compatible
   identity type is a local placeholder behind the FOUNDATIONS surface until
   that brief resolves (survey Q6).
-- Modes (up, down, up-down ± repeated ends, as played, chord, random/seeded),
-  synced rate by division name, transposition steps (D-014), gate length (including above
-  100 %), latch (replace and append), the pedal as input hold. Every rule in
-  `docs/prior-art.md` §2 becomes a test.
-- **Invariant suite**, each detector with a planted must-fail control:
-  - one terminal per note across every row of the spec's terminal-path table;
-  - the grid is sample-exact against the transport;
-  - identical output at block sizes 1…4096 and at 44.1/48/96/192 kHz;
-  - seed determinism;
-  - no allocation in `process`, `setParam` or `reset`;
-  - no output for silent input, no stuck note after any transport event.
-- **Gate:** the suite runs in `./verify fast`, green; every planted control is
-  proven to fire (recorded in a trace).
+- **Scope:**
+  - the public API (`prepare` / `process` / `reset`, a settings struct
+    mirroring `spec/params.json`, events with output refs and stream tags);
+  - exact 128-bit positions, with a **portable** int128 (a fast path where
+    the compiler has `__int128`, and a two-word fallback, because horde may
+    build with MSVC);
+  - the three-band host clock (§2.2), the free clock (§2.4), the once-guard
+    and pending queue (§4.1, §5.1);
+  - the single release path, event caps and the off-reserve (§1.3, §7);
+  - the held set: latch replace/append, the pedal, gesture start (§3);
+  - order `up` with the plain one-step pattern;
+  - gate up to 200 %, T2 within a stream, and the §7 rows that apply.
+- **Tests:** a C++ test runner. Plants come from a **test-only** compile flag
+  (`ARP_PLANTS`), so the shipped library contains none.
+  - The checks: N1 over the applicable T-rows, G1 (block sizes 1…4096), G2,
+    G4 (44.1/48/96/192 kHz), G5 (re-base jitter), D1, and A1 (no
+    allocation in `process`, `reset` or settings changes).
+  - The int128 fallback passes the same tests.
+- **Gate:**
+  - `./verify fast` builds and runs the suite (CI too), green;
+  - every planted control is proven to fire, recorded in a trace;
+  - an independent critic review has no open HIGH findings.
 
-### M2 — Feel, scale, restart, morph
-- Swing; velocity (as played / fixed / accented by step); quantize to the
-  global scale; the restart parameter's three values; every setting a morph
-  target, discrete ones switching per the Phase A rule.
-- **The starter pattern bank** (D-004): the order styles and step patterns that
-  Q-A3 chose, loaded from the bank format, with per-step probability and
-  ratchets (D-006).
-- **The chord + note styles and the user pattern** (D-011): `chord_walk`,
-  `stride`, `chord_between`, `pairs`; per-step `pick`; the `user` pattern
-  in a preallocated, double-buffered slot.
-- **Gate:** each item's invariants are in the suite with planted controls:
-  - quantize keeps every note in the scale;
-  - swing displaces only the off-steps, by the spec'd fraction, sample-exact;
-  - each restart value meets its own rule;
-  - a full-range morph sweep in mid-pattern leaves no note without exactly one
-    terminal;
-  - every starter-bank entry passes the whole M1 suite, and a bank switch
-    mid-note is a terminal-path row.
+### M1b — C++ core: every order style, pattern field and clock (T-004) ← next
+- **First, the M1a critic's two LOWs** (re-check, 2026-10-23):
+  - **LOW-A:** after a `prepare()` that leaves owed offs, start the output id counter above the largest owed id,
+    so an owed off and a new note never share a ref (`intake/note-vocabulary.md` §1).
+  - **LOW-B:** widen the fast-math guard to `__FINITE_MATH_ONLY__`, or test exponent bits, so `-ffinite-math-only`
+    can't optimize away the finiteness checks.
+- **Scope:**
+  - all 16 order styles (§4.2), including the chord + note styles and
+    `shuffle` without back-to-back repeats;
+  - every step-pattern field (§4.3): tie look-ahead, ratchets, probability,
+    triggers, picks, and `step` × the pattern step size;
+  - transposition steps in semitones and degrees (§4.7) and the six-stage
+    offsets;
+  - the user pattern (§4.6), triple-buffered, storage from construction;
+  - time mode (§2.6), with the smooth step-time sweep.
+- **Gate:** R1, U1, X1, ST1, TM1–TM3, K1, T1, P1, N2, S1 and the
+  order-style tables, each with its plant; the M1a suite still green; a
+  critic review with no open HIGH.
+
+### M2 — C++ core: scale, feel, restart, morph, chord stage (T-005)
+- **Scope:**
+  - quantize: global or own scale, `scale` or `chord_root`, the `lastQ`
+    tie chain and its resets (§6);
+  - swing and velocity;
+  - restart and repeats (§4.5, §4.8);
+  - the morph timing of discrete and continuous settings (§9);
+  - the chord stage with its own stream and sounding table (§14).
+- **Gate:** Q1–Q5, G3, RP1, CH1 and the remaining §11 rows, each with its
+  plant; every M1 check still green; a critic review with no open HIGH.
+
+### Cross-check (Layer-E, measured, never a gate) (T-006)
+`./verify full` runs a shared set of scripted sessions through the lab's JS
+core and the C++ core and reports any difference in the event streams. It
+is measured, never gating: the lab is a listening twin, not a parity target.
+A difference is investigated against the spec, which wins.
 
 ### M3 — horde admission
 - The horde-facing surface: parameter table, presets, undo of every control,
@@ -165,6 +195,12 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   `integrations/README.md` is updated.
 - **Out of scope:** the FOUNDATIONS brief (M3, when the C++ first touches
   NoteRef).
+
+### T-003 — M1a: the C++ skeleton and the seam
+- **Status:** gate met 2026-10-23: the suite is in `./verify fast`, every plant fires, and the critic re-check found **no open HIGH**. In the M1a PR; CI is the first g++ build.
+- **Scope:** `core/`, `tests/core/` (the C++ test runner), the `./verify` wiring (approved by poll, 2026-10-23).
+- **Acceptance criteria:** the M1a gate above.
+- **Out of scope:** everything listed for M1b and M2.
 
 ## Open questions (blocking — ask the human or horde)
 
