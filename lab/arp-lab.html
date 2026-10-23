@@ -81,6 +81,11 @@
   .ued button { text-align:center; }
   .ued button.rest { color:var(--dim); } .ued button.tie { border-color:var(--hot); color:var(--hot); } .ued button.note { border-color:var(--acc); color:var(--acc); }
   .ued .nondef { border-color:var(--acc); }
+  .tm { display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center; }
+  .tm input[type=range] { flex:1 1 140px; min-width:100px; } .tm input[type=number] { width:76px; } .tm .u { color:var(--dim); font-size:11px; }
+  .lib { margin-top:8px; border-top:1px solid var(--line); padding-top:6px; }
+  .lib h3 { font-size:11px; font-weight:600; margin:6px 0 2px; } .lib .item { display:flex; gap:6px; align-items:center; padding:1px 0; }
+  .lib .item span { flex:1; } .lib .note { color:var(--dim); font-size:11px; }
 </style>
 </head>
 <body>
@@ -130,7 +135,16 @@
         <button id="userFromBank" title="copy the selected bank pattern (first 16 steps), every pick set to order">start from the selected bank pattern</button>
         <button id="userClear" title="back to the default: 8 plain steps, pick order">clear</button>
         <button id="userUse" title="select pattern = user">play it</button></div>
-      <div class="uwrap"><div class="ued" id="userSteps"></div></div></div>
+      <div class="bar"><label>step size <input type="number" id="userSize" min="-48" max="48" value="12" title="every step's `step` is multiplied by this"></label>
+        <label>unit <select id="userUnit"><option value="semitones">semitones</option><option value="degrees">degrees</option></select></label>
+        <span class="q" style="margin:0">a step of <b>+1</b> moves the note by one step size: +1 at 12 semitones is an octave up.</span></div>
+      <div class="uwrap"><div class="ued" id="userSteps"></div></div>
+      <div class="lib"><div class="bar"><b>Library</b>
+        <input type="text" id="libName" placeholder="name" maxlength="60" style="width:150px">
+        <button id="libSave" title="save the pattern in this browser (localStorage)">Save</button>
+        <button id="libExport" title="download the pattern as arp-user-pattern/1 JSON">Export</button>
+        <label>Import <input type="file" id="libImport" accept=".json,application/json"></label></div>
+        <div id="libLists"></div></div></div>
     <div class="card"><h2>Morph (A / B corners)</h2>
       <div class="q">Copy the current settings into corner A or B, then slide. Continuous settings blend linearly; discrete ones follow SPEC 9 Q-A1.</div>
       <div class="bar"><button id="copyA">A &larr; current</button><button id="copyB">B &larr; current</button>
@@ -161,7 +175,7 @@
 const TPQ = 15360;
 const ARP_PARAMS = {
  "format": "arp-params/1",
- "status": "DRAFT r2.7 2026-10-22 (Phase A); protected once the human ratifies spec/",
+ "status": "DRAFT r2.8 2026-10-22 (Phase A); protected once the human ratifies spec/",
  "tpq": 15360,
  "note": "Every setting is a morph target (D-000 Open 5). All values are INTEGERS in the snapshot (horde rounds morph blends). kind=continuous blends; kind=discrete resolves to the largest-weight corner with 0.05 hysteresis and applies from the next evaluated step (SPEC §9, Q-A1 PROPOSED); `enabled` applies at offset 0 of its block (SPEC T4/T5). Enums are stored by NAME. Tempo is clamped to [20, 999] bpm (SPEC §1.3).",
  "params": [
@@ -211,7 +225,32 @@ const ARP_PARAMS = {
    "type": "enum",
    "values_from": "rate[].name (aliases accepted on load)",
    "default": "1/16",
-   "ref": "SPEC §2.1"
+   "ref": "SPEC §2.1",
+   "note": "used in rate_mode = sync"
+  },
+  {
+   "key": "rate_mode",
+   "kind": "discrete",
+   "type": "enum",
+   "values": [
+    "sync",
+    "time"
+   ],
+   "default": "sync",
+   "ref": "SPEC §2.6",
+   "note": "sync = tempo-synced divisions (rate); time = a free step length (step_time_us) from the key press, ignoring the host tempo and transport (D-016)"
+  },
+  {
+   "key": "step_time_us",
+   "kind": "continuous",
+   "type": "int",
+   "min": 10000,
+   "max": 2000000,
+   "default": 125000,
+   "ref": "SPEC §2.6",
+   "unit": "microseconds per step",
+   "display": "both ms per step and Hz (= 1e6 / step_time_us), shown together",
+   "note": "used in rate_mode = time"
   },
   {
    "key": "steps",
@@ -808,13 +847,13 @@ const ARP_BANK = {
   "tie": false,
   "vel": 100,
   "gate": 100,
-  "oct": 0,
+  "step": 0,
   "prob": 100,
   "ratchet": 1,
   "trig": 0,
   "pick": "order"
  },
- "fields": "SPEC §4.3: on, tie, vel %, gate %, oct, prob %, ratchet 1-4, trig lane 0-8, pick (order | 1-8 | low | high | chord)",
+ "fields": "SPEC §4.3: on, tie, vel %, gate %, step (-8..+8, x the pattern's step_size in its step_unit), prob %, ratchet 1-4, trig lane 0-8, pick (order | 1-8 | low | high | chord); pattern-level step_size (-48..+48, default 12) and step_unit (semitones | degrees)",
  "patterns": [
   {
    "id": "none",
@@ -929,11 +968,11 @@ const ARP_BANK = {
    "steps": [
     {},
     {
-     "oct": 1
+     "step": 1
     },
     {},
     {
-     "oct": -1
+     "step": -1
     }
    ]
   },
@@ -1050,7 +1089,11 @@ const ARP_BANK = {
     }
    ]
   }
- ]
+ ],
+ "pattern_defaults": {
+  "step_size": 12,
+  "step_unit": "semitones"
+ }
 };
 // Named fault switches, ALL inert by default; only tools/lab_smoke.mjs turns them on,
 // each against a fresh core, to prove its detector can go red.
@@ -1058,7 +1101,8 @@ const ARP_PLANTS = ["dropRelease", "doubleRelease", "sameSampleOff", "clampOffse
   "roundNotCeil", "swingParityK", "srTickMath", "noOnceGuard", "timeInDraw", "skipQuantizeChord",
   "advanceOnRest", "probLE", "trigEveryRatchet", "tieAtTieStep", "noOffReserve", "untaggedOn", "tieAlwaysDown", "ownIgnored", "chordRootAsRoot",
   "pickAdvancesM", "ignorePick", "swapMidStep", "shuffleBoundaryRepeat",
-  "lastQNoReset", "collisionKeepsLast", "prepareResetsUser", "userFirstWins", "transposeMerged", "degreesAsSemis", "stepsZeroShifts"];
+  "lastQNoReset", "collisionKeepsLast", "prepareResetsUser", "userFirstWins", "transposeMerged", "degreesAsSemis", "stepsZeroShifts", "timeUsesTempo", "timeAnchorsTransport", "stepSizeIgnored",
+  "regridAbsolute", "regridKAbs", "timeBarsCount", "offsetsPerStage", "stepOffsetReadsGlobal", "timeEntryNoStart", "inactiveReanchors"];
 // Every discrete setting except `enabled` (which applies at offset 0, T4/T5) switches at the next
 // evaluated step (SPEC §9). Derived from params.json, so a new discrete setting cannot be forgotten.
 const DISCRETE_KEYS = ARP_PARAMS.params.filter(p => p.kind === "discrete" && p.key !== "enabled").map(p => p.key);
@@ -1172,7 +1216,8 @@ class ArpCore {
     // SPEC 4.6 (r2 H3): the user pattern is preset data, so its storage belongs to the instance, sized at
     // construction. prepare() and reset() never touch it (hosts load state BEFORE prepare). A triple buffer:
     // the writer fills slots[w], publishes by exchanging w with `mid`; the audio side takes `mid` into r.
-    const mk = () => ({ id: "user", n: 8, steps: Array.from({ length: USER_MAX }, () => Object.assign({}, this.stepDefaults)) });
+    const pd = this.bank.pattern_defaults || ARP_BANK.pattern_defaults;
+    const mk = () => ({ id: "user", n: 8, step_size: pd.step_size, step_unit: pd.step_unit, steps: Array.from({ length: USER_MAX }, () => Object.assign({}, this.stepDefaults)) });
     this._up = { slots: [mk(), mk(), mk()], w: 0, mid: 1, r: 2, fresh: false };
     this._upLatest = null;   // the writer side's latest validated copy (getUserPattern)
   }
@@ -1205,26 +1250,30 @@ class ArpCore {
   // The writer side's latest copy (what a preset saves); a plain object, so the caller owns it.
   getUserPattern() {
     const L = this._upLatest;
-    return L ? { length: L.length, steps: L.steps.map(x => Object.assign({}, x)) } : { length: 8, steps: Array.from({ length: 8 }, () => Object.assign({}, this.stepDefaults)) };
+    const pd = this.bank.pattern_defaults || ARP_BANK.pattern_defaults;
+    return L ? { length: L.length, step_size: L.step_size, step_unit: L.step_unit, steps: L.steps.map(x => Object.assign({}, x)) }
+             : { length: 8, step_size: pd.step_size, step_unit: pd.step_unit, steps: Array.from({ length: 8 }, () => Object.assign({}, this.stepDefaults)) };
   }
   // Fills `slot` in place from `p` and returns a trimmed plain copy of what was stored.
   _userFill(slot, p) {
-    const src = (p && p.steps) || [], d = this.stepDefaults;
+    const src = (p && p.steps) || [], d = this.stepDefaults, pd = this.bank.pattern_defaults || ARP_BANK.pattern_defaults;
     const num = (v, lo, hi, dflt) => { if (v === undefined || v === null) return dflt; const x = Math.round(Number(v)); return Number.isFinite(x) ? clamp(x, lo, hi) : dflt; };
     slot.n = num(p && p.length !== undefined ? p.length : src.length, 1, USER_MAX, 1);
+    slot.step_size = num(p && p.step_size, -48, 48, pd.step_size);                                  // SPEC 4.6: pattern-level step size and unit
+    slot.step_unit = p && (p.step_unit === "semitones" || p.step_unit === "degrees") ? p.step_unit : pd.step_unit;
     for (let i = 0; i < USER_MAX; i++) {
       const t = slot.steps[i], r = i < slot.n && src[i] ? src[i] : {};
       t.on = r.on === undefined ? d.on : !!r.on;
       t.tie = r.tie === undefined ? d.tie : !!r.tie;
       t.vel = num(r.vel, 0, 200, d.vel);
       t.gate = num(r.gate, 1, 200, d.gate);
-      t.oct = num(r.oct, -2, 2, d.oct);
+      t.step = num(r.step, -8, 8, d.step);
       t.prob = num(r.prob, 0, 100, d.prob);
       t.ratchet = num(r.ratchet, 1, 4, d.ratchet);
       t.trig = num(r.trig, 0, 8, d.trig);
       t.pick = normPick(r.pick);
     }
-    return { length: slot.n, steps: slot.steps.slice(0, slot.n).map(x => Object.assign({}, x)) };
+    return { length: slot.n, step_size: slot.step_size, step_unit: slot.step_unit, steps: slot.steps.slice(0, slot.n).map(x => Object.assign({}, x)) };
   }
 
   _resetState() {
@@ -1238,6 +1287,8 @@ class ArpCore {
     this.active = null; this.L = 0; this.stepSeq = 0;
     this.prevCont = null; this._fnext = undefined;
     this.barTicks = 4 * TPQ; this.barPhase = 0;
+    this.timeMode = false; this.D = BigInt(60 * this.sr * 1000);   // sync units until a block says rate_mode = time
+    this._gO = 0; this._gK1 = 0;   // the time-mode grid origin: step _gK1 sits at tick _gO
   }
 
   // reset(): T10. Returns the NoteOffs the adapter must deliver to the engine directly.
@@ -1252,7 +1303,7 @@ class ArpCore {
 
   // ---------------------------------------------------------------- process
   process(block) {
-    const n = block.n, ins = block.in || [], P = this.lab.plant, D = this.D;
+    const n = block.n, ins = block.in || [], P = this.lab.plant;
     if (!(n >= 1 && n <= this.maxBlock)) throw new Error("process: n out of 1..maxBlock");
     this._ev = []; this._evI = 0; this.lastSteps = []; this._blk++;
     const up = this._up;   // SPEC 4.6: the "new" flag is read ONCE per process; a published user pattern serves this whole block
@@ -1260,16 +1311,24 @@ class ArpCore {
     const tr = block.transport || {}, S = block.settings;
     this.incoming = S; this.scale = block.scale || { root: 0, mask: 0 };
     this._n = n; this._absBase = this.absSample;
-    const inc = this._tempoMilli(tr) * BigInt(TPQ);
+    // SPEC 2.6: rate_mode = time makes a tick one microsecond (D = sr, inc = 1e6 per sample) and ignores the host's tempo, position and
+    // transport. Switching mode changes the units of every stored position, so it is a clock switch (T6, handled below as an edge).
+    const tm = S.rate_mode === "time";
+    let modeSwitch = false;
+    if (tm !== this.timeMode) { modeSwitch = this.clock !== "none"; this.timeMode = tm; this.D = tm ? BigInt(this.sr) : BigInt(60 * this.sr * 1000); }
+    const D = this.D;
+    // plant timeUsesTempo: the "time" step quietly scales with the host tempo (120 bpm = true time)
+    const inc = tm ? (P.timeUsesTempo ? this._tempoMilli(tr) * 1000000n / 120000n : 1000000n) : this._tempoMilli(tr) * BigInt(TPQ);
     this._inc = inc;
-    if (!this.active) { this.active = {}; for (const k of DISCRETE_KEYS) this.active[k] = S[k]; this.L = this._rateTicks(S.rate); }
+    if (!this.active) { this.active = {}; for (const k of DISCRETE_KEYS) this.active[k] = S[k]; this.L = this._curL(S); }
     const num = tr.timeSigNum || 4, den = tr.timeSigDen || 4;
     this.barTicks = Math.floor(TPQ * 4 * num / den);
 
     // -- which clock, and where it starts (SPEC 2.2 three bands, 2.4)
     for (const e of ins) if (!(e.s >= 0 && e.s < n)) throw new Error("input offset outside block");
-    let edge = false;
-    if (tr.playing && tr.hasBeats) {
+    let edge = modeSwitch;
+    if (modeSwitch) this._start = 0n;
+    if (!tm && tr.playing && tr.hasBeats) {
       const rep = this._rep(tr);
       if (this.clock !== "host") { edge = true; this._start = rep; }
       else {
@@ -1282,16 +1341,17 @@ class ArpCore {
       this.barPhase = tr.barStartBeats != null ? mod(Math.round(tr.barStartBeats * TPQ), this.barTicks) : 0;
     } else {
       if (this.clock === "host") { edge = true; this._start = 0n; }
-      else this._start = this.clock === "none" ? 0n : this._next;
-      this.clock = "free"; this.barPhase = 0;
+      else if (!modeSwitch) this._start = this.clock === "none" ? 0n : this._next;
+      this.clock = "free"; this.barPhase = 0;   // the time clock IS the free clock, in microsecond units (SPEC 2.6)
     }
+    if (P.timeAnchorsTransport && tm) this.freeRunning = true;   // plant: the time grid runs from the start of the run, not from the key press
     if (P.floatPosition) {
       this._tps = Number(inc) / Number(D);
       this._fstart = (!edge && this._fnext !== undefined) ? this._fnext : Number(this._start) / Number(D);
     }
     if (edge) this._edge();
     // plant: re-derive the evaluated-step cursor from the position every block (no once-guard)
-    if (P.noOnceGuard) this.lastEvaluated = Number(cdivB(this._start, BigInt(this.L) * D)) - 1;
+    if (P.noOnceGuard) this.lastEvaluated = this._kAtOrAfter(this._start) - 1;
 
     // -- T9 bookkeeping, rate/enabled changes that act at offset 0
     const cont = S.gate + "," + S.swing + "," + S.vel_fixed;
@@ -1302,25 +1362,26 @@ class ArpCore {
       if (!en) { if (this.sounding.length) this.rows.T4++; this._releaseAll(0); this.enabled = false; }
       else {
         this.rows.T5++; this.enabled = true;
-        this.active.rate = S.rate; this.L = this._rateTicks(S.rate);   // SPEC-GAP: rate adopted at enable (the grid restarts anyway)
+        this.active.rate = S.rate; this.L = this._curL(S);   // SPEC-GAP: rate adopted at enable (the grid restarts anyway)
         this._reanchor(0, true);
       }
     }
-    this._maybeFreeStart(0);
+    if (!(P.timeEntryNoStart && modeSwitch)) this._maybeFreeStart(0);   // entering time mode with keys held starts the time clock at this offset (SPEC 2.6, as H7b)
+    if (this.timeMode) this._timeRegrid(S);
 
     // -- the timeline: input events, due offs, pending ons/triggers, grid-step evaluations
     let ii = 0, cur = 0;
     for (;;) {
-      if (this.clock === "free" && this.freeRunning && !this.refs.length && !this.sounding.length && !this.pending.length) this.freeRunning = false;   // idle (SPEC 2.4)
+      if (this.clock === "free" && this.freeRunning && !this.refs.length && !this.sounding.length && !this.pending.length && !(P.timeAnchorsTransport && tm)) this.freeRunning = false;   // idle (SPEC 2.4)
       const running = this.enabled && (this.clock === "host" || this.freeRunning);
-      if (running && this.lastEvaluated === null) this.lastEvaluated = Number(cdivB(this._posAt(cur), BigInt(this.L) * D)) - 1;
+      if (running && this.lastEvaluated === null) this.lastEvaluated = this._kAtOrAfter(this._posAt(cur)) - 1;
       let t = Infinity, kind = -1, idx = -1;
       if (ii < ins.length) { t = ins[ii].s; kind = 0; idx = ii; }
       for (let q = 0; q < this.sounding.length; q++) { const s = this._offTime(this.sounding[q]); if (s < t) { t = s; kind = 1; idx = q; } }
       let pi = -1;
       for (let q = 0; q < this.pending.length; q++) if (pi < 0 || this.pending[q].pos < this.pending[pi].pos) pi = q;
       if (pi >= 0) { const s = Math.max(0, this._ofs(this.pending[pi].pos)); if (s < t) { t = s; kind = 2; idx = pi; } }
-      if (running) { const s = Math.max(0, this._ofs(BigInt((this.lastEvaluated + 1) * this.L) * D)); if (s < t) { t = s; kind = 3; } }
+      if (running) { const s = Math.max(0, this._ofs(BigInt(this._gtick(this.lastEvaluated + 1)) * D)); if (s < t) { t = s; kind = 3; } }
       if (kind < 0 || !(P.clampOffset ? t <= n : t < n)) break;
       if (t < cur) t = cur;
       cur = t;
@@ -1367,24 +1428,51 @@ class ArpCore {
   }
   _tickOf(pos) { return Number(floorDivB(pos, this.D)); }
   _rateTicks(name) { return RATE_TICKS[name] || 3840; }
+  // The step length L in ticks of the current clock: a sync division, or step_time_us microseconds in time mode (SPEC 2.6).
+  // The tick of grid step k. Sync: k*L, SPEC 2.1. Time mode (SPEC 2.6): a PIECEWISE grid, tick(k) = origin + (k - k1)*L, where (k1, origin) move
+  // when step_time_us changes; with a constant L and the origin at 0 this is again k*L. Plant regridAbsolute / regridKAbs keep the origin at 0.
+  _gtick(k) { return this.timeMode ? this._gO + (k - this._gK1) * this.L : k * this.L; }
+  // The first step whose tick is at or after the exact position `pos` (posNum).
+  _kAtOrAfter(pos) {
+    const LD = BigInt(this.L) * this.D;
+    return this.timeMode ? this._gK1 + Number(cdivB(pos - BigInt(this._gO) * this.D, LD)) : Number(cdivB(pos, LD));
+  }
+  // SPEC 2.6: step_time_us changed. The next unevaluated step k1 = lastEvaluated + 1 lands at max(lastTick + L_new, changeTick), where
+  // changeTick is the block-start position; later steps are spaced L_new. Integer exact; kAbs, m, the pattern position and swing parity
+  // carry on, and sounding notes keep their offs (T18).
+  _timeRegrid(S) {
+    const P = this.lab.plant;
+    if (S.step_time_us === this.L) return;
+    if (P.regridAbsolute) return;   // plant: the old behaviour (re-grid at the visit on absolute multiples), handled in _visit
+    const lastTick = this.lastEvaluated !== null && this.lastEvaluated >= 0 ? this._gtick(this.lastEvaluated) : null;
+    const Lnew = S.step_time_us;
+    if (lastTick !== null && !P.regridKAbs) {
+      const k1 = this.lastEvaluated + 1, changeTick = Number(cdivB(this._start, this.D));
+      this._gO = Math.max(lastTick + Lnew, changeTick); this._gK1 = k1;
+    }
+    this.L = Lnew;
+  }
+  _curL(S) { return this.timeMode ? S.step_time_us : this._rateTicks(S.rate); }
+  // Restart is INERT in time mode (SPEC 2.6, r3 HIGH-2): there are no bars in time, so `bar` and `free` behave as `chord` (the pattern anchors
+  // at each gesture start). Plant timeBarsCount: r2.8's bars of 61,440 us.
+  _rs() { const r = this.active.restart; return this.timeMode && !this.lab.plant.timeBarsCount ? "chord" : r; }
 
   // T6: release everything, restart the grid from the new position, re-anchor.
   _edge() {
     if (this.sounding.length) this.rows.T6++;
     this._releaseAll(0);
-    this.active.rate = this.incoming.rate; this.L = this._rateTicks(this.active.rate);   // SPEC-GAP: rate adopted at an edge
+    this.active.rate = this.incoming.rate; this.L = this._curL(this.incoming);   // SPEC-GAP: rate adopted at an edge
     this.freeRunning = false; this.epoch = 0;
-    this.lastEvaluated = null;
+    this.lastEvaluated = null; this._gO = 0; this._gK1 = 0;
     this._reanchor(0, false);
   }
   // Re-anchor at the current position (T5/T6): m := 0; chord anchors only if an anchor exists or keys are held.
   _reanchor(s, resetEvaluated) {
-    const LD = BigInt(this.L) * this.D;
-    if (resetEvaluated || this.lastEvaluated === null) this.lastEvaluated = Number(cdivB(this._posAt(s), LD)) - 1;
+    if (resetEvaluated || this.lastEvaluated === null) this.lastEvaluated = this._kAtOrAfter(this._posAt(s)) - 1;
     this.m = 0; this.lastBar = null;
-    const a = this.active;
-    if (a.restart === "free") this.anchorK = 0;
-    else if (a.restart === "chord") this.anchorK = (this.anchorK !== null || this.refs.length) ? this.lastEvaluated + 1 : null;
+    const rs = this._rs();
+    if (rs === "free") this.anchorK = 0;
+    else if (rs === "chord") this.anchorK = (this.anchorK !== null || this.refs.length) ? this.lastEvaluated + 1 : null;
   }
   // H7b: the free clock starts at a switch/enable sample when keys are held.
   _maybeFreeStart(s) { if (this.clock === "free" && !this.freeRunning && this.enabled && this.refs.length) this._freeStart(s); }
@@ -1396,10 +1484,10 @@ class ArpCore {
     for (const x of this.sounding) if (x.offPos !== null) x.offPos -= shift;
     for (const p of this.pending) { p.pos -= shift; if (p.offPos !== undefined) p.offPos -= shift; }
     this.epoch = (this.epoch + 1) >>> 0;
-    this.freeRunning = true; this.lastEvaluated = -1;
+    this.freeRunning = true; this.lastEvaluated = -1; this._gO = 0; this._gK1 = 0;   // step 0 lands on the key press (time mode)
     this.m = 0; this.lastBar = null;
-    const r = this.active.restart;
-    this.anchorK = (r === "bar") ? this.anchorK : 0;   // chord: the gesture anchors at tick 0; free: tick 0
+    const r = this._rs();
+    this.anchorK = (r === "bar") ? this.anchorK : 0;   // chord: the gesture anchors at tick 0; free (and bar in time mode): tick 0
   }
 
   // ---------------------------------------------------------------- input (SPEC 3)
@@ -1437,9 +1525,10 @@ class ArpCore {
   }
   _gesture(s) {
     if (!this.enabled) return;
-    if (this.clock === "free") { this._freeStart(s); return; }
+    // plant timeAnchorsTransport: in time mode the grid is NOT re-based at the key press; the press only anchors at the next grid step
+    if (this.clock === "free" && !(this.lab.plant.timeAnchorsTransport && this.timeMode)) { this._freeStart(s); return; }
     if (this.active.restart === "chord") {
-      if (this.lastEvaluated === null) this.lastEvaluated = Number(cdivB(this._posAt(s), BigInt(this.L) * this.D)) - 1;
+      if (this.lastEvaluated === null) this.lastEvaluated = this._kAtOrAfter(this._posAt(s)) - 1;
       this.anchorK = this.lastEvaluated + 1;   // the first step not yet evaluated = first at/after this sample
       this.m = 0;
     }
@@ -1469,14 +1558,25 @@ class ArpCore {
   // ---------------------------------------------------------------- the grid walk (SPEC 4)
   // Called when the next unevaluated grid step's GRID tick lands at offset `so`.
   _visit(so) {
-    const S = this.incoming, kAbs = this.lastEvaluated + 1;
-    if (S.rate !== this.active.rate) { this._switchRate(kAbs); return; }   // T15: applies at the next step of the OLD rate (SPEC 9)
+    const S = this.incoming, kAbs = this.lastEvaluated + 1, P = this.lab.plant;
+    // SPEC 2.6: `rate` is ignored in time mode and step_time_us in sync mode: a morph of the inactive one does nothing (no T15, no re-anchor).
+    // In time mode a changed step_time_us was already folded into the grid at the block start (_timeRegrid).
+    if (P.inactiveReanchors) { const v = this.timeMode ? S.rate : S.step_time_us; if (this._inactSeen !== undefined && this._inactSeen !== v) this.m = 0; this._inactSeen = v; }   // plant
+    if (this.timeMode) { if (P.regridAbsolute && S.step_time_us !== this.L) { this._regridAbsolute(kAbs); return; } }
+    else if (S.rate !== this.active.rate) { this._switchRate(kAbs); return; }   // T15: applies at the next step of the OLD rate (SPEC 9)
     this.lastEvaluated = kAbs;
     this._adopt();
-    const a = this.active;
-    if (a.restart === "chord" && this.anchorK === null) return;             // no anchor yet (SPEC 2.5)
-    if (!this.lab.opts.playPreroll && kAbs * this.L < 0) return;
+    if (this._rs() === "chord" && this.anchorK === null) return;             // no anchor yet (SPEC 2.5)
+    if (!this.lab.opts.playPreroll && this._gtick(kAbs) < 0) return;
     this._evalStep(kAbs, so);
+  }
+  // Plant regridAbsolute: r2.8's behaviour, a re-grid on absolute multiples of the new step time at the old step's tick.
+  _regridAbsolute(kAbs) {
+    const gOld = BigInt(kAbs * this.L) * this.D;
+    this.L = this.incoming.step_time_us;
+    const kNew = Number(cdivB(gOld, BigInt(this.L) * this.D));
+    this.lastEvaluated = kNew - 1;
+    if (this.anchorK !== null) this.anchorK = kNew - (kAbs - this.anchorK);
   }
   _switchRate(kAbs) {
     const gOld = BigInt(kAbs * this.L) * this.D;
@@ -1496,7 +1596,7 @@ class ArpCore {
       if (k === "rate" || a[k] === S[k]) continue;
       changed = true;
       if (k === "latch" && S.latch === "off") this.refs = this.refs.filter(r => r.state !== "latched");
-      if (k === "restart") { if (S.restart === "bar") { this.lastBar = null; this.m = 0; } else if (S.restart === "free") { this.m = 0; this.anchorK = 0; } }   // into chord: keep the anchor
+      if (k === "restart" && !this.timeMode) { if (S.restart === "bar") { this.lastBar = null; this.m = 0; } else if (S.restart === "free") { this.m = 0; this.anchorK = 0; } }   // into chord: keep the anchor; inert in time mode
       a[k] = S[k];
     }
     if (changed && this.sounding.length) this.rows.T8++;
@@ -1512,11 +1612,11 @@ class ArpCore {
   _evalStep(kAbs, so) {
     const P = this.lab.plant, a = this.active, S = this.incoming, L = this.L, D = this.D;
     // anchor bookkeeping per restart mode (SPEC 4.5)
-    if (a.restart === "bar") {
+    if (this._rs() === "bar") {
       const b = fdiv(kAbs * L - this.barPhase, this.barTicks);
       if (b !== this.lastBar) { this.lastBar = b; this.anchorK = cdiv(this.barPhase + b * this.barTicks, L); this.m = 0; }
     }
-    const aK = a.restart === "free" ? 0 : this.anchorK;
+    const aK = this._rs() === "free" ? 0 : this.anchorK;
     const k = kAbs - aK, pat = this._pattern(a.pattern), j = mod(k, this._plen(pat));
     const st = this._step(pat, j);
     const ord = this.stepSeq++;
@@ -1524,7 +1624,7 @@ class ArpCore {
 
     // on-times anchor at kAbs*L (SPEC 5.1, never k*L); swing parity from kAbs (G3)
     const swingD = fdiv(L * (2 * S.swing - 1000), 1000);
-    const onT = x => x * L + (mod(P.swingParityK && aK !== null ? x - aK : x, 2) === 1 ? swingD : 0) + (P.srTickMath ? Math.floor(this.sr / 44100) : 0);
+    const onT = x => this._gtick(x) + (mod(P.swingParityK && aK !== null ? x - aK : x, 2) === 1 ? swingD : 0) + (P.srTickMath ? Math.floor(this.sr / 44100) : 0);
     const on0 = onT(kAbs);
     const H = this._held();
     const mBefore = this.m;
@@ -1552,25 +1652,45 @@ class ArpCore {
     const Hn = merged ? this._mergedCopies(H, a) : H;
     const notes = this._notes(a, Hn, kAbs, this._pickOf(st));
     if (!notes.length) return 0;
-    // SPEC 4.7: the pass index t (`pass`) shifts every key of the step by t * step_size, in semitones or in-scale keys (degrees).
-    const pass = merged ? 0 : this._pass(a, Hn.length), shift = pass * a.step_size;
-    const degrees = a.step_unit === "degrees" && !P.degreesAsSemis && pass !== 0;
+    // SPEC 4.7 "Applying offsets": two offsets, the pass transposition (t * step_size in the global step_unit) and the step offset
+    // (s.step * the PATTERN's step_size in the pattern's step_unit), each a semitone part or a degree part; the parts sum by kind
+    // into S semitones and G degrees. Then: key + S, DROP outside 0-127 (T16), quantize, move G in-scale keys, DROP again.
+    const pass = merged ? 0 : this._pass(a, Hn.length);
+    const pd = this.bank.pattern_defaults || ARP_BANK.pattern_defaults;
+    let pSize = pat.step_size !== undefined ? pat.step_size : pd.step_size, pUnit = pat.step_unit || pd.step_unit;
+    if (P.stepSizeIgnored) { pSize = 12; pUnit = "semitones"; }   // plant: every step size is 12 semitones (ST1)
+    if (P.stepOffsetReadsGlobal) { pSize = a.step_size; pUnit = a.step_unit; }   // plant: the step offset reads the GLOBAL transposition size/unit (ST1)
+    let S_ = 0, G_ = 0;
+    if (a.step_unit === "degrees" && !P.degreesAsSemis) G_ += pass * a.step_size; else S_ += pass * a.step_size;
+    if (pUnit === "degrees") G_ += st.step * pSize; else S_ += st.step * pSize;
     const qOn = a.quantize !== "off" && !(P.skipQuantizeChord && a.order === "chord");
     const sc = qOn ? this._scaleOf(a, H) : null;
     const items = notes.map(nt => ({ nt, q: null }));   // list order = the style's order (collisions keep the earliest)
-    // SPEC 4.3 / 6: the step octave and the pass shift, DROP outside 0-127 (T16), then quantize only the kept keys, in ASCENDING
-    // pre-quantize key order, each chained to the last output (lastQ), all at evaluation.
-    // Degrees (SPEC 4.7): quantize FIRST, move shift in-scale keys, THEN the step octave, then drop; the result is in the scale
-    // by construction, so it is not quantized again, and it sets lastQ like any quantized key.
-    for (const it of items.slice().sort((u, v) => u.nt.key - v.nt.key)) {
-      let key;
-      if (degrees) {
-        const k1 = qOn ? this._quant(it.nt.key, sc) : it.nt.key;
-        key = this._degreeMove(k1, shift, sc) + st.oct * 12;
-      } else key = it.nt.key + st.oct * 12 + shift;
-      if (key < 0 || key > 127) { this.rows.T16++; this.counters.keysDropped++; continue; }
-      if (degrees) { if (qOn && sc.mask) this.lastQ = key; it.q = key; }   // SPEC-GAP: lastQ = the final (octave-shifted) output key
-      else it.q = qOn ? this._quant(key, sc) : key;
+    // SPEC 4.7, per key in ASCENDING pre-quantize order, each key through all six stages before the next starts (a tie reads lastQ as the
+    // previous key left it): key + S; drop; quantize; move G in-scale keys; drop; set lastQ ONLY if the key survived. All at evaluation (SPEC 6).
+    const order = items.slice().sort((u, v) => u.nt.key - v.nt.key);
+    const stage123 = it => {
+      let key = it.nt.key + S_;
+      if (key < 0 || key > 127) { this.rows.T16++; this.counters.keysDropped++; return null; }
+      return qOn ? this._quant(key, sc) : key;
+    };
+    const stage45 = key => {
+      if (G_) {
+        key = this._degreeMove(key, G_, sc);   // a degree-moved key is in the scale by construction
+        if (key < 0 || key > 127) { this.rows.T16++; this.counters.keysDropped++; return null; }
+      }
+      return key;
+    };
+    if (P.offsetsPerStage) {   // plant: every key through a stage before any key starts the next, so a tie sees lastQ from the pre-move keys
+      const q = order.map(it => { const k = stage123(it); if (k !== null && qOn && sc.mask) this.lastQ = k; return k; });
+      order.forEach((it, i) => { it.q = q[i] === null ? null : stage45(q[i]); });
+    } else {
+      for (const it of order) {
+        const k = stage123(it); if (k === null) continue;
+        const f = stage45(k); if (f === null) continue;
+        if (qOn && sc.mask) this.lastQ = f;   // stage 6
+        it.q = f;
+      }
     }
     // collisions keep the earliest source in the style's order (the list order, not the quantize order)
     const out = [], seen = new Map();
@@ -1705,8 +1825,7 @@ class ArpCore {
         if (okHi) { out = hi; break; }
       }
     }
-    this.lastQ = out;
-    return out;
+    return out;   // lastQ is NOT set here: the caller sets it only for a key that survives the final drop (SPEC 4.7 stage 6)
   }
 
   // ---------------------------------------------------------------- note emission and the ONE release path
@@ -1794,13 +1913,16 @@ class ArpCore {
   let gridPattern = null, pedal = false, lastBank = "none";   // lastBank: the bank pattern "start from" copies while `user` is selected
 
   // ---- the user pattern (SPEC 4.6) -----------------------------------------------
-  function defaultUser() { return { length: 8, steps: Array.from({ length: 16 }, () => Object.assign({}, ARP_BANK.step_defaults)) }; }
-  const userObj = () => ({ length: state.user.length, steps: state.user.steps.slice(0, state.user.length).map(x => Object.assign({}, x)) });
+  function defaultUser() { return { length: 8, step_size: ARP_BANK.pattern_defaults.step_size, step_unit: ARP_BANK.pattern_defaults.step_unit, steps: Array.from({ length: 16 }, () => Object.assign({}, ARP_BANK.step_defaults)) }; }
+  const userObj = () => ({ length: state.user.length, step_size: state.user.step_size, step_unit: state.user.step_unit, steps: state.user.steps.slice(0, state.user.length).map(x => Object.assign({}, x)) });
+  // The pattern-level step size and unit of any pattern (bank patterns default from the bank's pattern_defaults).
+  const patSize = pat => pat.step_size !== undefined ? pat.step_size : ARP_BANK.pattern_defaults.step_size;
+  const patUnit = pat => pat.step_unit || ARP_BANK.pattern_defaults.step_unit;
   const USER_PAT = { id: "user", name: "Build your own", purpose: "Your own pattern: edit it in the Build your own card." };
   const PATTERN_LIST = [...ARP_BANK.patterns, USER_PAT];
   // A pattern by id for the UI's own reads (grid, preview, accents); `user` is the editor's current steps.
   function patternById(id) {
-    if (id === "user") return Object.assign({}, USER_PAT, { steps: userObj().steps });
+    if (id === "user") { const u = userObj(); return Object.assign({}, USER_PAT, { steps: u.steps, step_size: u.step_size, step_unit: u.step_unit }); }
     return ARP_BANK.patterns.find(p => p.id === id) || ARP_BANK.patterns[0];
   }
   // Every edit goes to the core off its audio path (setUserPattern validates, clamps and publishes); the core
@@ -1998,23 +2120,58 @@ class ArpCore {
   }
 
   // ---- transport ---------------------------------------------------------------
+  let clockNoteKey = "";
+  function paintClockNote() {
+    const t = state.cur.rate_mode === "time", k = t + ":" + eng.playing;
+    if (k === clockNoteKey) return; clockNoteKey = k;
+    $("clockNote").textContent = t ? "Time mode: steps run in real time from your key press (step 0 lands on it); the transport and BPM are ignored."
+      : eng.playing ? "Host clock: steps lock to the transport grid." : "Transport stopped: the free clock. Step 0 lands on your key press.";
+  }
   function togglePlay() {
     if (!startAudio() && !eng.ctx) return;
     eng.playing = !eng.playing;
     eng.hostQ.push(eng.playing ? { playing: true, seekBeats: state.preroll ? -4 : 0 } : { playing: false });
     $("playBtn").textContent = eng.playing ? "Stop" : "Play"; $("playBtn").classList.toggle("on", eng.playing);
-    $("clockNote").textContent = eng.playing ? "Host clock: steps lock to the transport grid." : "Transport stopped: the free clock. Step 0 lands on your key press.";
+    paintClockNote();
   }
 
   // ---- settings controls (generated from params.json) --------------------------
-  function paramLabel(p) { return p.key.replace("_", " "); }
+  // The global transposition settings share spec names with the pattern-level step size; label them apart.
+  const LABELS = { steps: "transposition steps", step_size: "transposition size", step_unit: "transposition unit", rate_mode: "rate mode", step_time_us: "step time" };
+  function paramLabel(p) { return LABELS[p.key] || p.key.replace("_", " "); }
+  const rows = {}, inputs = {};   // setting key -> its row / its select, so rate_mode can show only the control that applies
+  // SPEC 2.6: step_time_us shown BOTH ways at once (ms per step and Hz), on a log slider; editing any of the three updates the others.
+  function buildStepTime(p, row, eff) {
+    const LO = p.min, HI = p.max, span = Math.log(HI / LO);
+    const toPos = us => Math.round(1000 * Math.log(us / LO) / span), fromPos = x => clamp(Math.round(LO * Math.exp(span * x / 1000)), LO, HI);
+    const slider = h("input", { type: "range", min: "0", max: "1000", step: "1" });
+    const ms = h("input", { type: "number", min: String(LO / 1000), max: String(HI / 1000), step: "0.1", title: "milliseconds per step" });
+    const hz = h("input", { type: "number", min: String(1e6 / HI), max: String(1e6 / LO), step: "0.01", title: "steps per second (Hz)" });
+    const show = us => { slider.value = String(toPos(us)); ms.value = (us / 1000).toFixed(1); hz.value = (1e6 / us).toFixed(2); };
+    const commit = us => { us = clamp(Math.round(us), LO, HI); state.cur.step_time_us = us; show(us); };
+    slider.addEventListener("input", () => commit(fromPos(Number(slider.value))));
+    ms.addEventListener("change", () => { const v = Number(ms.value); commit(v > 0 ? v * 1000 : state.cur.step_time_us); });
+    hz.addEventListener("change", () => { const v = Number(hz.value); commit(v > 0 ? 1e6 / v : state.cur.step_time_us); });
+    controls[p.key] = { set: v => show(v), eff };
+    show(state.cur[p.key]);
+    row.append(h("label", { text: paramLabel(p) }), h("div", { class: "tm" }, slider, ms, h("span", { class: "u", text: "ms" }), hz, h("span", { class: "u", text: "Hz" })), h("span"), eff);
+  }
+  function paintRateRows() {
+    const t = state.cur.rate_mode === "time";
+    if (rows.rate) rows.rate.style.display = t ? "none" : "";
+    if (rows.step_time_us) rows.step_time_us.style.display = t ? "" : "none";
+    // SPEC 2.6: restart is inert in time mode (there are no bars in time; every gesture anchors the pattern), so grey it out.
+    if (rows.restart) { rows.restart.style.opacity = t ? "0.45" : ""; if (inputs.restart) inputs.restart.disabled = t; rows.restart.title = t ? "inert in time mode: the pattern anchors at each key press" : ""; }
+  }
   function buildSettings() {
     const box = $("settings"); box.textContent = "";
     for (const p of ARP_PARAMS.params) {
       if (p.key === "scale_root" || p.key.startsWith("scale_deg")) continue;   // drawn by buildOwnScale()
       const row = h("div", { class: "row" }), eff = h("span", { class: "eff" });
+      rows[p.key] = row;
       let input;
       const commit = v => { state.cur[p.key] = v; };
+      if (p.key === "step_time_us") { buildStepTime(p, row, eff); box.appendChild(row); continue; }
       if (p.type === "bool") {
         input = h("input", { type: "checkbox" }); input.checked = !!state.cur[p.key];
         input.addEventListener("change", () => commit(input.checked));
@@ -2022,9 +2179,9 @@ class ArpCore {
       } else if (p.type === "enum") {
         const vals = p.key === "pattern" ? PATTERN_LIST.map(x => x.id) : p.key === "rate" ? ARP_PARAMS.rate.map(x => x.name) : p.values;
         input = h("select", {}, ...vals.map(v => h("option", { value: v, text: p.key === "pattern" ? v + " - " + PATTERN_LIST.find(x => x.id === v).name : v })));
-        input.value = state.cur[p.key];
-        input.addEventListener("change", () => { commit(input.value); if (p.key === "pattern") renderGrid(); });
-        controls[p.key] = { set: v => { input.value = v; if (p.key === "pattern") renderGrid(); } };
+        input.value = state.cur[p.key]; inputs[p.key] = input;
+        input.addEventListener("change", () => { commit(input.value); if (p.key === "pattern") renderGrid(); paintRateRows(); });
+        controls[p.key] = { set: v => { input.value = v; if (p.key === "pattern") renderGrid(); paintRateRows(); } };
       } else if (p.type === "uint32") {
         input = h("input", { type: "number", min: "0", max: "4294967295", value: String(state.cur[p.key]) });
         input.addEventListener("change", () => commit(Math.max(0, Math.floor(Number(input.value) || 0)) >>> 0));
@@ -2043,7 +2200,7 @@ class ArpCore {
       controls[p.key].eff = eff;
     }
   }
-  function syncControls(from) { for (const p of ARP_PARAMS.params) controls[p.key].set(from[p.key]); }
+  function syncControls(from) { for (const p of ARP_PARAMS.params) controls[p.key].set(from[p.key]); paintRateRows(); }
 
   // ---- horde's scale shape: {root, mask}; names are UI only ("the mask is the truth, the name is UI") ----
   const SCALE_NAMES = ARP_PARAMS.ui_scale_names.scales;            // horde's 18, from params.json
@@ -2102,7 +2259,7 @@ class ArpCore {
     pat.steps.forEach((raw, j) => {
       const st = Object.assign({}, ARP_BANK.step_defaults, raw);
       const bits = [];
-      if (st.vel !== 100) bits.push("v" + st.vel); if (st.gate !== 100) bits.push("g" + st.gate); if (st.oct) bits.push("o" + (st.oct > 0 ? "+" : "") + st.oct);
+      if (st.vel !== 100) bits.push("v" + st.vel); if (st.gate !== 100) bits.push("g" + st.gate); if (st.step) bits.push((st.step > 0 ? "+" : "") + st.step + "×" + patSize(pat) + (patUnit(pat) === "degrees" ? "°" : ""));   // the step offset: step × the pattern's step size
       if (st.prob !== 100) bits.push(st.prob + "%"); if (st.ratchet > 1) bits.push("x" + st.ratchet); if (st.trig) bits.push("T" + st.trig);
       if (st.pick !== "order") bits.push("@" + st.pick);   // which held note(s) the step plays (SPEC 4.3)
       const cls = "cell" + (st.tie ? " tie" : st.on ? " on" : " rest") + (st.trig ? " trig" : "");
@@ -2112,12 +2269,12 @@ class ArpCore {
   }
   // ---- "Build your own": one column per step, one row per field (SPEC 4.3 / 4.6) ----
   const PICKS = ["order", "1", "2", "3", "4", "5", "6", "7", "8", "low", "high", "chord"];
-  const FIELDS = [["vel", "vel %", 0, 200], ["gate", "gate %", 1, 200], ["oct", "oct", -2, 2], ["prob", "prob %", 0, 100], ["ratchet", "ratchet", 1, 4], ["trig", "trig", 0, 8]];
+  const FIELDS = [["vel", "vel %", 0, 200], ["gate", "gate %", 1, 200], ["step", "step", -8, 8], ["prob", "prob %", 0, 100], ["ratchet", "ratchet", 1, 4], ["trig", "trig", 0, 8]];
   const stepKind = st => st.tie ? "tie" : st.on ? "note" : "rest";
   function buildUserEditor() {
     const box = $("userSteps"), U = state.user, D = ARP_BANK.step_defaults;
     box.textContent = ""; box.style.setProperty("--n", String(U.length));
-    $("userLen").value = String(U.length);
+    $("userLen").value = String(U.length); $("userSize").value = String(U.step_size); $("userUnit").value = U.step_unit;
     const row = (label, cell) => {
       box.appendChild(h("span", { class: "ul", text: label }));
       for (let i = 0; i < U.length; i++) box.appendChild(cell(U.steps[i], i));
@@ -2140,7 +2297,7 @@ class ArpCore {
       paint(); return b;
     });
     for (const [f, label, lo, hi] of FIELDS) row(label, (st, i) => {
-      const inp = h("input", { type: "number", min: String(lo), max: String(hi), step: "1", value: String(st[f]), title: label + " (" + lo + " to " + hi + ")" });
+      const inp = h("input", { type: "number", min: String(lo), max: String(hi), step: "1", value: String(st[f]), title: f === "step" ? "step offset " + lo + " to " + hi + ": moves the note by step × the pattern's step size" : label + " (" + lo + " to " + hi + ")" });
       inp.classList.toggle("nondef", st[f] !== D[f]);
       inp.addEventListener("change", () => {
         const v = clamp(Math.round(Number(inp.value)), lo, hi);
@@ -2155,9 +2312,12 @@ class ArpCore {
       state.user.length = clamp(Math.round(Number(ev.target.value)) || 1, 1, 16);
       buildUserEditor(); userChanged();
     });
+    $("userSize").addEventListener("change", ev => { state.user.step_size = clamp(Math.round(Number(ev.target.value)) || 0, -48, 48); ev.target.value = String(state.user.step_size); userChanged(); });
+    $("userUnit").addEventListener("change", ev => { state.user.step_unit = ev.target.value === "degrees" ? "degrees" : "semitones"; userChanged(); });
     $("userFromBank").addEventListener("click", () => {
       const id = state.cur.pattern !== "user" ? state.cur.pattern : lastBank, pat = patternById(id);
       state.user = defaultUser();
+      state.user.step_size = patSize(pat); state.user.step_unit = patUnit(pat);
       state.user.length = Math.min(pat.steps.length, 16);
       pat.steps.slice(0, 16).forEach((raw, i) => { state.user.steps[i] = Object.assign({}, ARP_BANK.step_defaults, raw, { pick: "order" }); });
       buildUserEditor(); userChanged();
@@ -2165,7 +2325,104 @@ class ArpCore {
     });
     $("userClear").addEventListener("click", () => { state.user = defaultUser(); buildUserEditor(); userChanged(); status("Build your own: back to 8 plain steps, pick order."); });
     $("userUse").addEventListener("click", () => { state.cur = Object.assign({}, state.cur, { pattern: "user" }); syncControls(state.cur); });
-    buildUserEditor();
+    buildUserEditor(); initLibrary();
+  }
+
+  // ---- the pattern library (SPEC 4.6, D-016): named copies of user patterns, in the adapter, never in the core -------------
+  // Two groups: patterns saved in the repo (lab/patterns/index.json -> each file; read-only) and patterns saved in this browser
+  // (localStorage). Every storage read/write is guarded, so the lab still works with storage blocked; fetch fails on file://.
+  const LIB_KEY = "arp.userPatterns.v1", FORMAT = "arp-user-pattern/1";
+  const lib = { repo: [], repoNote: "Looking for lab/patterns/ ...", browser: [], storeNote: "" };
+  // Validation is the core's own: a scratch core is never prepared, setUserPattern clamps, getUserPattern reads back what it kept.
+  // SPEC 4.6 format rules: unknown fields are ignored (only known ones are read), a `format` other than arp-user-pattern/1 is rejected,
+  // `steps` are padded with step_defaults or truncated to `length` (1-16), and every field is validated by setUserPattern's own rules.
+  function checkFormat(obj) {
+    if (!obj || typeof obj !== "object") throw new Error("not a pattern file");
+    if (obj.format !== FORMAT) throw new Error("unsupported format " + (obj.format === undefined ? "(none)" : JSON.stringify(String(obj.format))) + "; this lab reads " + FORMAT);
+    if (!Array.isArray(obj.steps)) throw new Error("no steps[]");
+    return obj;
+  }
+  function normalizePattern(obj) {
+    const c = new ArpCore(); c.setUserPattern(obj); const g = c.getUserPattern();
+    const name = obj && typeof obj.name === "string" && obj.name.trim() ? obj.name.trim().slice(0, 60) : "Untitled";
+    return { name, length: g.length, step_size: g.step_size, step_unit: g.step_unit, steps: g.steps };
+  }
+  function toFile(name) {   // compact arp-user-pattern/1: only fields that differ from step_defaults
+    const u = userObj(), D = ARP_BANK.step_defaults;
+    return { format: FORMAT, name, saved: new Date().toISOString().slice(0, 10), length: u.length, step_size: u.step_size, step_unit: u.step_unit,
+      steps: u.steps.map(st => { const o = {}; for (const k of Object.keys(D)) if (st[k] !== D[k]) o[k] = st[k]; return o; }) };
+  }
+  function loadPattern(pat, from) {   // the library never owns the live pattern: it fills the editor and publishes it
+    const n = normalizePattern(pat), u = defaultUser();
+    u.length = n.length; u.step_size = n.step_size; u.step_unit = n.step_unit;
+    n.steps.forEach((st, i) => { u.steps[i] = Object.assign({}, ARP_BANK.step_defaults, st); });
+    state.user = u; $("libName").value = n.name;
+    buildUserEditor(); userChanged();
+    status("Build your own: loaded \"" + n.name + "\" (" + from + "). Pick pattern = user to play it.");
+  }
+  function readStore() {
+    try { const v = JSON.parse(localStorage.getItem(LIB_KEY) || "[]"); lib.storeNote = ""; return Array.isArray(v) ? v.filter(x => x && typeof x === "object" && x.format === FORMAT && Array.isArray(x.steps)) : []; }
+    catch (err) { lib.storeNote = "This browser blocks or cannot read saved patterns (" + (err && err.name || "error") + "); Export and Import still work."; return []; }
+  }
+  function writeStore(list) {
+    try { localStorage.setItem(LIB_KEY, JSON.stringify(list)); lib.storeNote = ""; return true; }
+    catch (err) { lib.storeNote = "Could not save in this browser (" + (err && err.name || "error") + "); use Export."; return false; }
+  }
+  function paintLibrary() {
+    const box = $("libLists"); box.textContent = "";
+    const group = (title, items, del, note) => {
+      box.appendChild(h("h3", { text: title }));
+      if (note) box.appendChild(h("div", { class: "note", text: note }));
+      if (!items.length && !note) box.appendChild(h("div", { class: "note", text: "none yet" }));
+      items.forEach((it, i) => {
+        const row = h("div", { class: "item" }, h("span", { text: (it.name || "Untitled") + (del ? " (browser)" : " (repo)") + "  — " + (it.length || (it.steps || []).length) + " steps" }));
+        const b = h("button", { text: "Load" }); b.addEventListener("click", () => loadPattern(it, del ? "this browser" : "the repo")); row.appendChild(b);
+        if (del) { const d = h("button", { text: "Delete" }); d.addEventListener("click", () => { lib.browser.splice(i, 1); writeStore(lib.browser); paintLibrary(); }); row.appendChild(d); }
+        box.appendChild(row);
+      });
+    };
+    group("Saved in the repo", lib.repo, false, lib.repoNote);
+    group("Saved in this browser", lib.browser, true, lib.storeNote);
+  }
+  function initLibrary() {
+    lib.browser = readStore();
+    $("libSave").addEventListener("click", () => {
+      const name = ($("libName").value || "").trim().slice(0, 60) || "My pattern", f = toFile(name);
+      const i = lib.browser.findIndex(x => x.name === name);
+      if (i >= 0) lib.browser[i] = f; else lib.browser.push(f);
+      status(writeStore(lib.browser) ? "Saved \"" + name + "\" in this browser." : lib.storeNote); paintLibrary();
+    });
+    $("libExport").addEventListener("click", () => {
+      const name = ($("libName").value || "").trim() || "My pattern", f = toFile(name);
+      try {
+        const url = URL.createObjectURL(new Blob([JSON.stringify(f, null, 2)], { type: "application/json" }));
+        const a = h("a", { href: url, download: name.replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-|-$/g, "") + ".json" });
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+        status("Exported \"" + name + "\" as " + FORMAT + " JSON.");
+      } catch (err) { status("Export failed: " + (err && err.message)); }
+    });
+    $("libImport").addEventListener("change", ev => {
+      const file = ev.target.files && ev.target.files[0]; if (!file) return;
+      const rd = new FileReader();
+      rd.onload = () => { try { loadPattern(checkFormat(JSON.parse(String(rd.result))), "import"); }
+        catch (err) { status("Import failed: " + (err && err.message)); } ev.target.value = ""; };
+      rd.onerror = () => status("Import failed: could not read the file.");
+      rd.readAsText(file);
+    });
+    // the repo's patterns: lab/patterns/index.json lists the files (relative to this page)
+    if (typeof fetch !== "function") { lib.repoNote = "fetch is not available here; Import a pattern file instead."; paintLibrary(); return; }
+    fetch("patterns/index.json").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(idx => {
+        const files = Array.isArray(idx.patterns) ? idx.patterns : [];
+        return Promise.all(files.map(f => fetch("patterns/" + f).then(r => { if (!r.ok) throw new Error(f + ": HTTP " + r.status); return r.json(); })))
+          .then(list => {
+            const bad = []; lib.repo = [];
+            list.forEach((o, i) => { try { lib.repo.push(checkFormat(o)); } catch (err) { bad.push(files[i] + ": " + err.message); } });
+            lib.repoNote = bad.length ? "Skipped in lab/patterns/: " + bad.join("; ") : ""; paintLibrary();
+          });
+      })
+      .catch(err => { lib.repoNote = "Could not read lab/patterns/ (" + (err && err.message || "error") + "). Opened from disk? Browsers block that: serve the folder (python3 -m http.server in the repo) or use Import."; paintLibrary(); });
+    paintLibrary();
   }
   function buildLamps() { const box = $("lamps"); box.textContent = ""; for (let i = 1; i <= 8; i++) box.appendChild(h("div", { class: "lamp", id: "lamp" + i, text: String(i) })); }
 
@@ -2217,6 +2474,8 @@ class ArpCore {
   function rollOff(e, when) { const n = roll.byId.get(e.ref.id); if (n) { n.off = when; roll.byId.delete(e.ref.id); } }
   const EXAMPLE_CHORD = [60, 63, 67];        // C3 minor in Live's naming, used when nothing is held
   const gcd = (a, b) => b ? gcd(b, a % b) : a;
+  // The step length in ticks of the clock in use: a sync division, or step_time_us microseconds in time mode (SPEC 2.6).
+  const stepLen = S => S.rate_mode === "time" ? S.step_time_us : rateTicks(S.rate);
   const rateTicks = name => { const r = ARP_PARAMS.rate.find(x => x.name === name || x.alias === name); return r ? r.ticks : 3840; };
   // SPEC 4.2 periods. Because rests do not consume a note (R1), the joint cycle in steps is
   // the pattern length times however many pattern passes it takes the order to come round.
@@ -2242,21 +2501,22 @@ class ArpCore {
   function computePreview(S, held, cap = 64) {
     const pat = patternById(S.pattern);
     const steps = pat.steps.map(raw => Object.assign({}, ARP_BANK.step_defaults, raw));
-    const L = rateTicks(S.rate), Ls = steps.length;
+    const time = S.rate_mode === "time", L = stepLen(S), Ls = steps.length;
     // One order cycle repeated over steps + 1 transposition passes (SPEC 4.7), so the whole loop is P * (steps + 1) order plays.
     const P = orderPeriod(S.order, held.keys.map(h => h.key)) * (S.steps + 1);
     // Only `order` picks consume the order stream (SPEC 4.3), so an explicit-pick step is a play for rhythm but not for the cycle.
     const plays = steps.filter(st => st.on && !st.tie && (st.pick === undefined || st.pick === "order")).length;
     const full = plays ? Ls * (P / gcd(P, plays)) : Ls;
-    const n = Math.max(1, Math.min(full, cap, Math.floor(64 * TPQ / L)));   // at most `cap` steps / 64 beats
+    const n = Math.max(1, Math.min(full, cap, time ? 64 : Math.floor(64 * TPQ / L)));   // at most `cap` steps / 64 beats (64 steps in time mode)
     const sr = 48000, core = new ArpCore(); core.setUserPattern(userObj()); core.prepare(sr, 4096);
     core.lab.opts = Object.assign({}, eng.core.lab.opts);
     // Start half a step before tick 0 and press the keys one sample apart, in press order: the
     // gesture then sits mid-step, so step 0 lands at tick 0 under every restart value, and
     // `played` sees the real press order.
-    const host = simHost({ sr, bpm: 120, startBeats: -L / (2 * TPQ), playing: true });
+    // Time mode ignores the host and fires from the key press: step 0 lands on the press, in microseconds.
+    const host = simHost({ sr, bpm: 120, startBeats: time ? 0 : -L / (2 * TPQ), playing: true });
     const settings = Object.assign({}, S, { enabled: true });
-    const endTick = (n + 1) * L, samplesPerTick = 60 * sr / (120 * TPQ);
+    const endTick = (n + 1) * L, samplesPerTick = time ? sr / 1e6 : 60 * sr / (120 * TPQ);
     const ins = held.keys.map((h, i) => ({ t: "on", at: i, ref: "pv:" + h.key, key: h.key, vel: h.vel || 100, ch: 0 }));
     const total = Math.ceil((endTick + L) * samplesPerTick) + 4096;
     const notes = [], byId = new Map(), trigs = [], stepKinds = new Map(), ordJ = new Map();
@@ -2272,18 +2532,19 @@ class ArpCore {
       for (const st of core.lastSteps) if (st.kAbs >= 0 && st.kAbs < n) stepKinds.set(st.kAbs, { j: st.j, kind: st.kind });
     }
     const win = n * L;
-    return { L, n, full, win, example: held.example, held: held.keys.map(h => h.key),
+    return { L, n, full, win, time, example: held.example, held: held.keys.map(h => h.key),
              notes: notes.filter(x => x.on >= 0 && x.on < win), trigs: trigs.filter(t => t.tick >= 0 && t.tick < win), stepKinds };
   }
   let pvKey = "", pvData = null, pvAt = 0;
   function maybePreview(now) {
     const S = effective(), held = heldForPreview();
-    const key = JSON.stringify([S, held.keys.map(h => h.key), state.scale, eng.core.lab.opts, state.user.length, state.user.steps]);
+    const key = JSON.stringify([S, held.keys.map(h => h.key), state.scale, eng.core.lab.opts, state.user]);
     if (key === pvKey || now - pvAt < 0.12) return;   // recompute only on change, at most ~8x a second
     pvKey = key; pvAt = now;
     try { pvData = computePreview(S, held); } catch (err) { pvData = null; $("pvNote").textContent = "preview failed: " + err.message; return; }
     const d = pvData;
     $("pvNote").textContent = (d.example ? "Example chord C3 E♭3 G3 (hold keys to use yours). " : "Your held keys. ") +
+      (d.time ? "Time mode: " + (d.L / 1000).toFixed(1) + " ms per step (" + (1e6 / d.L).toFixed(2) + " Hz), the axis is in ms, step 0 lands on the key press. " : "") +
       (d.full > d.n ? "The cycle is " + d.full + " steps; showing the first " + d.n + ". " : d.n + " steps per cycle. ") +
       (S.order === "random" || S.order === "shuffle" || patternById(S.pattern).steps.some(x => x.prob !== undefined && x.prob !== 100) ? "Random draws are seeded, but not the live ones." : "");
     drawPreview();
@@ -2342,6 +2603,11 @@ class ArpCore {
       g.fillStyle = C.hot; g.beginPath(); g.moveTo(a, hgt - BOT + 1); g.lineTo(a + 5, hgt - 1); g.lineTo(a - 5, hgt - 1); g.closePath(); g.fill();
       g.font = "9px ui-monospace,Menlo,monospace"; g.fillText(String(t.lane), a + 6, hgt - 2);
     }
+    if (opts && opts.axisMs) {   // time mode: label the axis in milliseconds (the roll's x is in microseconds)
+      const totalMs = (x1 - x0) / 1000, nice = [10, 20, 50, 100, 200, 250, 500, 1000, 2000, 5000].find(v => totalMs / v <= 8) || 5000;
+      g.fillStyle = C.dim; g.font = "9px ui-monospace,Menlo,monospace";
+      for (let ms = 0; ms <= totalMs; ms += nice) { const xx = X(x0 + ms * 1000); if (xx > GUT && xx < GUT + plotW - 24) g.fillText(ms + " ms", xx + 2, hgt - 1); }
+    }
     if (opts && opts.playhead !== undefined) { const a = X(opts.playhead); g.strokeStyle = C.hot; g.lineWidth = 1.5; g.beginPath(); g.moveTo(a, TOP); g.lineTo(a, TOP + plotH); g.stroke(); }
     if (opts && opts.empty) { g.fillStyle = C.dim; g.font = "11px ui-monospace,Menlo,monospace"; g.fillText(opts.empty, GUT + 8, TOP + plotH / 2); }
   }
@@ -2350,10 +2616,10 @@ class ArpCore {
     const steps = [];
     for (let k = 0; k < d.n; k++) {
       const st = d.stepKinds.get(k) || { j: k, kind: "rest" };
-      steps.push({ t0: k * d.L, t1: (k + 1) * d.L, kind: st.kind, label: String(st.j + 1), beat: (k * d.L) % TPQ === 0 });
+      steps.push({ t0: k * d.L, t1: (k + 1) * d.L, kind: st.kind, label: String(st.j + 1), beat: d.time ? k % 4 === 0 : (k * d.L) % TPQ === 0 });
     }
     paintRoll($("pvRoll"), d.notes, d.trigs.map(t => ({ at: t.tick, lane: t.lane })), steps, t => t, 0, d.win,
-      d.notes.length || d.trigs.length ? {} : { empty: "nothing plays (no notes and no triggers in this cycle)" });
+      d.notes.length || d.trigs.length ? { axisMs: d.time } : { empty: "nothing plays (no notes and no triggers in this cycle)" });
   }
   function drawLive(now) {
     const x0 = now - LIVE_SPAN, x1 = now + LOOKAHEAD;
@@ -2394,7 +2660,7 @@ class ArpCore {
   function maybeMatrix() {
     const S = effective(), held = heldForPreview();
     const base = Object.assign({}, S); delete base.order; delete base.pattern;
-    const key = JSON.stringify([base, held.keys.map(h => h.key), state.scale, eng.core.lab.opts, state.user.length, state.user.steps]);
+    const key = JSON.stringify([base, held.keys.map(h => h.key), state.scale, eng.core.lab.opts, state.user]);
     if (key !== mxKey) {
       mxKey = key; mxQueue = [...mxCells.keys()];
       $("mxNote").textContent = (held.example ? "Example chord C3 E♭3 G3." : "Your held keys.");
@@ -2441,6 +2707,7 @@ class ArpCore {
     requestAnimationFrame(frame);
     const now = eng.ctx ? eng.ctx.currentTime : 0;
     if (state.cur.pattern !== "user") lastBank = state.cur.pattern;
+    paintClockNote(); paintRateRows();
     if (state.cur.pattern !== gridPattern && !state.morph.on) renderGrid();
     let cur = null;
     while (eng.stepQ.length && eng.stepQ[0].time <= now) cur = eng.stepQ.shift();
@@ -2457,7 +2724,7 @@ class ArpCore {
   function status(msg) { $("status").textContent = msg; }
 
   function init() {
-    buildKeyboard(); buildSettings(); buildOwnScale(); buildScale(); buildLamps(); buildMorph(); buildLab(); initUserEditor(); renderGrid(); buildMatrix(); initMidi();
+    buildKeyboard(); buildSettings(); buildOwnScale(); buildScale(); buildLamps(); buildMorph(); buildLab(); initUserEditor(); renderGrid(); buildMatrix(); paintRateRows(); initMidi();
     requestAnimationFrame(frame);   // paint from load, so the pattern preview shows before audio starts
     status("Press Start audio (or any key / Play) - browsers need a gesture before they will make sound.");
   }

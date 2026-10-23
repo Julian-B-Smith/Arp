@@ -19,13 +19,14 @@ lives in `DECISIONS.md`; horde's terms are in `intake/` and `SPINUP-BRIEF.md`.
   D1, Q1–Q4, R1, P1, T1, S1, K1, C1, the order styles; each proven on a planted
   fault; about 0.3 s). The C++ suite arrives at M1. `full` = `fast` for now.
 - **Hard date:** horde's module cutoff **2026-12-11**. The 1.0 arpeggiator
-  meets horde's MUST rows by then, or it ships after 1.0. Which rows bind Arp is
-  not in the intake packet yet (Q-H1).
+  meets horde's MUST rows by then, or it ships after 1.0. The rows are horde's
+  `docs/proposals/note-processor-1.0-bar.md` (answered 2026-10-22, D-015).
 - **Last human ratification:** 2026-10-21 — manifest ratified by poll (D-003);
   scope widened by poll twice the same day: the pattern bank (D-004), and
   four Phase 0 additions (D-006).
 - **Cutoff risk:** the 1.0 surface has grown three times since ratification
-  (D-004, D-006, D-007, D-011). If the cutoff tightens, **ratchets yield
+  (D-004, D-006, D-007, D-011), then time mode and the pattern library (D-016),
+  which are not yet placed in the yield order (ask at the next gate). If the cutoff tightens, **ratchets yield
   first, then the user pattern, then probability, then triggers**. All are
   pattern data that can ship after 1.0, because `spec/bank/` reserves their
   fields now.
@@ -82,7 +83,8 @@ mode names, presets or UI text.
   sizes), each detector with a planted control.
 
 ### M1 — C++ core: held set, modes, grid, terminals
-- `core/`: a C++20 library. Buffers sized at prepare. The NoteRef-compatible
+- `core/`: a C++20 library, **self-contained and framework-free, buildable without horde** (horde copies it in at
+  our V1, D-015). Buffers sized at prepare. The NoteRef-compatible
   identity type is a local placeholder behind the FOUNDATIONS surface until
   that brief resolves (survey Q6).
 - Modes (up, down, up-down ± repeated ends, as played, chord, random/seeded),
@@ -120,12 +122,15 @@ mode names, presets or UI text.
 
 ### M3 — horde admission
 - The horde-facing surface: parameter table, presets, undo of every control,
-  morph targets; the integration route horde chooses (Q-H2); the FOUNDATIONS
+  morph targets; horde's copy-in of the core at our V1, with a file list (D-015); the FOUNDATIONS
   note-vocabulary brief when the C++ first touches NoteRef/HeldStack; the
-  MUST rows horde names for Arp (Q-H1); CPU in Release, reported, never gated.
+  rows of horde's note-processor 1.0 bar (D-015); CPU in Release, reported (never a CI gate), and
+  evidenced against horde's ≤ 2 % budget.
 - Goldens cut per pattern/preset (a human gate), then protected.
 - **Gate:**
-  - every MUST row horde names is evidenced;
+  - every MUST row of horde's `docs/proposals/note-processor-1.0-bar.md` is evidenced, CPU ≤ 2 % of a min-spec
+    core included (D-015);
+  - a file list for horde's copy-in is shipped;
   - an independent critic review (sourced separately from the author) has no
     open HIGH findings;
   - the human's playing sign-off is recorded here;
@@ -167,17 +172,9 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 
 ## Open questions (blocking — ask the human or horde)
 
-- **Q-H1 — Which of horde's MUST rows bind Arp?** The intake packet carries
-  Arp's note interface but no admission bar for note processors (Echo's came
-  with `module-1.0-bar.md`). Asked of horde in the spin-up notice. Blocks the
-  M3 gate.
-- **Q-H2 — How horde consumes the core.** Vendored source pinned by hash, a
-  submodule, or a package? Asked of horde in the spin-up notice. Blocks M3.
-- **Q-H3 — How horde receives Arp's trigger lanes** (D-007). Arp emits
-  `Trigger{lane 1–8}` at a sample offset; horde's routing maps lanes to
-  declared actions and impulses (ADR-267). Ask in the next notice, together
-  with "please file through `integrations/hypersaw/`". Blocks M3's trigger
-  wiring, not the core.
+- **Q-H1 — which MUST rows bind Arp: ANSWERED by horde (D-015).** horde's `docs/proposals/note-processor-1.0-bar.md` (incl. CPU ≤ 2 % of a min-spec core); it is M3's checklist.
+- **Q-H2 — how horde consumes the core: ANSWERED by horde (D-015).** copied into horde's tree at our V1 by a horde PR recording our commit; keep the core self-contained, ship a file list.
+- **Q-H3 — the trigger-lane handoff: ANSWERED by horde (D-015).** `Trigger{lane 1–8, sampleOffset}` as proposed; horde shows "Arp · T1–T8" event sources.
 - **Q-H6 — How a horde preset carries Arp's user pattern** (D-011): a small
   structured blob (up to 16 steps × 9 fields), not host parameters. **Read
   horde ADR-169 first**: module presets "embed by value", and preset identity
@@ -203,7 +200,6 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 
 ## Deferred / demoted
 
-- **Free rate in Hz:** after 1.0 (survey Open 2).
 - **Bank growth beyond the starter set:** after 1.0, as data on the bank
   format (D-004 supersedes the survey's "extra modes after 1.0").
 - **Standalone plugin:** no (survey Q1); any change is a later, logged decision.

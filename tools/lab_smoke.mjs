@@ -151,8 +151,18 @@ const SESS = {
   styles: () => ({ total: 44000, scale: NDOWN, userPattern: UP1, base: { order: "chord_walk", pattern: "user", gate: 120, steps: 2, step_size: 7 },
     cfg: [{ at: 8000, set: { order: "stride" } }, { at: 12000, set: { quantize: "scale" } }, { at: 16000, set: { step_unit: "degrees", step_size: 2 } }, { at: 14000, set: { order: "chord_between" } }, { at: 20000, set: { order: "pairs" } },
       { at: 26000, set: { order: "converge" } }, { at: 32000, set: { order: "shuffle", pattern: "tied_legato" } }, { at: 38000, set: { order: "chord_walk", pattern: "user" } }],
-    userEdits: [{ at: 17003, p: { length: 5, steps: [{ pick: "high" }, { tie: true }, { pick: "chord", ratchet: 3 }, {}, { pick: 2, trig: 1 }] } }],
+    userEdits: [{ at: 17003, p: { length: 5, step_size: 2, step_unit: "degrees", steps: [{ pick: "high" }, { tie: true }, { pick: "chord", ratchet: 3 }, {}, { pick: 2, trig: 1 }] } }],
     ins: [K(100, "a", 60), K(100, "b", 66), K(900, "c", 70), O(15000, "b"), K(16200, "d", 63), O(30000, "a"), O(30000, "c"), O(30000, "d"), K(33000, "e", 61), K(33400, "f", 69)] }),
+  // SPEC 2.6: time mode. The host jumps and stops under it (ignored: no T6), the step time changes (a re-grid), rate_mode switches to sync and back
+  // (each a T6 clock switch), restart bar counts from tick 0, and a user pattern with a non-12 step size (degrees) plays.
+  time: () => {
+    const host = X.simHost({ sr: 8000, bpm: 120, startBeats: 0, playing: true });
+    host.set(9000, { seekBeats: 3 }); host.set(14000, { playing: false }); host.set(18000, { playing: true, seekBeats: 0, bpm: 90 });
+    return { total: 40000, host, scale: NDOWN, userPattern: UP1, base: { rate_mode: "time", step_time_us: 50000, gate: 120, pattern: "gallop", steps: 1, step_size: 5 },
+      cfg: [{ at: 12000, set: { step_time_us: 30000 } }, { at: 20000, set: { rate_mode: "sync" } }, { at: 24000, set: { rate_mode: "time", pattern: "user", quantize: "scale" } },
+        { at: 30000, set: { restart: "bar", step_unit: "degrees", step_size: 2 } }, { at: 35000, set: { restart: "free", step_time_us: 80000 } }],
+      ins: [K(100, "a", 60), K(100, "b", 66), O(16000, "a"), K(22000, "c", 62), O(26000, "b"), O(26000, "c"), K(27000, "d", 64), K(31000, "e", 70)] };
+  },
   // T10 reset() mid-run (ids restart), then a new gesture
   reset: () => ({ total: 30000, base: { gate: 150 }, resets: [20000], ins: [K(100, "a", 60), K(100, "b", 64), K(21000, "c", 67)] }),
   // T11 the sounding table is full (a small table keeps the session short)
@@ -160,9 +170,9 @@ const SESS = {
   // T16 keys outside 0-127, and a note shorter than one sample (SPEC 1.1 deferral): 999 bpm, 1/64, gate 1 %
   short: () => ({ total: 8000, bpm: 999, base: { rate: "1/64", gate: 1, steps: 2, order: "up" }, ins: [K(100, "a", 60), K(100, "b", 125)] }),
 };
-// A user pattern that uses every field: picks, a tie, a ratchet, a trigger, a rest, a probability and an octave.
-const UP1 = { length: 8, steps: [{ pick: "order" }, { pick: 3, ratchet: 2, vel: 130 }, { tie: true }, { pick: "low", gate: 50 }, { pick: "high", trig: 2 },
-  { pick: "chord", prob: 80 }, { on: false }, { pick: "order", oct: 1 }] };
+// A user pattern that uses every field: picks, a tie, a ratchet, a trigger, a rest, a probability and a step offset (a non-12 step size: +7 semitones).
+const UP1 = { length: 8, step_size: 7, steps: [{ pick: "order" }, { pick: 3, ratchet: 2, vel: 130 }, { tie: true }, { pick: "low", gate: 50 }, { pick: "high", trig: 2 },
+  { pick: "chord", prob: 80 }, { on: false }, { pick: "order", step: 1 }] };
 const ROWS = {};
 const addRows = c => { for (const [k, v] of Object.entries(c.rows)) ROWS[k] = (ROWS[k] || 0) + v; };
 const runSess = (name, block, plants) => {
@@ -196,10 +206,11 @@ function g1Session(plants, block) {
   host.set(9500, { bpm: 133.7 }); host.set(15003, { bpm: 90.5 }); host.set(22001, { playing: false }); host.set(26007, { playing: true, seekBeats: 3 }); host.set(33000, { seekBeats: 0.5 });
   return run({ core: mkCore(plants), block, host, total: 52000, scale: NDOWN, userPattern: UP1, base: { order: "random", pattern: "roll_end", swing: 620, gate: 130, seed: 42, rate: "1/32" },
     // the tail adds the four chord + note styles, a user pattern (edited mid-step), converge, transposition steps in both units and quantize with real ties (F# between F and G)
-    userEdits: [{ at: 40007, p: { length: 3, steps: [{ pick: "chord" }, { pick: 2, ratchet: 2 }, { pick: "low" }] } }],
+    userEdits: [{ at: 40007, p: { length: 3, step_size: 5, step_unit: "degrees", steps: [{ pick: "chord" }, { pick: 2, ratchet: 2 }, { pick: "low", step: -1 }] } }],
     cfg: [{ at: 9001, set: { order: "shuffle", pattern: "sparse_chance" } }, { at: 18007, set: { rate: "1/16", latch: "replace" } }, { at: 30011, set: { order: "bounce", pattern: "tied_legato", rate: "1/32" } },
       { at: 34003, set: { order: "stride", pattern: "user", steps: 2, step_size: 7, quantize: "scale" } }, { at: 38501, set: { order: "converge", pattern: "none", step_unit: "degrees", step_size: 2 } }, { at: 44001, set: { order: "chord_walk", pattern: "user" } },
-      { at: 46001, set: { order: "chord_between" } }, { at: 48003, set: { order: "pairs" } }],
+      { at: 46001, set: { order: "chord_between" } }, { at: 48003, set: { order: "pairs" } },
+      { at: 49001, set: { rate_mode: "time", step_time_us: 40000 } }],
     ins: [K(37, "a", 60), K(41, "b", 64), K(3011, "c", 67), O(12003, "a"), { at: 13000, t: "pedal", down: true }, O(14001, "b"), K(17777, "d", 72), O(19000, "c"), { at: 24000, t: "pedal", down: false }, K(25100, "e", 55), K(36000, "f", 59), { at: 38000, t: "panic" }, K(38500, "g", 62), K(41000, "h", 66), O(45000, "h"), K(47000, "i", 69)] });
 }
 function g1Diverges(plants) {
@@ -217,7 +228,7 @@ function g1Diverges(plants) {
   const r = g1Diverges([]);
   const g1 = g1Session([], 64), n = g1.evs.length;
   const qd = g1.evs.filter(e => e.t === "on" && e.a >= 36000);   // steps evaluated well after quantize switched on
-  check(r === null && n > 100 && qd.length > 20 && qd.every(e => inScale(e.key, 0, 0xAB5)), `G1: ${n} events, absolute samples identical at block sizes 4096/512/64/7/1 (swing, ratchets, prob, tempo change, stop/start, jumps, latch, pedal, panic, quantize ties, user pattern, the new styles, transposition steps in semitones and degrees)` + (r ? " - " + r : ""));
+  check(r === null && n > 100 && qd.length > 20 && qd.every(e => inScale(e.key, 0, 0xAB5)), `G1: ${n} events, absolute samples identical at block sizes 4096/512/64/7/1 (swing, ratchets, prob, tempo change, stop/start, jumps, latch, pedal, panic, quantize ties, user pattern, the new styles, transposition steps in semitones and degrees, step offsets with a non-12 step size in both units, time mode)` + (r ? " - " + r : ""));
 }
 
 // ---- 5. G2: ons land at cdiv of their exact tick position --------------------------------
@@ -363,10 +374,10 @@ const MAJOR_DEGS = { scale_deg0: true, scale_deg1: false, scale_deg2: true, scal
   plant(badC(["swapMidStep"]), "U1 detects an edit applied mid-step (the step's tie look-ahead tears)");
   check(!badC([]), "U1/T17: an edit landing mid-evaluation leaves that step whole (tied off 6912 ticks kept) and the next step uses the new pattern; N1 holds");
   // (d) validation: clamps every field, unknown pick -> order, length 1-16; getUserPattern returns the writer's latest copy
-  const clampOk = want => { const c = mkCore(); c.setUserPattern({ length: 99, steps: [{ vel: 999, gate: 0, oct: 9, prob: -4, ratchet: 9, trig: 12, pick: "bogus" }, { pick: "9" }, { pick: "7" }] });
-    const g = c.getUserPattern(); g.steps[0].vel += want; return g.length === 16 && g.steps.length === 16 && g.steps[0].vel === 200 && g.steps[0].gate === 1 && g.steps[0].oct === 2 && g.steps[0].prob === 0 && g.steps[0].ratchet === 4 && g.steps[0].trig === 8 && g.steps[0].pick === "order" && g.steps[1].pick === "order" && g.steps[2].pick === 7; };
+  const clampOk = want => { const c = mkCore(); c.setUserPattern({ length: 99, step_size: -99, step_unit: "bogus", steps: [{ vel: 999, gate: 0, step: 9, prob: -4, ratchet: 9, trig: 12, pick: "bogus" }, { pick: "9" }, { pick: "7" }] });
+    const g = c.getUserPattern(); g.steps[0].vel += want; return g.length === 16 && g.steps.length === 16 && g.steps[0].vel === 200 && g.steps[0].gate === 1 && g.steps[0].step === 8 && g.step_size === -48 && g.step_unit === "semitones" && g.steps[0].prob === 0 && g.steps[0].ratchet === 4 && g.steps[0].trig === 8 && g.steps[0].pick === "order" && g.steps[1].pick === "order" && g.steps[2].pick === 7; };
   plant(!clampOk(1), "U1 validation check can go red (a perturbed expectation fails)");
-  check(clampOk(0), "U1: setUserPattern clamps length 1-16 and every field, reads an unknown pick as order; getUserPattern returns the stored copy");
+  check(clampOk(0), "U1: setUserPattern clamps length 1-16, the pattern's step size / unit and every field (step -8..8), reads an unknown pick as order; getUserPattern returns the stored copy");
 }
 
 // ---- 11d. N2: shuffle never repeats a key back to back, and plays every key once per cycle (SPEC 4.2, D-012a) --------
@@ -584,13 +595,117 @@ const baseCycle = (style, H) => {
   check(badE.length === 0, "X1(e): all 13 deterministic styles (e = 3, 5): each pass is the base cycle shifted by t * 7 semitones, 3 passes then back to 0" + (badE.length ? " - wrong: " + badE.join(" ") : ""));
 }
 
+// ---- 17. TM1: time mode (SPEC 2.6): step k sounds at cdiv((k*U + swingDelay(k)) * sr, 1e6) samples after the key press --------
+const swingDelayUs = (U, swing, k) => (k % 2 === 1 ? Math.floor(U * (2 * swing - 1000) / 1000) : 0);
+{
+  const U = 125000, PRESS = 1234, NSTEP = 8;
+  const sessTM = (plants, o = {}) => {
+    const sr = o.sr || 8000, host = X.simHost({ sr, bpm: o.bpm || 120, startBeats: 0, playing: true });
+    if (o.wild) { host.set(Math.round(sr * 0.2), { seekBeats: 7 }); host.set(Math.round(sr * 0.35), { playing: false }); host.set(Math.round(sr * 0.5), { playing: true, seekBeats: 0.3, bpm: 77 }); }
+    return run({ core: mkCore(plants), sr, host, block: o.block || 512, total: Math.round(sr * 1.4), base: { rate_mode: "time", step_time_us: U, gate: 30, swing: o.swing || 500 }, ins: [K(Math.round(PRESS * sr / 8000), "a", 60)] });
+  };
+  // the on time of step k is its grid tick PLUS the swing delay of an odd step, then cdiv to samples
+  const wantAt = (sr, k, swing) => Math.round(PRESS * sr / 8000) + Number((BigInt(k * U + swingDelayUs(U, swing, k)) * BigInt(sr) + 999999n) / 1000000n);
+  const exact = (r, sr, swing = 500) => { const o = ons(r); return o.length >= NSTEP && o.slice(0, NSTEP).every((e, i) => e.a === wantAt(sr, i, swing) && e.tick === i * U + swingDelayUs(U, swing, i)); };
+  const badTM = plants => [[60, 500], [174, 500], [120, 667], [174, 600]].some(([bpm, swing]) => !exact(sessTM(plants, { bpm, wild: true, swing }), 8000, swing));
+  plant(badTM(["timeUsesTempo"]), "TM1 detects the step derived from the host tempo (60 and 174 bpm)");
+  plant(badTM(["timeAnchorsTransport"]), "TM1 detects the grid anchored at the transport instead of the key press");
+  const bs = [4096, 512, 64, 7, 1].map(block => streamOf(sessTM([], { block, wild: true, swing: 667 }).evs));
+  const srOk = [44100, 48000, 96000, 192000].every(sr => { const r = sessTM([], { sr, wild: true, block: 4096, swing: 667 }); return exact(r, sr, 667) && n1(r.evs).length === 0; });
+  check(!badTM([]) && bs.every(x => x === bs[0]) && srOk,
+    `TM1: step k sounds at cdiv((k * 125000 us + swing delay) * sr, 1e6) after the press at 60/174 bpm and swing 500/600/667, through host seeks and a stop/start, identical at block sizes 4096/512/64/7/1, and at 44.1/48/96/192 kHz the ticks are the same microseconds`);
+}
+
+// ---- 17b. TM2: a step_time_us change mid-gesture is a piecewise grid (SPEC 2.6, r3 HIGH-1) -------------------------------------
+// sr 8000: 125000 us = 1000 samples, 250000 us = 2000, 2 s = 16000, 10 ms = 80. The key is pressed at sample 0 so step k of the first grid is at k * U.
+{
+  const timeRun = (plants, base, cfg, total) => run({ core: mkCore(plants), block: 64, total, base: Object.assign({ rate_mode: "time", gate: 20 }, base), cfg, ins: [K(0, "a", 60)] });
+  const sm = r => ons(r).map(e => e.a);
+  // (a) 125 -> 250 ms at sample 3500 (steps at 0 1000 2000 3000 so far): the next step is exactly 250 ms after the last one (5000), then every 2000
+  const wantA = [0, 1000, 2000, 3000, 5000, 7000, 9000].join();
+  const badA = plants => sm(timeRun(plants, { step_time_us: 125000 }, [{ at: 3500, set: { step_time_us: 250000 } }], 10000)).slice(0, 7).join() !== wantA;
+  // (b) 2 s -> 10 ms one second after a step (step at 16000, change at 24000): the next step fires AT the change point, then every 80 samples; never a burst
+  const badB = plants => { const a = sm(timeRun(plants, { step_time_us: 2000000 }, [{ at: 24000, set: { step_time_us: 10000 } }], 25000)), i = a.indexOf(24000);
+    const tail = a.slice(i); return i < 0 || tail.some((v, j) => v !== 24000 + 80 * j) || a.slice(0, i).join() !== "0,16000"; };
+  // (c) a slow continuous sweep up and back down: no gap longer than max(L_old, L_new), no burst, N1 holds
+  const sweep = []; { let us = 125000, up = true; for (let at = 1300; at < 30000; at += 1300) { us = up ? us + 25000 : us - 25000; if (us >= 250000) up = false; if (us <= 125000) up = true; sweep.push({ at, set: { step_time_us: us } }); } }
+  const badC = plants => {
+    const r = timeRun(plants, { step_time_us: 125000 }, sweep, 32000), a = sm(r), usAt = x => { let v = 125000; for (const c of sweep) if (c.at <= x) v = c.set.step_time_us; return v; };
+    for (let i = 1; i < a.length; i++) {
+      const vals = [usAt(a[i - 1]), usAt(a[i])]; for (const c of sweep) if (c.at > a[i - 1] && c.at <= a[i]) vals.push(c.set.step_time_us);
+      const gap = a[i] - a[i - 1], hi = Math.ceil(Math.max(...vals) * 8000 / 1e6) + 1, lo = Math.floor(Math.min(...vals) * 8000 / 1e6) - 1;
+      if (gap > hi || gap < lo) return true;
+    }
+    return a.length < 20 || n1(r.evs).length > 0;
+  };
+  for (const pl of ["regridAbsolute", "regridKAbs"]) plant(badA([pl]) && badB([pl]), `TM2 detects ${pl} (the old absolute re-grid / kAbs * L_new): (a) and (b) both go red`);
+  plant(badC(["regridKAbs"]), "TM2 detects a sweep that bursts or gaps under tick = kAbs * L_new");
+  check(!badA([]) && !badB([]) && !badC([]), "TM2: 125 -> 250 ms mid-gesture gives exactly one 250 ms gap (0 1000 2000 3000 5000 7000 9000); 2 s -> 10 ms fires at the change point then every 10 ms with no burst; a slow sweep never gaps past max(L_old, L_new) and never bursts; N1 holds");
+}
+
+// ---- 17c. TM3: restart is inert in time mode; entering time mode with keys held; inactive settings do nothing (SPEC 2.6) -------
+{
+  const keys = [60, 64, 67];
+  const seq = (plants, restart, extra = {}) => run({ core: mkCore(plants), block: 128, total: 20000, base: Object.assign({ rate_mode: "time", step_time_us: 125000, restart, gate: 30 }, extra),
+    ins: [...keys.map((k, i) => K(1234, "k" + i, k)), ...keys.map((k, i) => O(6500, "k" + i)), ...keys.map((k, i) => K(9000, "j" + i, k))] });
+  const keysOf = (r) => ons(r).map(e => e.a + ":" + e.key).join(" ");
+  const refStream = keysOf(seq([], "chord"));
+  // pattern anchors at EACH gesture start: both gestures play 60 64 67 from the top
+  const cyc = r => { const o = ons(r); const g2 = o.filter(e => e.a >= 9000).map(e => e.key); return o.slice(0, 3).map(e => e.key).join() === "60,64,67" && g2.slice(0, 3).join() === "60,64,67"; };
+  const badTM3 = plants => ["bar", "free"].some(rs => keysOf(seq(plants, rs)) !== refStream) || !cyc(seq(plants, "bar"));
+  plant(badTM3(["timeBarsCount"]), "TM3 detects bars of 61,440 us counted in time mode");
+  check(!badTM3([]) && refStream.length > 20, "TM3: in time mode restart bar and free play exactly the chord stream (the pattern anchors at each gesture start, 60 64 67 from the top both times)");
+  // entering time mode with H non-empty: the time clock starts AT the switch offset; sync notes before it are released there (T19)
+  const enter = plants => run({ core: mkCore(plants), block: 128, total: 14000, base: { rate_mode: "sync", step_time_us: 125000, gate: 30 }, cfg: [{ at: 5001, set: { rate_mode: "time" } }], ins: [K(100, "a", 60)] });
+  const badEnter = plants => { const r = enter(plants), t = ons(r).filter(e => e.a >= 5001).map(e => e.a); return t.length < 5 || t.some((v, i) => v !== 5001 + Number((BigInt(i) * 125000n * 8000n + 999999n) / 1000000n)) || n1(r.evs).length > 0; };
+  plant(badEnter(["timeEntryNoStart"]), "TM3 detects a time clock that does not start when time mode is entered with keys held");
+  check(!badEnter([]), "TM3: entering time mode with a key held starts the time clock at that offset (5001, 6001, ...), release-all first (T19); N1 holds");
+  // the inactive setting does nothing: step_time_us in sync, rate in time (no re-anchor, the stream is unchanged)
+  const inact = (plants, mode, cfg) => streamOf(run({ core: mkCore(plants), block: 128, total: 14000, base: { rate_mode: mode, step_time_us: 125000, rate: "1/16", gate: 30 }, cfg, ins: keys.map((k, i) => K(100, "k" + i, k)) }).evs);
+  const badInact = plants => inact(plants, "sync", [{ at: 3500, set: { step_time_us: 200000 } }]) !== inact(plants, "sync", []) || inact(plants, "time", [{ at: 3500, set: { rate: "1/8" } }]) !== inact(plants, "time", []);
+  plant(badInact(["inactiveReanchors"]), "TM3 detects a morph of the inactive rate setting that re-anchors");
+  check(!badInact([]), "TM3: step_time_us is ignored in sync and rate in time mode: changing the inactive one leaves the stream byte-identical");
+}
+
+// ---- 18. ST1: the step offset is step x the pattern's step size, in the pattern's unit (SPEC 4.3, 4.7, D-016) ---------------
+{
+  const keysOf = (r, n) => ons(r).map(e => e.key).slice(0, n);
+  const up = (plants, base, pat, keys, scale) => run({ core: mkCore(plants), block: 256, total: 30000, scale: scale || { root: 0, mask: 0 }, userPattern: pat, base: Object.assign({ order: "up", gate: 40 }, base), ins: keys.map((k, i) => K(0, "k" + i, k)) });
+  // (a) octave_leap at the default step size (+12 semitones) is the old octave: 60 72 60 48
+  const wantA = "60,72,60,48,60,72,60,48", bankA = plants => keysOf(up(plants, { pattern: "octave_leap" }, null, [60]), 8).join() !== wantA || keysOf(up(plants, { pattern: "octave_leap" }, null, [60, 64]), 8).join() !== "60,76,60,52,60,76,60,52";
+  // (b) size +7 semitones, step 2 -> +14 (and a negative step with a negative size goes up)
+  const pB = { length: 3, step_size: 7, steps: [{ step: 2 }, {}, { step: -1 }] };
+  const badB = plants => keysOf(up(plants, { pattern: "user" }, pB, [60]), 6).join() !== "74,60,53,74,60,53";
+  // (c) degrees: +2 degrees in C major, step 1 on C -> E; step -1 on E (-2 degrees) -> C
+  const pC = { length: 2, step_size: 2, step_unit: "degrees", steps: [{ step: 1 }, { step: -1 }] };
+  const badC = plants => keysOf(up(plants, { pattern: "user", quantize: "scale" }, pC, [60], NDOWN), 4).join() !== "64,57,64,57" || keysOf(up(plants, { pattern: "user", quantize: "off" }, pC, [60]), 4).join() !== "62,58,62,58";
+  // (d) mixed: a semitone transposition (steps 1, +1 semitone) and a degree step offset (+2 degrees) sum BY KIND and follow 4.7's order:
+  //     key + S, drop, quantize, move G in-scale keys. Pass 0: 60 -> E 64. Pass 1: 61 -> quantize (the tie goes toward lastQ 64) 62 -> D E F = 65.
+  const pD = { length: 1, step_size: 2, step_unit: "degrees", steps: [{ step: 1 }] };
+  const badD = plants => keysOf(up(plants, { pattern: "user", quantize: "scale", steps: 1, step_size: 1, step_unit: "semitones" }, pD, [60], NDOWN), 6).join() !== "64,65,64,65,64,65";
+  // (e) the critic's example: chord {61, 63}, C major, +2 degrees, no prior lastQ. Per key, 61 -> 60 (a tie, lower) -> +2 degrees = 64, lastQ 64; then
+  //     63 is a tie again and goes toward lastQ 64 -> 64 -> +2 degrees = 67. Stage by stage it would be {64, 65}.
+  const pE = { length: 1, step_size: 2, step_unit: "degrees", steps: [{ pick: "chord", step: 1 }] };
+  const firstChord = plants => { const r = up(plants, { pattern: "user", quantize: "scale", order: "chord" }, pE, [61, 63], NDOWN); const t = ons(r)[0].tick; return ons(r).filter(e => e.tick === t).map(e => e.key).sort((a, b) => a - b).join(); };
+  const badE = plants => firstChord(plants) !== "64,67";
+  // (f) the step offset reads the PATTERN's size and unit, never the global transposition ones: pattern +7 semitones, global +12 degrees, steps 0
+  const pF = { length: 1, step_size: 7, step_unit: "semitones", steps: [{ step: 1 }] };
+  const badF = plants => keysOf(up(plants, { pattern: "user", quantize: "scale", steps: 0, step_size: 12, step_unit: "degrees" }, pF, [60], NDOWN), 4).join() !== "67,67,67,67";
+  plant(badE(["offsetsPerStage"]), "ST1 detects the offset stages run stage-by-stage across keys instead of per key ({64, 65})");
+  plant(badF(["stepOffsetReadsGlobal"]), "ST1 detects a step offset that reads the global transposition size/unit (tested with values that differ from the pattern's)");
+  const bad = plants => bankA(plants) || badB(plants) || badC(plants) || badD(plants) || badE(plants) || badF(plants);
+  plant(badB(["stepSizeIgnored"]) && badC(["stepSizeIgnored"]) && badD(["stepSizeIgnored"]), "ST1 detects every step size treated as 12 semitones (b, c and d each go red)");
+  check(!bad([]), "ST1: octave_leap at +12 is 60 72 60 48; size +7 with step 2 is +14; +2 degrees with step 1 on C in C major is E (and -1 goes down two degrees; quantize off, two semitones); mixed units sum by kind in 4.7's order; the six stages run per key ({61, 63} + 2 degrees = {64, 67}); the step offset reads the pattern's size/unit, not the global one");
+}
+
 // Coverage: a session that never reaches the style it names proves nothing, so every window must hold notes.
 {
   const w = (evs, a, b) => evs.filter(e => e.t === "on" && e.a >= a && e.a < b).length;
   const wins = [[runSess("styles", 64).evs, [[8000, 14000], [14000, 20000], [20000, 26000], [26000, 32000], [32000, 38000], [38000, 44000]], "styles"],
-    [g1Session([], 64).evs, [[34003, 38501], [38501, 44001], [44001, 46001], [46001, 48003], [48003, 52000]], "G1 tail"]];
+    [runSess("time", 64).evs, [[0, 9000], [9000, 14000], [14000, 18000], [18000, 20000], [20000, 24000], [24000, 30000], [30000, 35000], [35000, 40000]], "time"],
+    [g1Session([], 64).evs, [[34003, 38501], [38501, 44001], [44001, 46001], [46001, 48003], [48003, 49001], [49001, 52000]], "G1 tail"]];
   const empty = wins.flatMap(([evs, ws, n]) => ws.filter(([a, b]) => !w(evs, a, b)).map(([a, b]) => `${n}@${a}-${b}`));
-  check(empty.length === 0, "coverage: the N1 styles session and the G1 tail play notes in every chord_walk/stride/chord_between/pairs/converge/shuffle window (both transposition units)" + (empty.length ? " - EMPTY: " + empty.join(" ") : ""));
+  check(empty.length === 0, "coverage: the N1 styles session and the G1 tail play notes in every chord_walk/stride/chord_between/pairs/converge/shuffle/time-mode window (both transposition units)" + (empty.length ? " - EMPTY: " + empty.join(" ") : ""));
 }
 const ms = Number((process.hrtime.bigint() - t0) / 1000000n);
 console.log(fail ? `lab_smoke: FAIL (${ms} ms)` : `lab_smoke: OK (${ms} ms)`);

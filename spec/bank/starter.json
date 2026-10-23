@@ -6,13 +6,13 @@
     "tie": false,
     "vel": 100,
     "gate": 100,
-    "oct": 0,
+    "step": 0,
     "prob": 100,
     "ratchet": 1,
     "trig": 0,
     "pick": "order"
   },
-  "fields": "SPEC §4.3: on, tie, vel %, gate %, oct, prob %, ratchet 1-4, trig lane 0-8, pick (order | 1-8 | low | high | chord)",
+  "fields": "SPEC §4.3: on, tie, vel %, gate %, step (-8..+8, x the pattern's step_size in its step_unit), prob %, ratchet 1-4, trig lane 0-8, pick (order | 1-8 | low | high | chord); pattern-level step_size (-48..+48, default 12) and step_unit (semitones | degrees)",
   "patterns": [
     {
       "id": "none",
@@ -127,11 +127,11 @@
       "steps": [
         {},
         {
-          "oct": 1
+          "step": 1
         },
         {},
         {
-          "oct": -1
+          "step": -1
         }
       ]
     },
@@ -248,5 +248,9 @@
         }
       ]
     }
-  ]
+  ],
+  "pattern_defaults": {
+    "step_size": 12,
+    "step_unit": "semitones"
+  }
 }
