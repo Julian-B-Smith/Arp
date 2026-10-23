@@ -333,15 +333,23 @@ Session atRate(Session s, int sr) {
   if (s.host) s.host = s.host->rescaled(sr, sc);
   return s;
 }
-std::string g4M1bDiverges(const Plant& plants, const char* name, std::size_t minEvents = 100) {
-  std::string ref;
+// `chordEvents` / `chordTicks` (optional) receive the number of chord-stream events and of chord NoteOn ticks the exact check covered, summed over the rates.
+// `chordOnly` skips the tick comparison, so a plant is read by the chord check ALONE (a late chord on can also reorder the tick stream by accident).
+std::string g4M1bDiverges(const Plant& plants, const char* name, std::size_t minEvents = 100, int* chordEvents = nullptr, int* chordTicks = nullptr, bool chordOnly = false) {
+  std::string ref, chordRef;
   for (int sr : {48000, 44100, 96000, 192000}) {
     Session s = atRate(sessionNamed(name), sr);
     s.plants = plants;
     const Run r = run(s, 1024);
     if (r.evs.size() < minEvents) return "too few events at " + std::to_string(sr);
     const std::string t = tickStreamOf(r);
-    if (ref.empty()) ref = t; else if (t != ref) return "ticks differ at " + std::to_string(sr) + " Hz";
+    if (!chordOnly) { if (ref.empty()) ref = t; else if (t != ref) return "ticks differ at " + std::to_string(sr) + " Hz"; }
+    // the chord stage's ons leave the tick comparison above (their tick is the position at an input's sample); this is their exact check (L3)
+    const ChordCauses cc = chordCauses(s, r);
+    if (!cc.err.empty()) return cc.err + " at " + std::to_string(sr) + " Hz";
+    if (chordRef.empty()) chordRef = cc.sig; else if (cc.sig != chordRef) return "chord events follow other causes at " + std::to_string(sr) + " Hz";
+    if (chordEvents) *chordEvents += cc.events;
+    if (chordTicks) *chordTicks += cc.tickChecked;
   }
   return "";
 }
@@ -354,6 +362,16 @@ void testG4() {
     plant(!bad.empty(), std::string("G4 detects a sample-rate-dependent value in tick math on the session '") + name + "': " + bad);
     const std::string d = g4M1bDiverges({}, name, minEv);
     check(d.empty(), std::string("G4: the session '") + name + "' (sync mode: M1b order styles and pattern fields, M2a quantize / degrees / swing) has identical event ticks at 44.1, 48, 96 and 192 kHz" + d);
+  }
+  {   // L3: the chord stage's ons are timed by their inputs, not the grid; their ticks are left out of the tick comparison, so they get an exact check
+    const std::string late = g4M1bDiverges({"chordOnLate"}, "chordstage", 60, nullptr, nullptr, true);
+    plant(!late.empty(), "G4 detects a chord-stream NoteOn that lands a sample after the input that caused it at 96 kHz: " + late);
+    const std::string skew = g4M1bDiverges({"chordOnTickSkew"}, "chordstage", 60, nullptr, nullptr, true);
+    plant(!skew.empty(), "G4 detects a chord-stream NoteOn whose tick is not the host's exact position at its sample: " + skew);
+    int events = 0, ticks = 0;
+    const std::string c1 = g4M1bDiverges({}, "chordstage", 100, &events, &ticks), c2 = g4M1bDiverges({}, "morph", 100, &events, &ticks);
+    check(c1.empty() && c2.empty() && events >= 400 && ticks >= 100,
+          "G4 (L3): at 44.1 / 48 / 96 / 192 kHz every chord-stream NoteOn and NoteOff of the 'chordstage' and 'morph' sessions lands at exactly the sample of the input, settings change or reset that caused it, the same cause at every rate, and while the transport plays each on's tick is the host's exact position there (" + std::to_string(events) + " chord events, " + std::to_string(ticks) + " on ticks checked)" + c1 + c2);
   }
   plant(!g4Diverges({"srTickMath"}).empty(), "G4 detects a sample-rate-dependent value read into tick math: " + g4Diverges({"srTickMath"}));
   const std::string d = g4Diverges({});

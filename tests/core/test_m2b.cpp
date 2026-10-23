@@ -175,20 +175,45 @@ void testRP1() {
     const Run r = run(s, 256);
     return keysBetween(r, 0, 8000).size() != 3 || keysBetween(r, 10000, 40000).size() != 3;
   };
-  // (j) with NO keys held the repeat count does not run out: trigger-only steps (restart free, host clock) go on firing
-  auto jT = [&](const Plant& pl) {
+  // (j) BEFORE the first gesture there is no count: trigger-only steps (restart free, host clock, no key ever pressed) go on firing
+  auto jPre = [&](const Plant& pl) {
     Session s;
     s.total = 52000; s.plants = pl; s.base.restart = Restart::Free; s.base.pattern = Pattern::TriggerPulse; s.base.repeats = 1;
     return trigSamples(run(s, 4096)).size() != 13;
   };
+  // (j2) E9, D-027: AFTER the keys are released the count keeps running on the last non-empty C and the arp runs out. restart free (host clock),
+  //      every step fires a trigger, 1 repeat over C E G (C = 3 steps, up has P = 3, one note-starting step): the chord pressed at 100 and let go at 1500
+  //      has the triggers of the same chord held throughout: step 0 (before the gesture, no count) then the 3 counted steps 1000 2000 3000, then none
+  auto jT = [&](const Plant& pl) {
+    auto trigs = [&](bool release) {
+      Session s;
+      s.total = 20000; s.plants = pl; s.base.restart = Restart::Free; s.base.pattern = Pattern::User; s.base.repeats = 1; s.base.gate = 30;
+      s.userPattern = userPat({B().trig(1)});
+      s.ins = cmajorOn(100, "k0", "k1", "k2");
+      if (release) { s.ins.push_back(O(1500, "k0")); s.ins.push_back(O(1500, "k1")); s.ins.push_back(O(1500, "k2")); }
+      return joinS(trigSamples(run(s, 256)));
+    };
+    return trigs(true) != "0,1000,2000,3000" || trigs(false) != "0,1000,2000,3000";
+  };
+  plant(jT({"repeatsPauseWhileEmpty"}), "RP1 detects a count that pauses while no key is held (an arp let go before its repeats are done never runs out: triggers without end)");
   plant(f({"exhaustedStopsGuard"}), "RP1 detects a spent arp that stops consuming the once-guard (a burst of overdue steps at the next gesture)");
   plant(g({"onlyGestureResets"}), "RP1 detects a key-adding press (latch append) that does not restart the count");
   plant(h({"morphRevives"}), "RP1 detects a repeats morph that revives an exhausted arp");
   plant(a({"repeatsNeverStop"}) && b({"repeatsNeverStop"}), "RP1 detects repeats that never stop");
   plant(aTrig({"repeatsNeverStop"}), "RP1 detects triggers still firing after the repeats ran out");
   plant(b({"repeatsCountPatternPasses"}) && b2({"repeatsCountPatternPasses"}) && b3({"repeatsCountPatternPasses"}), "RP1 detects step-pattern passes counted instead of full cycles (gallop + a transposition step, tied_legato)");
-  check(!a({}) && !aTrig({}) && !b({}) && !b2({}) && !b3({}) && !b4({}) && !c({}) && !d({}) && !e({}) && !f({}) && !g({}) && !h({}) && !iT({}) && !jT({}),
-        "RP1: 2 repeats of up over C E G = C E G C E G then silence (and no triggers); gallop + 1 step of +12 is 8 steps per cycle (12 notes in 2 cycles); tied_legato counts only the 4 note-starting steps (24 steps, 12 notes; with a period of 8 the gcd makes it 16 steps); an explicit pick is not counted; a transport edge (T6) restarts the count; with no keys held the count never runs out; 0 never stops; a latched chord stops and a new gesture restarts it; bar, free and chord all count from the gesture start; spent steps consume the once-guard (the next gesture lands on 20000 21000 22000, no burst); a key-adding latch press restarts the count; a repeats / steps / pattern morph never revives a spent arp");
+  check(!a({}) && !aTrig({}) && !b({}) && !b2({}) && !b3({}) && !b4({}) && !c({}) && !d({}) && !e({}) && !f({}) && !g({}) && !h({}) && !iT({}) && !jPre({}) && !jT({}),
+        "RP1: 2 repeats of up over C E G = C E G C E G then silence (and no triggers); gallop + 1 step of +12 is 8 steps per cycle (12 notes in 2 cycles); tied_legato counts only the 4 note-starting steps (24 steps, 12 notes; with a period of 8 the gcd makes it 16 steps); an explicit pick is not counted; a transport edge (T6) restarts the count; before the first gesture there is no count (triggers go on firing), and after the keys are released the count keeps running on the last non-empty C so the arp runs out exactly as if held (E9); 0 never stops; a latched chord stops and a new gesture restarts it; bar, free and chord all count from the gesture start; spent steps consume the once-guard (the next gesture lands on 20000 21000 22000, no burst); a key-adding latch press restarts the count; a repeats / steps / pattern morph never revives a spent arp");
+  { // E9: C is worked out whenever keys are held, whatever `repeats` is (here 0 = forever), so a repeats morph AFTER the release reads the cycle length of the chord
+    // that was held: C E G (C = 3), repeats 0 -> 1 at 2500, released at 1500. The count ran since the gesture (steps 1000, 2000): the step at 3000 is the 3rd, then spent.
+    Session s;
+    s.total = 12000; s.base.restart = Restart::Free; s.base.pattern = Pattern::User; s.base.repeats = 0; s.base.gate = 30;
+    s.userPattern = userPat({B().trig(1)});
+    s.ins = cmajorOn(100, "k0", "k1", "k2");
+    for (const char* k : {"k0", "k1", "k2"}) s.ins.push_back(O(1500, k));
+    s.cfg = {C(2500, [](Settings& x) { x.repeats = 1; })};
+    check(joinS(trigSamples(run(s, 256))) == "0,1000,2000,3000", "known answer (E9): repeats 0 -> 1 after the keys were released runs on the last C worked out while they were held (3): triggers 0 1000 2000 3000, then none");
+  }
   { // a pattern with no note-starting step (plays = 0): C = the step pattern's length, so 2 repeats of trigger_pulse (length 4) = 8 steps = 2 triggers
     Session s = rp({}, 2);
     s.base.pattern = Pattern::TriggerPulse;
@@ -306,12 +331,19 @@ void testRestart() {
   };
   plant(intoFree({"restartMorphKeepsM"}) != "60,64,67,60,60,64,67,60", "Q-A2 detects a morph into `free` that leaves m alone");
   check(intoFree({}) == "60,64,67,60,60,64,67,60", "known answer (Q-A2): a morph chord -> free at 6500 applies at the next evaluated step (7000) and zeroes m: 60 64 67 60 | 60 64 67 60");
+  // chord -> bar must move the ANCHOR, not only zero m (critic M5): a 4-step pattern with one note (step 0) over C E G, pressed at 2345, anchors at the press
+  // (step 3, so notes at 3000 7000 11000 under chord). The morph at 6500 lands at step 7: the bar anchor is tick 0, so step 7 is position 3 (silent), the
+  // pattern's step 0 falls on 8000 and 12000, and m := 0 there (60, then 64): 3000:60 8000:60 12000:64. Keeping the chord anchor would play 7000:64.
   auto intoBar = [&](const Plant& pl) {
-    Session s = rs(pl, Restart::Chord, Pattern::None, {K(2345, "a", 60), K(2345, "b", 64), K(2345, "c", 67)}, 12000);
+    Session s = rs(pl, Restart::Chord, Pattern::User, {K(2345, "a", 60), K(2345, "b", 64), K(2345, "c", 67)}, 14000);
+    s.userPattern = userPat({B(), B().on(false), B().on(false), B().on(false)});
     s.cfg = {C(6500, [](Settings& x) { x.restart = Restart::Bar; })};
-    return join(keysOf(run(s, 256), 8));
+    std::string out;
+    for (const Rec& e : onsOf(run(s, 256))) out += (out.empty() ? "" : " ") + std::to_string(e.a) + ":" + std::to_string(e.key);
+    return out;
   };
-  check(intoBar({}) == "60,64,67,60,60,64,67,60", "known answer (Q-A2): a morph chord -> bar at 6500 re-anchors at the current bar's start and zeroes m at the next evaluated step: 60 64 67 60 | 60 64 67 60 (no plant: the bar anchor itself zeroes m, so the free case carries the m := 0 detector)");
+  plant(intoBar({"restartBarAsChord"}) != "3000:60 8000:60 12000:64", "Q-A2 detects a morph into `bar` that keeps the chord anchor (the notes stay on the press's grid: 7000, 11000)");
+  check(intoBar({}) == "3000:60 8000:60 12000:64", "known answer (Q-A2): a morph chord -> bar at 6500 re-anchors at the current bar's start (the 4-step pattern's step 0 falls on 8000 and 12000, not 7000 and 11000) and zeroes m at the next evaluated step: 3000:60 8000:60 12000:64");
   // free -> chord keeps the anchor (tick 0) until the next gesture start: the stream is identical to never having switched; then a new gesture anchors
   auto outOfFree = [&](const Plant& pl, bool morph) {
     Session s = rs(pl, Restart::Free, Pattern::Gallop, {K(2345, "a", 60), K(2345, "b", 64), K(2345, "c", 67), O(9000, "a"), O(9000, "b"), O(9000, "c"), K(10345, "d", 60)}, 20000);
@@ -1038,6 +1070,159 @@ void testLastQ() {
   check(arpAfter({}) == "62,72,79,60,72,79", "known answer: after the stage snapped a pressed C# the arp's own tie still resolves toward ITS lastQ (79, above): 62 72 79 60 72 79");
 }
 
+// ====================================================================== the M2b critic follow-up (D-027): items M1, M5, E9 (in RP1), E10, L1, L2
+// The chord-stream events of a run as sorted "on64@2000" / "off64@5000" strings (the final reset's offs, at `total`, left out).
+std::vector<std::string> chordTrace(const Run& r, int total) {
+  std::vector<std::string> v;
+  const auto ids = chordIds(r);
+  for (const Rec& e : r.evs) {
+    if (e.a >= total) continue;
+    if (e.t == EventType::NoteOn && e.stream == Stream::Chord) v.push_back("on" + std::to_string(e.key) + "@" + std::to_string(e.a));
+    else if (e.t == EventType::NoteOff && ids.count(e.ref.id)) v.push_back("off" + std::to_string(e.key) + "@" + std::to_string(e.a));
+  }
+  std::sort(v.begin(), v.end());
+  return v;
+}
+std::string joinStr(const std::vector<std::string>& v) { std::string s; for (std::size_t i = 0; i < v.size(); ++i) s += (i ? " " : "") + v[i]; return s; }
+std::string sorted(std::vector<std::string> v) { std::sort(v.begin(), v.end()); return joinStr(v); }
+
+void testChordZeroSample() {
+  std::puts("CH1 (critic M1): a settings change and an input at the SAME offset 0 are one pass of the chord stage");
+  // (a) C held with ONE slot (+4): C and E (60, 64) sound. At 2000 the shift becomes +7 and E is pressed in the SAME sample. The source count of
+  //     64 goes 1 (C + 4) -> 0 (C re-mapped to 60, 67) -> 1 (E itself): SPEC 14 keeps the existing note, with no off / on pair.
+  auto probeA = [&](const Plant& pl, int block) {
+    Session s = cs(pl, [](Settings& x) { x.chordOn[1] = false; }, {K(100, "c", 60), K(2000, "e", 64), O(5000, "c"), O(7000, "e")}, 9000);
+    s.cfg = {C(2000, [](Settings& x) { x.chordShift[0] = 7; })};
+    const Run r = run(s, block);
+    return n1(r).empty() ? joinStr(chordTrace(r, 9000)) : std::string("N1 broken");
+  };
+  const std::string wantA = sorted({"on60@100", "on64@100", "on67@2000", "on71@2000", "off60@5000", "off67@5000", "off64@7000", "off71@7000"});
+  // (b) the mirror: at 2000 the shift becomes +7 and C is RELEASED in the same sample. The key is gone, so the re-map has nothing to start: 67 never
+  //     sounds (an input-last order would start it and end it a sample later, a one-sample note).
+  auto probeB = [&](const Plant& pl, int block) {
+    Session s = cs(pl, [](Settings& x) { x.chordOn[1] = false; }, {K(100, "c", 60), O(2000, "c")}, 6000);
+    s.cfg = {C(2000, [](Settings& x) { x.chordShift[0] = 7; })};
+    const Run r = run(s, block);
+    return n1(r).empty() ? joinStr(chordTrace(r, 6000)) : std::string("N1 broken");
+  };
+  const std::string wantB = sorted({"on60@100", "on64@100", "off60@2000", "off64@2000"});
+  bool okA = true, okB = true;
+  for (int block : {4096, 128, 1}) { okA = okA && probeA({}, block) == wantA; okB = okB && probeB({}, block) == wantB; }
+  plant(probeA({"chordSyncBlockStartFirst"}, 128) != wantA, "CH1 detects a block-start sync that runs before an input at offset 0 (an off64 / on64 pair at 2000; read " + probeA({"chordSyncBlockStartFirst"}, 128) + ")");
+  plant(probeB({"chordSyncBlockStartFirst"}, 128) != wantB, "CH1 detects a block-start sync that starts a note whose source is released at the same offset 0 (a one-sample 67; read " + probeB({"chordSyncBlockStartFirst"}, 128) + ")");
+  check(okA, "known answer (CH1): shift +4 -> +7 and E pressed in the SAME sample: 64 keeps sounding (no off64 / on64 pair), 67 and 71 start at 2000, 60 and 67 end with C at 5000, 64 and 71 with E at 7000 (block sizes 4096 / 128 / 1)");
+  check(okB, "known answer (CH1): shift +4 -> +7 and C released in the SAME sample: 60 and 64 end at 2000 and 67 never starts (block sizes 4096 / 128 / 1)");
+}
+
+void testBarReanchor() {
+  std::puts("Restart bar (critic M5): a return to bar, a loop wrap and a jump re-anchor at the bar start even inside the same bar");
+  // a 4-step pattern with one note at its step 0, a single key, gate 30: a note's sample is a step with (kAbs - anchor) mod 4 == 0
+  auto line = [&](const Plant& pl, std::vector<InEv> ins, int total, std::function<void(Session&)> extra) {
+    Session s = rs(pl, Restart::Bar, Pattern::User, std::move(ins), total);
+    s.userPattern = userPat({B(), B().on(false), B().on(false), B().on(false)});
+    extra(s);
+    return joinS(onSamples(run(s, 256)));
+  };
+  // (a) bar -> chord (2500) -> a NEW gesture (5500, anchors at step 6) -> bar again (7500), all inside bar 0 (16000 samples). The notes: bar anchor 0 gives 4000;
+  //     the chord anchor 6 gives 6000; the return to bar must re-anchor at the bar start (step 0), so step 8 (8000) is position 0 again: 8000 and 12000.
+  //     Keeping the old bar index (b == lastBar) would leave the gesture's anchor in force: 10000 and 14000.
+  auto back = [&](const Plant& pl) {
+    return line(pl, {K(500, "a", 60), O(4500, "a"), K(5500, "b", 60)}, 15000, [](Session& s) { s.cfg = {C(2500, [](Settings& x) { x.restart = Restart::Chord; }), C(7500, [](Settings& x) { x.restart = Restart::Bar; })}; });
+  };
+  plant(back({"adoptKeepsLastBar"}) != "4000,6000,8000,12000", "restart bar detects a morph back into bar that does not forget the bar index (the new gesture's anchor stays in force: 10000, 14000; read " + back({"adoptKeepsLastBar"}) + ")");
+  check(back({}) == "4000,6000,8000,12000", "known answer (Q-A2): bar -> chord -> a new gesture -> bar again inside the same bar re-anchors at the bar start: notes 4000 | 6000 | 8000 12000");
+  // (b) a jump (a loop wrap is the same T6 edge): at 6500 the song position goes from beat 1.625 back to beat 1.25 (step 5), still inside bar 0. The bar anchor is
+  //     tick 0, so step 5 is position 1 (silent) and step 8 (9500 after the jump) is the next note: 4000, 9500, 13500. Keeping the old bar index would anchor
+  //     at the landing step (T6's own anchor): 6500, 10500.
+  auto jump = [&](const Plant& pl) {
+    return line(pl, {K(100, "a", 60)}, 14000, [](Session& s) {
+      auto h = std::make_shared<SimHost>(8000, 120, 0, true);
+      h->set(6500, std::nullopt, 1.25);
+      s.host = h;
+    });
+  };
+  plant(jump({"reanchorKeepsLastBar"}) != "4000,9500,13500", "restart bar detects a jump / loop wrap into the SAME bar that keeps the old bar index (the landing step anchors: 6500, 10500; read " + jump({"reanchorKeepsLastBar"}) + ")");
+  check(jump({}) == "4000,9500,13500", "known answer (T6, 4.5): a jump back to beat 1.25 inside bar 0 re-anchors at the bar start: notes 4000 | 9500 13500, not from the landing step");
+}
+
+void testSpilledRatchets() {
+  std::puts("Time mode (critic M4, E10): pending sub-notes of an earlier step that fall at or after the next step's on are dropped");
+  // 500 ms steps, ratchet 4, gate 100 %, sub-notes of step 0 at 0 1000 2000 3000 (8 kHz). At 800 the step time becomes 200 ms: step 1 lands at
+  // max(0 + 200 ms, 100 ms) = 200 ms = sample 1600 with sub-notes at 1600 2000 2400 2800. Step 0's sub-notes at 2000 and 3000 are still pending at 1600:
+  // they are dropped (the one at 1000 has sounded, it keeps its off), so there is no second on of key 60 at 2000 and nothing of step 0 after 1600.
+  auto spill = [&](const Plant& pl, int block, int newUs = 200000) {
+    Session s;
+    s.total = 6000; s.plants = pl; s.base.rateMode = RateMode::Time; s.base.stepTimeUs = 500000; s.base.gate = 100;
+    s.base.pattern = Pattern::User;
+    s.userPattern = userPat({B().ratchet(4)});
+    s.ins = {K(0, "a", 60)};
+    s.cfg = {C(800, [newUs](Settings& x) { x.stepTimeUs = newUs; })};
+    return run(s, block);
+  };
+  auto bad = [&](const Plant& pl, int block, int newUs = 200000, const char* want = "0,1000,1600,2000,2400,2800,3200,3600") -> std::string {
+    const Run r = spill(pl, block, newUs);
+    if (!n1(r).empty()) return "N1: " + n1(r)[0];
+    std::int64_t step1 = -1;
+    for (const Rec& e : onsOf(r)) if (e.ord == 1 && step1 < 0) step1 = e.a;
+    std::set<std::int64_t> seen;
+    for (const Rec& e : onsOf(r)) {
+      if (!seen.insert(e.a * 128 + e.key).second) return "two ons of key " + std::to_string(e.key) + " at sample " + std::to_string(e.a);
+      if (e.ord == 0 && step1 >= 0 && e.a >= step1) return "a sub-note of step 0 at " + std::to_string(e.a) + ", after step 1's on at " + std::to_string(step1);
+    }
+    const std::string first = joinS(onSamples(r, 8));
+    return first == want ? "" : "ons " + first;
+  };
+  plant(!bad({"keepSpilledRatchets"}, 64).empty(), "E10 detects pending sub-notes of an earlier step surviving past the next step's on (" + bad({"keepSpilledRatchets"}, 64) + ")");
+  // "at or after": with 250 ms the next step lands at 2000, exactly on step 0's third sub-note (2000), which is dropped too; step 0 keeps 0 and 1000 only
+  const char* exact = "0,1000,2000,2500,3000,3500,4000,4500";
+  plant(!bad({"keepSpilledRatchets"}, 64, 250000, exact).empty(), "E10 detects a sub-note landing in the SAME sample as the next step surviving it (" + bad({"keepSpilledRatchets"}, 64, 250000, exact) + ")");
+  std::string all;
+  for (int block : {4096, 64, 1}) all += bad({}, block) + bad({}, block, 250000, exact);
+  check(all.empty() && streamOf(spill({}, 4096)) == streamOf(spill({}, 1)) && streamOf(spill({}, 4096)) == streamOf(spill({}, 64)),
+        "known answer (E10): 500 ms steps with 4 ratchets, step time 200 ms at sample 800: ons at 0 1000 | 1600 2000 2400 2800 3200 3600 (step 0's sub-notes at 2000 and 3000 are dropped); with 250 ms the next step lands ON step 0's sub-note at 2000 and that one is dropped too (0 1000 | 2000 2500 3000 3500); no key retriggered at one sample, N1 holds, identical at block sizes 4096 / 64 / 1" + all);
+}
+
+void testSwingPairAnchor() {
+  std::puts("Swing pair (critic L1): only an EVALUATED step (clock running and an anchor exists, SPEC 2.5) latches the pair");
+  // (a) restart chord, host clock: step 0 runs with no anchor. swing 500 -> 750 at 700, the key pressed at 500 anchors at step 1 (odd): its partner never
+  //     latched, so it reads the CURRENT swing 750 (delayed 500 samples): 1500. Step 2 (even) reads 750: 2000, then 3500 4000 5500.
+  auto unanchored = [&](const Plant& pl) {
+    Session s;
+    s.total = 6000; s.plants = pl; s.base.gate = 30; s.base.swing = 500; s.base.restart = Restart::Chord;
+    s.ins = {K(500, "a", 60)};
+    s.cfg = {C(700, [](Settings& x) { x.swing = 750; })};
+    return joinS(onSamples(run(s, 256)));
+  };
+  plant(unanchored({"swingLatchUnanchored"}) != "1500,2000,3500,4000,5500", "swing pair detects an unanchored step that latches the pair (the odd step after a gesture start then reuses the stale 500: 1000; read " + unanchored({"swingLatchUnanchored"}) + ")");
+  check(unanchored({}) == "1500,2000,3500,4000,5500", "known answer (E6, L1): an odd step right after a gesture start whose even partner ran unanchored reads the CURRENT swing: 1500 2000 3500 4000 5500");
+  // (b) a SPENT step is evaluated (an anchor exists) and latches: restart free, repeats 1. Step 1000 plays (C = 1); the even step 2000 is spent and latches 500;
+  //     swing becomes 750 at 2400; a second key at 2500 revives the arp (a key-adding press), so the odd step 3000 plays on the 500 its spent partner
+  //     latched (3000, not 3500); the even step 4000 reads 750. No plant: the spent-step latch has no separate detector (hand-mutated in the trace).
+  {
+    Session s;
+    s.total = 6000; s.base.gate = 30; s.base.swing = 500; s.base.restart = Restart::Free; s.base.repeats = 1;
+    s.ins = {K(100, "a", 60), K(2500, "b", 64)};
+    s.cfg = {C(2400, [](Settings& x) { x.swing = 750; })};
+    check(joinS(onSamples(run(s, 256))) == "1000,3000,4000", "known answer (E6, L1): a spent even step (2000) latches the pair: after a key-adding press revives the arp the odd step 3000 reuses its 500 (not 3500); then 4000");
+  }
+}
+
+void testPressOrderRefresh() {
+  std::puts("Chord stage (critic L2): H' follows the earliest LIVE ref of a source key");
+  // Two refs on key 60: "a1" pressed at 200, "a2" at 400; keys 64 (100) and 67 (300) between. a1 is released at 500, so key 60's press time becomes 400 (SPEC 3):
+  // `played` order is 64 (100), 67 (300), 60 (400). With every chord slot off the stage's H' is H itself, so stage on and off must agree. A record that keeps the
+  // press time it entered with (200) would play 64 60 67.
+  auto order = [&](const Plant& pl, bool stageOn) {
+    Session s = cs(pl, [stageOn](Settings& x) {
+      x.arpEnabled = true; x.order = Order::Played; x.chordEnabled = stageOn;
+      for (bool& o : x.chordOn) o = false;
+    }, {K(100, "x", 64), K(200, "a1", 60), K(300, "z", 67), K(400, "a2", 60), O(500, "a1")}, 8000);
+    return join(arpKeys(run(s, 128), 6));
+  };
+  plant(order({"chordStalePressTime"}, true) != "64,67,60,64,67,60", "CH1 detects a stored chord record that keeps its entering press time (played order 64 60 67; read " + order({"chordStalePressTime"}, true) + ")");
+  check(order({}, true) == "64,67,60,64,67,60" && order({}, false) == "64,67,60,64,67,60", "known answer (SPEC 3, L2): two refs on key 60, the earliest released: `played` order is 64 67 60 with the stage on (all slots off) and with it off");
+}
+
 // ====================================================================== seeded sessions: the M2a and M2b features on top of the M1b sessions
 // M2b's draws, from their own generator: restart, repeats, the chord stage (on/off, unit, slots, shifts), and settings changes of the same.
 void applyM2bDraws(Session& s, std::uint32_t seed) {
@@ -1201,6 +1386,11 @@ void runM2bTests() {
   testChordKnown();
   testS1();
   testLastQ();
+  testChordZeroSample();
+  testBarReanchor();
+  testSpilledRatchets();
+  testSwingPairAnchor();
+  testPressOrderRefresh();
   testSessionsG1A1();
   testFuzzFeatures();
 }

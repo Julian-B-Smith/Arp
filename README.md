@@ -6,7 +6,7 @@ library that horde runs ahead of its engine, plus a browser lab for playing it. 
 user-facing name is cleared before release.
 
 **Status: the 1.0 spec is RATIFIED (2026-10-23) and functionality is frozen.** The spec was four times independently
-reviewed, and the lab plays all of it. The C++ core is under way: M1a (the skeleton) and M1b (every order style, step field, the user pattern and time mode) are built; M2 (scale, feel, restart, morph, chord stage) is next.
+reviewed, and the lab plays all of it. The C++ core is under way: M1a (the skeleton), M1b (every order style, step field, the user pattern and time mode) and M2 (scale, feel, restart, repeats, morph timing, the chord stage) are built; M3 (horde admission) is next.
 To play it:
 
 ```bash
@@ -44,7 +44,7 @@ in [`ROADMAP.md`](ROADMAP.md).
 - **Morph:** every setting morphs with horde's corners.
 
 The output is sample-accurate and identical at any block size or sample rate, and every note it plays ends exactly
-once. **Status:** every item above is specified (`spec/SPEC.md`) and playable in the lab; in C++ so far: everything except scale quantize, the degree unit, swing, velocity accents, restart, repeats, morph and the chord stage (M2). "As
+once. **Status:** every item above is specified (`spec/SPEC.md`) and playable in the lab; all of it is in C++ too (morph is resolved by horde; the core applies each change where §9 says it lands). "As
 landed" (replaying the timing of your presses) is held for after 1.0: `docs/deferred/landed.md`.
 
 ## The map
@@ -68,7 +68,7 @@ landed" (replaying the timing of your presses) is held for after 1.0: `docs/defe
 | `docs/deferred/` | Designs held for after 1.0 (`landed.md`) | live |
 | `lab/patterns/` | Your saved build-your-own patterns (`arp-user-pattern/1` JSON, listed in `index.json`) | live: "Broken chord stabs" |
 | `index.html` | Root landing page: redirects to the lab | done |
-| `core/` | The C++20 core (standard library only, self-contained; horde copies it in). `tests/core/` is its invariant suite; `tools/core_test.sh` builds and runs it | **M1a + M1b built**: clocks (sync, free, time), held set, all 16 order styles, every step-pattern field, transposition in semitones, the user pattern; checks on both int128 paths, in `./verify fast`. M2 next |
+| `core/` | The C++20 core (standard library only, self-contained; horde copies it in). `tests/core/` is its invariant suite; `tools/core_test.sh` builds and runs it | **M1a, M1b and M2 built**: clocks (sync, free, time), held set, all 16 order styles, every step-pattern field, transposition, the user pattern, scale quantize, swing, velocity, restart, repeats, the chord stage; 398 checks on both int128 paths, in `./verify fast`. M3 next |
 | `verify` | The oracle: `./verify fast` / `full` / `report` | live |
 
 ## Neighbours

@@ -87,6 +87,12 @@ inline bool setPlant(Plants& p, const std::string& name) {
       {"chordDedupeByChannelKey", &Plants::chordDedupeByChannelKey}, {"chordPlusZeroUnquantized", &Plants::chordPlusZeroUnquantized},
       {"chordSkipQuantize", &Plants::chordSkipQuantize},       {"chordReadsLastQ", &Plants::chordReadsLastQ}, {"chordWritesLastQ", &Plants::chordWritesLastQ},
       {"chordTaggedArp", &Plants::chordTaggedArp},             {"chordRootFromChordSet", &Plants::chordRootFromChordSet}, {"swingPerStep", &Plants::swingPerStep},
+      // ---- M2b critic follow-up (D-027) ----
+      {"chordSyncBlockStartFirst", &Plants::chordSyncBlockStartFirst}, {"adoptKeepsLastBar", &Plants::adoptKeepsLastBar},
+      {"reanchorKeepsLastBar", &Plants::reanchorKeepsLastBar},         {"repeatsPauseWhileEmpty", &Plants::repeatsPauseWhileEmpty},
+      {"keepSpilledRatchets", &Plants::keepSpilledRatchets},           {"swingLatchUnanchored", &Plants::swingLatchUnanchored},
+      {"chordStalePressTime", &Plants::chordStalePressTime},           {"chordOnLate", &Plants::chordOnLate},
+      {"chordOnTickSkew", &Plants::chordOnTickSkew},
   };
   for (const Entry& e : table)
     if (name == e.name) { p.*(e.flag) = true; return true; }
@@ -370,12 +376,63 @@ inline std::string streamOf(const Run& r) {
 }
 // The stream the sample rate must not change (ticks, no samples).
 // A chord-stage NoteOn starts at the sample of the input (or block start) that caused it, so its tick is the floor of the position AT THAT
-// SAMPLE, which another sample rate rounds differently (by a tick or so): it is left out of the tick comparison. The grid-bound events (the
-// arp's notes, triggers) and every off's scheduled tick are compared as before.
+// SAMPLE, which another sample rate rounds differently (by a tick or so): it is left out of THIS comparison and held to an exact check of
+// its own, chordCauses() below (its sample is the cause's, its tick the host's exact position there). The grid-bound events (the arp's
+// notes, triggers) and every off's scheduled tick are compared as before.
 inline std::string tickStreamOf(const Run& r) {
   std::ostringstream o;
   for (const Rec& e : r.evs) o << typeStr(e.t) << ' ' << e.lane << ' ' << e.key << ' ' << e.vel << ' ' << e.data0 << ' ' << refStr(e.ref) << ' ' << ((e.t == EventType::NoteOn && e.stream == Stream::Chord) ? kNoTick : e.tick) << '\n';
   return o.str();
+}
+
+// G4 / CH1 (critic L3): the chord stage is timed by its INPUTS, not by the grid, so at every sample rate each chord-stream NoteOn and NoteOff must land at
+// exactly the sample of what caused it: an input event, a settings / scale change (offset 0 of its block), a reset or prepare(), or the final reset. `s` is the
+// session AS RUN (already scaled to its sample rate, so its inputs sit where the rate puts them). `sig` names every chord event by its CAUSE's rank among the
+// session's cause samples, so it must be identical at every rate; `err` is non-empty when an event sits at a sample that is no cause's (a NoteOff may follow
+// its own NoteOn by the one sample SPEC 1.1 demands). While the host transport plays, a chord NoteOn's tick must also be the floor of the host's EXACT position
+// at its sample (a stopped transport runs the free clock, whose position this does not model). Plant chordOnLate lands every on one sample after its cause.
+struct ChordCauses { std::string sig, err; int events = 0, tickChecked = 0; };
+inline ChordCauses chordCauses(const Session& s, const Run& r) {
+  ChordCauses out;
+  std::vector<std::int64_t> cause = {0, s.total};
+  for (const InEv& i : s.ins) cause.push_back(i.at);
+  for (const Change& c : s.cfg) cause.push_back(c.at);
+  for (const auto& sc : s.scaleAt) cause.push_back(sc.first);
+  for (int x : s.resets) cause.push_back(x);
+  for (int x : s.prepares) cause.push_back(x);
+  std::sort(cause.begin(), cause.end());
+  cause.erase(std::unique(cause.begin(), cause.end()), cause.end());
+  auto rank = [&](std::int64_t a) { const auto it = std::lower_bound(cause.begin(), cause.end(), a); return it != cause.end() && *it == a ? static_cast<int>(it - cause.begin()) : -1; };
+  const std::shared_ptr<SimHost> host = s.host ? s.host : std::make_shared<SimHost>(s.sr, s.bpm);
+  std::vector<std::pair<std::string, std::int64_t>> onAt;   // epoch / ref -> the sample of its chord NoteOn
+  std::ostringstream sig;
+  auto fail = [&](const std::string& m) { if (out.err.empty()) out.err = m; };
+  for (const Rec& e : r.evs) {
+    const std::string k = std::to_string(e.epoch) + "/" + refStr(e.ref);
+    if (e.t == EventType::NoteOn && e.stream == Stream::Chord) {
+      ++out.events;
+      onAt.emplace_back(k, e.a);
+      const int rk = rank(e.a);
+      if (rk < 0) fail("chord on of key " + std::to_string(e.key) + " at sample " + std::to_string(e.a) + " is at no input's sample");
+      if (host->segAt(static_cast<int>(e.a)).playing) {
+        ++out.tickChecked;
+        const std::int64_t want = host->posAt(static_cast<int>(e.a)).floorDiv(host->D);
+        if (e.tick != want) fail("chord on of key " + std::to_string(e.key) + " at sample " + std::to_string(e.a) + " has tick " + std::to_string(e.tick) + ", the host is at " + std::to_string(want));
+      }
+      sig << "on " << e.key << ' ' << k << " @" << rk << '\n';
+    } else if (e.t == EventType::NoteOff) {
+      const auto it = std::find_if(onAt.begin(), onAt.end(), [&](const auto& p) { return p.first == k; });
+      if (it == onAt.end()) continue;   // an arp note's off
+      ++out.events;
+      int rk = rank(e.a);
+      bool late = false;
+      if (rk < 0 && e.a - 1 == it->second && rank(e.a - 1) >= 0) { rk = rank(e.a - 1); late = true; }   // released inside its own on's sample: SPEC 1.1 defers the off by one
+      if (rk < 0) fail("chord off of key " + std::to_string(e.key) + " at sample " + std::to_string(e.a) + " is at no input's sample");
+      sig << "off " << e.key << ' ' << k << " @" << rk << (late ? "+1" : "") << '\n';
+    }
+  }
+  out.sig = sig.str();
+  return out;
 }
 
 // N1: exactly one NoteOff per NoteOn (same ref), at least one sample later.

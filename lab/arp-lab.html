@@ -1254,7 +1254,8 @@ const ARP_PLANTS = ["dropRelease", "doubleRelease", "sameSampleOff", "clampOffse
   "lastQNoReset", "collisionKeepsLast", "prepareResetsUser", "userFirstWins", "transposeMerged", "degreesAsSemis", "stepsZeroShifts", "timeUsesTempo", "timeAnchorsTransport", "stepSizeIgnored",
   "regridAbsolute", "regridKAbs", "timeBarsCount", "offsetsPerStage", "stepOffsetReadsGlobal", "timeEntryNoStart", "inactiveReanchors", "timeStepsWhileRinging",
   "repeatsCountPatternPasses", "repeatsNeverStop", "chordNoDedupe", "chordEndsOnFirstSource", "arpIgnoresChord", "chordRestartAll",
-  "chordRecomputeAtRelease", "t2AcrossStreams", "arpToggleEndsChord", "chordT6Restart", "sharedSoundingTable", "exhaustedStopsGuard", "onlyGestureResets", "morphRevives", "chordSyncPerEvent", "chordDedupeByChannelKey", "latchAtNextStep", "chordPlusZeroUnquantized", "chordSkipQuantize", "swingPerStep"];
+  "chordRecomputeAtRelease", "t2AcrossStreams", "arpToggleEndsChord", "chordT6Restart", "sharedSoundingTable", "exhaustedStopsGuard", "onlyGestureResets", "morphRevives", "chordSyncPerEvent", "chordDedupeByChannelKey", "latchAtNextStep", "chordPlusZeroUnquantized", "chordSkipQuantize", "swingPerStep",
+  "repeatsPauseWhileEmpty", "keepSpilledRatchets"];
 // Every discrete setting except `enabled` (which applies at offset 0, T4/T5) switches at the next
 // evaluated step (SPEC §9). Derived from params.json, so a new discrete setting cannot be forgotten.
 const DISCRETE_KEYS = ARP_PARAMS.params.filter(p => p.kind === "discrete" && p.key !== "enabled").map(p => p.key);
@@ -1444,6 +1445,7 @@ class ArpCore {
     this.timeMode = false; this.D = BigInt(60 * this.sr * 1000);   // sync units until a block says rate_mode = time
     this._gO = 0; this._gK1 = 0;   // the time-mode grid origin: step _gK1 sits at tick _gO
     this.repeatSteps = 0; this.exhausted = false;   // SPEC 4.8: steps evaluated since the gesture's first step; the latched "spent" flag
+    this.lastC = null;                              // SPEC 4.8 (E9): the last non-empty cycle length, kept while H' is empty; null before the first gesture (no count)
     this.moduleOn = false;                          // the WHOLE module's `enabled`; `this.enabled` below is the ARP running (module on and arp_enabled)
     // SPEC 14: the chord stage. held: heldKey -> { h, keys: [{slot, key}] } is the STORED mapping, computed once when the key enters H and never
     // recomputed at release; notes: key -> the sounding chord note; set: the keys with count > 0 (sorted), what the arp reads as H'.
@@ -1554,7 +1556,13 @@ class ArpCore {
       let pi = -1;
       for (let q = 0; q < this.pending.length; q++) if (pi < 0 || this.pending[q].pos < this.pending[pi].pos) pi = q;
       if (pi >= 0) { const s = Math.max(0, this._ofs(this.pending[pi].pos)); if (s < t) { t = s; kind = 2; idx = pi; } }
-      if (running) { const s = Math.max(0, this._ofs(BigInt(this._gtick(this.lastEvaluated + 1)) * D)); if (s < t) { t = s; kind = 3; } }
+      if (running) {
+        const stepPos = BigInt(this._gtick(this.lastEvaluated + 1)) * D, s = Math.max(0, this._ofs(stepPos));
+        // SPEC 5.1 (E10): "at or after the step's on" includes a sub-note in the SAME sample as the step: the step is evaluated first so it can drop it (it has no NoteOn yet).
+        // Only time mode can queue a sub-note at or after the next step's tick. Plant keepSpilledRatchets: the old order (the sub-note sounds first and the step retriggers its key).
+        const dropsTie = s === t && kind === 2 && this.timeMode && !P.keepSpilledRatchets && this.pending[idx].kind === "on" && !(this.pending[idx].pos < stepPos);
+        if (s < t || dropsTie) { t = s; kind = 3; }
+      }
       if (kind < 0 || !(P.clampOffset ? t <= n : t < n)) break;
       if (t < cur) t = cur;
       cur = t;
@@ -1901,25 +1909,35 @@ class ArpCore {
     const k = kAbs - aK, pat = this._pattern(a.pattern), j = mod(k, this._plen(pat));
     const st = this._step(pat, j);
     const H = this._heldArp();
+    // on-times anchor at kAbs*L (SPEC 5.1, never k*L); swing parity from kAbs (G3)
+    const swingD = fdiv(L * (2 * this._swingUsed - 1000), 1000);
+    const onT = x => this._gtick(x) + (mod(P.swingParityK && aK !== null ? x - aK : x, 2) === 1 ? swingD : 0) + (P.srTickMath ? Math.floor(this.sr / 44100) : 0);
+    const on0 = onT(kAbs);
+    // SPEC 5.1 (E10): in time mode a step_time_us change can bring this step's on before a sub-note of an earlier step that is still pending. Those are
+    // dropped here (none has a NoteOn yet, so none is owed a terminal); triggers stay. Done for every EVALUATED step, a spent one too. Plant keepSpilledRatchets.
+    if (this.timeMode && !P.keepSpilledRatchets) {
+      const from = BigInt(on0) * D;
+      for (let i = this.pending.length - 1; i >= 0; i--) if (this.pending[i].kind === "on" && this.pending[i].pos >= from) this.pending.splice(i, 1);
+    }
     // SPEC 4.8: one repeat is one full cycle of the whole pattern, C steps. Once repeatSteps >= repeats * C nothing more is evaluated (no notes, no
-    // triggers) until the next gesture start; sounding notes end by their gates (T20). C is recomputed from the live H' at every step.
+    // triggers) until the next gesture start; sounding notes end by their gates (T20). C is recomputed from the live H' at every step; while H' is EMPTY the
+    // last non-empty C is kept (E9, D-027), so the count keeps running after the keys are released and an arp let go early still runs out (before the first
+    // gesture there is no C, so no count). Plant repeatsPauseWhileEmpty: no check while H' is empty (the M2b behaviour).
     // r2.11: once spent the arp is `exhausted`, a LATCHED flag (cleared by a gesture start, a key-adding NoteOn, T6/T7/T10; a morph of repeats, steps or pattern never
     // revives it). Spent steps still consumed the once-guard in _visit, as silent rests, so a later gesture sees no burst of overdue steps. P comes from H'.
-    if (a.repeats > 0 && H.length && !P.repeatsNeverStop && (!this.exhausted || P.morphRevives)) {
+    if (H.length) {   // worked out whenever keys are held, whatever `repeats` is, so a later repeats morph never reads an older gesture's cycle length
       const Ls = this._plen(pat), pn = periodOf(a.order, H.length) * (a.steps + 1);
       let plays = 0; for (let q = 0; q < Ls; q++) { const x = this._step(pat, q); if (x.on && !x.tie && normPick(x.pick) === "order") plays++; }
-      const C = P.repeatsCountPatternPasses ? Ls : plays > 0 ? Ls * (pn / gcd(pn, plays)) : Ls;
-      this.exhausted = this.repeatSteps >= a.repeats * C;   // (plant morphRevives re-evaluates this every step, so raising `repeats` revives the arp)
+      this.lastC = P.repeatsCountPatternPasses ? Ls : plays > 0 ? Ls * (pn / gcd(pn, plays)) : Ls;
+    }
+    if (a.repeats > 0 && (H.length || (this.lastC !== null && !P.repeatsPauseWhileEmpty)) && !P.repeatsNeverStop && (!this.exhausted || P.morphRevives)) {
+      this.exhausted = this.repeatSteps >= a.repeats * this.lastC;   // (plant morphRevives re-evaluates this every step, so raising `repeats` revives the arp)
     }
     if (this.exhausted) return;
     this.repeatSteps++;
     const ord = this.stepSeq++;
     const fires = P.probLE ? (this._draw(a.seed, kAbs, 2) % 100) <= st.prob : (this._draw(a.seed, kAbs, 2) % 100) < st.prob;
 
-    // on-times anchor at kAbs*L (SPEC 5.1, never k*L); swing parity from kAbs (G3)
-    const swingD = fdiv(L * (2 * this._swingUsed - 1000), 1000);
-    const onT = x => this._gtick(x) + (mod(P.swingParityK && aK !== null ? x - aK : x, 2) === 1 ? swingD : 0) + (P.srTickMath ? Math.floor(this.sr / 44100) : 0);
-    const on0 = onT(kAbs);
     const mBefore = this.m;
     let kind = "rest";
     const trig = () => { if (fires && st.trig) this._queue({ kind: "trig", pos: BigInt(on0) * D, lane: st.trig, ord }); };

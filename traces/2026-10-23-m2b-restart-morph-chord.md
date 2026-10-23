@@ -68,3 +68,67 @@
   signature reads 4/4, (3) an input key outside 0-127 is dropped before the chord stage snaps it, and in degrees mode all its slots drop,
   (4) a step consumed without an anchor or as spent counts as "evaluated" for the swing pair, (5) the stage's earliest-source tie-break is
   (press sample, slot, source key), (6) a chord NoteOn's diagnostic `tick` is the floor of the position at its sample.
+
+## Follow-up — the independent critic review of M2b (D-027), 2026-10-23
+
+- **Queue item:** T-005 (ROADMAP M2), the follow-up dispatch after the critic review of `b4fc852`; authored by an implementer dispatch from the lead
+  session. Working tree uncommitted (the lead commits); the lead's own edits (DECISIONS, README, CODEMAP, docs/spec-errata, spec/) were not touched.
+  No public interface change: `Plants` (test-only, compiled out of the shipped library) grew 9 members; the private `Core` gained `lastC_`, `hasLastC_`
+  and `dropSpilledSubnotes()`.
+- **Why:** the critic found no HIGH; the human decided E8, E9, E10 by poll (D-027) and the lead settled L1 and L3 as the literal reading. Per item:
+  - **M1 (chord stage 1->0->1 at one sample).** `process()` skips the block-start `chordSync(0)` when the first valid input is at offset 0, so the
+    re-map and the held-set change are ONE pass (the post-input sync). Known answers: hold C with one slot (+4), at 2000 the shift becomes +7 and E is
+    pressed in the same sample -> 64 keeps sounding, no off64/on64 pair (60/67 end with C at 5000, 64/71 with E at 7000); the mirror (shift change plus
+    C released at 2000) -> 60, 64 end at 2000 and 67 never starts. Plant `chordSyncBlockStartFirst` reads off64@2000+on64@2000, and on67@2000+off67@2001.
+    Block sizes 4096 / 128 / 1.
+  - **M5 (bar bookkeeping).** Two known answers on a 4-step pattern, each with its mutant as a plant: bar -> chord -> a NEW gesture -> bar again inside bar 0
+    re-anchors at the bar start (notes 4000 | 6000 | 8000 12000; `adoptKeepsLastBar` reads ... 10000 14000); a jump back to beat 1.25 inside bar 0 re-anchors at
+    the bar start (4000 | 9500 13500; `reanchorKeepsLastBar` reads 4000 6500 10500). The Q-A2 `intoBar` check now uses a 4-step one-note pattern so the ANCHOR is
+    visible (3000:60 8000:60 12000:64; `restartBarAsChord` keeps the chord anchor and reads red).
+  - **E9 (repeats run out after release).** `lastC_` / `hasLastC_`: C is worked out whenever H' is non-empty (whatever `repeats` is, so a later repeats morph
+    never reads an older gesture's C); while H' is empty the last C is kept and the count keeps running. RP1 check (j) is replaced: restart free, every
+    step fires a trigger, repeats 1, C E G pressed at 100 and released at 1500 -> triggers 0 1000 2000 3000 then none, equal to the held run; plant
+    `repeatsPauseWhileEmpty` (the old behaviour) reads triggers without end. Kept as (j0) the pre-gesture known answer (13 triggers, no count); added
+    "repeats 0 -> 1 after the release runs on the C worked out while held". Lab CORE: same rule, `lab_smoke` checks (j) and (j0) with the plant.
+  - **E10 (spilled ratchets, time mode).** `dropSpilledSubnotes(on0)` at every evaluated step (a spent one too), time mode only: pending sub-notes (not triggers)
+    with `pos >= on0` are removed, queue order kept. Known answer: time mode, 500 ms, ratchet 4, 200 ms at sample 800 -> ons 0 1000 | 1600 2000 2400 2800 3200
+    3600, no two ons of a key at one sample, nothing of step 0 after step 1's on, N1, identical at 4096 / 64 / 1; plant `keepSpilledRatchets`.
+    **Found while testing "at or after": a sub-note in the SAME SAMPLE as the next step.** SPEC 1.1's tie order (input, offs, pending ons, grid step) emits it
+    BEFORE the step is evaluated, so the drop never saw it and the step's own on retriggered the key. With 250 ms the next step lands exactly on step 0's
+    sub-note at 2000: fixed by a timeline tie-break (time mode only: a pending sub-note whose tick is at or after the step's tick yields to the step), known
+    answer 0 1000 | 2000 2500 3000 3500, plant read red. Lab CORE: same drop, same tie-break, `lab_smoke` TM5 with both scenes and the plant.
+  - **L1 (swing pair).** The latch moved after the anchor test in `visit()`: an unanchored step does not latch, a spent step does. SPEC-GAP 4 comment rewritten.
+    Known answers: restart chord, swing 500 -> 750 at 700, key at 500 (anchor = odd step 1) -> ons 1500 2000 3500 4000 5500 (plant `swingLatchUnanchored`
+    reads 1000 ...); a spent even step latches (repeats 1, a key-adding press revives: ons 1000 3000 4000; no separate plant - hand-mutated: clearing the pair on a
+    spent step turns it red).
+  - **L2 (press order).** A stored chord record's held key (press time, velocity, channel) is refreshed from H on every sync, stored keys untouched. Two refs on
+    key 60, the earliest released: `played` order 64 67 60 with the stage on (all slots off) and off; plant `chordStalePressTime` reads 64 60 67.
+  - **L3 (G4 not narrowed).** `chordCauses()` (harness.h): at each sample rate (44.1 / 48 / 96 / 192 kHz, inputs scaled per rate) every chord-stream NoteOn and NoteOff
+    of the `chordstage` and `morph` sessions lands at exactly the sample of the input, settings / scale change, reset or prepare that caused it, with the same cause
+    (rank) at every rate; an off may follow its own on by SPEC 1.1's one sample. While the transport plays each chord on's tick is also the floor of the host's exact
+    position there. `tickStreamOf` still leaves chord-on ticks out of the cross-rate tick comparison (it cannot compare them) but they are now held to this exact check
+    (592 chord events, 296 on ticks per run). Plants: `chordOnLate` (on lands one sample late at >= 96 kHz) and `chordOnTickSkew`, each read red by the chord check ALONE.
+    Residual: a chord on that lands while the transport is STOPPED (free clock) has its sample checked, not its tick (none occurs in the two sessions).
+  - **L4.** `MorphModel` (harness only) reads "exceeds by 0.05" as STRICTLY greater (`leadW - curW > 50`, thousandths); horde owns the rule. The pinned known answers
+    (switch at wB = 0.526 and not 0.525; back at 0.474) are the harness's reading, to be re-pinned if horde reads it as >=.
+- **Evidence consulted:** SPEC 1.1, 2.5, 2.6, 3, 4.5, 4.8, 5.1, 9, 14 as amended (E8-E10); DECISIONS D-027; docs/spec-errata.md; the M2a and M2b traces; core.cpp
+  (process, visit, adopt, reanchor, evalStep, chordSync); the lab CORE (_evalStep, timeline) and lab_smoke RP1 / TM sections.
+- **Alternatives rejected:** dropping spilled sub-notes in sync mode too (the swing latch makes it unreachable there; the spec names time mode); dropping triggers with the
+  sub-notes (the spec says sub-notes; a trigger sits at its own step's on, before any later step); clearing `lastC_` at Panic (T7 is "restart the count", nothing says
+  forget the chord; it would let triggers run without end after a Panic); a per-rate list of expected sample numbers for L3 (the cause set derives from the scaled session, so
+  it cannot drift from the harness's own scaling).
+- **Mutation check (mine, not committed):** clearing the swing pair on a spent step -> red (the L1 spent-step known answer); a first attempt at that mutant (`!exhausted_` in the
+  latch test) survived because `exhausted_` is only set inside `evalStep`, i.e. the mutant was not a mutant. The E10 drop with `>` instead of `>=` is red through the
+  250 ms scene (it was the scene that found the same-sample ordering).
+- **Verify (base git `b4fc852`, tree uncommitted):** `bash tools/core_test.sh` exit 0 (398 passed per int128 path, was 376; smoke PASS; 3 guard lines),
+  `python3 tools/core_params_check.py` exit 0, `--plant` exit 1, `node tools/lab_smoke.mjs` OK, `./verify fast` exit 0. UBSan (`-fsanitize=undefined
+  -fno-sanitize-recover=undefined -O1`, native and `ARP_FORCE_INT128_FALLBACK`): 398 passed, 0 runtime errors. ASan / TSan not run (cannot start on this machine).
+- **Open questions (SPEC-GAPs, none blocks):**
+  1. SPEC 5.1 / 1.1: the same-sample tie-break above is not in the spec text (E10 says "at that step's evaluation ... at or after its on"; the 1.1 order evaluates the
+     step after pending ons of the same sample). Implemented as the literal reading of "at or after"; core.cpp ~654-662. The lead may want a sentence in 5.1.
+  2. SPEC 4.8 / E9: T6 and T7 keep the last non-empty C (only T10 / prepare forget it), so after a Panic with no keys the count runs again from 0 on the old C and exhausts;
+     core.cpp ~1226-1228.
+  3. The lab CORE does not carry M1 (block-start sync), M5 (bar bookkeeping), L1 (swing pair), L2 (press order) or L3 (a core-only harness check): the brief scoped the lab to
+     items 3 and 4. The lab keeps the M2b order for those.
+  4. L2's refresh also refreshes the record's velocity and channel; they only matter when a chord note starts from that record (a later joiner), where they are the earliest
+     live ref's, as SPEC 3 says for H.

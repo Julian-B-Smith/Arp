@@ -229,6 +229,8 @@ void Core::resetState() {
   barPhase_ = 0;
   repeatSteps_ = 0;
   exhausted_ = false;
+  lastC_ = 0;
+  hasLastC_ = false;
   chordSoundN_ = 0;
   chordRecN_ = 0;
   for (ChordNote& n : chordNote_) n = ChordNote{};
@@ -415,7 +417,9 @@ void Core::reanchor(std::int32_t s, bool resetEvaluated) {
     hasLastEvaluated_ = true;
   }
   m_ = 0;
-  hasLastBar_ = false;
+  // A new anchor forgets the bar bookkeeping: the next evaluated step re-derives the bar anchor even when it lands in the SAME bar
+  // index as before (a loop wrap or a jump back into the bar). Plant reanchorKeepsLastBar keeps it, so that landing keeps `reanchor`'s step.
+  if (!ARP_PLANT(reanchorKeepsLastBar)) hasLastBar_ = false;
   switch (restartMode()) {
     case Restart::Free: anchorK_ = 0; hasAnchor_ = true; break;   // tick 0 of the active clock (SPEC 4.5)
     case Restart::Bar: anchorK_ = lastEvaluated_ + 1; hasAnchor_ = true; break;   // evalStep re-derives it from the bar grid at the next evaluated step
@@ -604,8 +608,14 @@ EventSpan Core::process(const Block& b) {
     active_.latch = S_.latch;
   }
 
-  // SPEC 14: the chord_* settings, arp_enabled and the scale settings apply at offset 0 of the block whose snapshot changes them
-  chordSync(0);
+  // SPEC 14: the chord_* settings, arp_enabled and the scale settings apply at offset 0 of the block whose snapshot changes them.
+  // But when the first valid input sits at offset 0 too, the sync waits for the one after that sample's last input: the re-map and
+  // the held-set change are then ONE pass, so a source count going 1 -> 0 -> 1 at that sample keeps its note (no off / on pair) and a
+  // note whose only source is released at that sample never starts (no 1-sample note). Plant chordSyncBlockStartFirst syncs first.
+  bool firstInputAtZero = false;
+  for (const Event& e : b.in)
+    if (e.offset >= 0 && e.offset < n_) { firstInputAtZero = e.offset == 0; break; }
+  if (!firstInputAtZero || ARP_PLANT(chordSyncBlockStartFirst)) chordSync(0);
 
   // -- the timeline: input events, due offs, pending ons, grid-step evaluations, in time order
   std::size_t ii = 0;
@@ -643,8 +653,13 @@ EventSpan Core::process(const Block& b) {
       if (s < t) { t = s; kind = 2; idx = pi; }
     }
     if (running) {
-      const std::int64_t s = std::max<std::int64_t>(0, ofs(I128::mul(gtick(lastEvaluated_ + 1), D_)));
-      if (s < t) { t = s; kind = 3; }
+      const I128 stepPos = I128::mul(gtick(lastEvaluated_ + 1), D_);
+      const std::int64_t s = std::max<std::int64_t>(0, ofs(stepPos));
+      // SPEC 5.1 (E10): "at or after the step's on" includes a sub-note landing in the SAME sample as the step: the step is evaluated first so it can
+      // drop that sub-note (it has no NoteOn yet). Without this tie-break the sub-note sounds first and the step's own on retriggers its key at that sample.
+      // Only time mode can queue a sub-note at or after the next step's tick; a sub-note BEFORE the step's tick keeps the earlier-kind-wins order.
+      const bool dropsTie = s == t && kind == 2 && timeMode_ && !ARP_PLANT(keepSpilledRatchets) && pending_[idx].lane == 0 && !(pending_[idx].pos < stepPos);
+      if (s < t || dropsTie) { t = s; kind = 3; }
     }
     const bool inWindow = ARP_PLANT(clampOffset) ? t <= n_ : t < n_;   // half-open window; the plant lets an event at n through
     if (kind < 0 || !inWindow) break;
@@ -983,18 +998,20 @@ void Core::visit(std::int32_t so) {
     return;
   }
   lastEvaluated_ = kAbs;
-  // SPEC 5.1 (E6): swing is latched per step pair. The even step 2j reads `swing` now; the odd step 2j+1 reuses that value if 2j was the
-  // last step evaluated, else reads the current one. SPEC-GAP: a step consumed by the once-guard without an anchor or as spent (4.8) counts
-  // as "evaluated" for this, since it is the once-guard's last step; the latched value is then the swing it read when consumed.
-  {
+  adopt(so);
+  chordSync(so);   // adopt() may have dropped latched refs (plant latchAtNextStep), which changes H and so the chord stage
+  if (restartMode() != Restart::Chord) hasAnchor_ = true;   // bar and free anchor without a gesture (SPEC 2.5)
+  // SPEC 5.1 (E6, D-027): swing is latched per step pair. The even step 2j reads `swing` now; the odd step 2j+1 reuses that value if 2j was
+  // the last step EVALUATED, else reads the current one. "Evaluated" is SPEC 2.5's: the clock runs and an anchor exists. A step the once-guard
+  // consumes with no anchor (restart `chord` before the first gesture) is not evaluated and latches nothing, so the odd step right after a
+  // gesture start reads the current swing; a spent step (4.8, a silent rest WITH an anchor) is evaluated and does latch. Plant
+  // swingLatchUnanchored latches before the anchor test (the M2b order).
+  if (hasAnchor_ || ARP_PLANT(swingLatchUnanchored)) {
     const std::int64_t cur = clampi(S_.swing, 500, 750);
     const bool odd = mod(kAbs, 2) == 1;
     swingUsed_ = (odd && swingPairK_ == kAbs - 1 && !ARP_PLANT(swingPerStep)) ? swingPair_ : cur;
     if (!odd) { swingPair_ = swingUsed_; swingPairK_ = kAbs; }
   }
-  adopt(so);
-  chordSync(so);   // adopt() may have dropped latched refs (plant latchAtNextStep), which changes H and so the chord stage
-  if (restartMode() != Restart::Chord) hasAnchor_ = true;   // bar and free anchor without a gesture (SPEC 2.5)
   if (!hasAnchor_) return;   // restart `chord`: no anchor before the first gesture (SPEC 2.5)
   evalStep(kAbs, so);
 }
@@ -1045,7 +1062,9 @@ void Core::adopt(std::int32_t so) {
     if (t.restart == Restart::Chord) {
       if (ARP_PLANT(restartMorphReanchors)) { anchorK_ = lastEvaluated_; hasAnchor_ = true; m_ = 0; }   // plant: re-anchors although SPEC 9 keeps the anchor
     } else {
-      hasLastBar_ = false;
+      // Forget the bar bookkeeping too: a return to bar inside the bar it left must re-anchor at that bar's start (the chord anchor
+      // set by a gesture meanwhile is not the bar's). Plant adoptKeepsLastBar keeps the old bar index, so the return does nothing.
+      if (!ARP_PLANT(adoptKeepsLastBar)) hasLastBar_ = false;
       hasAnchor_ = true;
       if (t.restart == Restart::Free) anchorK_ = 0;
       if (!ARP_PLANT(restartMorphKeepsM)) m_ = 0;
@@ -1192,17 +1211,34 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
   const PatternStep st = steps[j];
   HeldKey E[kMaxArpKeys];
   const int e = heldForArp(E);   // H': the chord set when the chord stage is on, else the held keys (SPEC 14)
+  // SPEC 5.1: on-times anchor at kAbs * L (never k * L); swing parity comes from kAbs. `swing` is latched per step PAIR (E6, visit()): span(2j) and
+  // on(2j+1) always use one value, so no step's ratchets can sound after the next step's on. The tie look-ahead below uses this step's value too.
+  const std::int64_t swing = swingUsed_;
+  const std::int64_t swingDelay = (timeMode_ && ARP_PLANT(timeIgnoresSwing)) ? 0 : fdiv(L * (2 * swing - 1000), 1000);
+  const std::int64_t srSkew = ARP_PLANT(srTickMath) ? sr_ / 44100 : 0;
+  auto onTick = [&](std::int64_t x) { return gtick(x) + (mod(ARP_PLANT(swingParityK) ? x - anchorK_ : x, 2) == 1 ? swingDelay : 0) + srSkew; };
+  const std::int64_t on0 = onTick(kAbs);
+  // SPEC 5.1 (E10): in time mode a step_time_us change can bring this step's on before a sub-note of an earlier step that is still pending.
+  // Those are dropped here (none has a NoteOn yet, so none is owed a terminal). Done for every EVALUATED step, a spent one too.
+  if (timeMode_ && !ARP_PLANT(keepSpilledRatchets)) dropSpilledSubnotes(on0);
   // SPEC 4.8: one repeat is one full cycle of the whole pattern, C grid steps: the step pattern, the order style (through every
-  // held note) and the transposition passes all come round together. C is recomputed from the live H' at each step. Once
-  // repeatSteps >= repeats * C the arp is EXHAUSTED, a latched flag: the step is still consumed by the once-guard (visit() already
-  // advanced it) as a silent rest, with no note, no trigger and no step record (13 note 18). Morphs of repeats, steps or pattern never
-  // revive it; only a gesture start, a key-adding NoteOn, T6, T7 or T10 does (noteOn, edge, input, resetState).
-  if (a.repeats > 0 && e > 0 && !ARP_PLANT(repeatsNeverStop) && (!exhausted_ || ARP_PLANT(morphRevives))) {
+  // held note) and the transposition passes all come round together. C is recomputed from the live H' at each step; while H' is EMPTY the
+  // last non-empty C is kept (E9, D-027), so the count keeps running after the keys are released and an arp let go early still runs out
+  // (before the first gesture there is no C, hence no count). SPEC-GAP: T6 and T7 restart the count but keep the last C; only T10 forgets it.
+  // Once repeatSteps >= repeats * C the arp is EXHAUSTED, a latched flag: the
+  // step is still consumed by the once-guard (visit() already advanced it) as a silent rest, with no note, no trigger and no step record
+  // (13 note 18). Morphs of repeats, steps or pattern never revive it; only a gesture start, a key-adding NoteOn, T6, T7 or T10 does
+  // (noteOn, edge, input, resetState). C is worked out whenever keys are held, whatever `repeats` is, so a repeats morph after release
+  // never reads the cycle length of an older gesture. Plant repeatsPauseWhileEmpty: no check while H' is empty (the M2b behaviour).
+  if (e > 0) {
     std::int64_t plays = 0;
     for (std::int64_t q = 0; q < plen; ++q) plays += steps[q].on && !steps[q].tie && normPick(steps[q].pick) == kPickOrder;   // a static count: prob is ignored
     const std::int64_t pn = periodOf(a.order, e, ARP_PLANT(orderTables)) * (a.steps + 1);
-    const std::int64_t C = ARP_PLANT(repeatsCountPatternPasses) ? plen : plays > 0 ? plen * (pn / std::gcd(pn, plays)) : plen;
-    const bool spent = repeatSteps_ >= a.repeats * C;
+    lastC_ = ARP_PLANT(repeatsCountPatternPasses) ? plen : plays > 0 ? plen * (pn / std::gcd(pn, plays)) : plen;
+    hasLastC_ = true;
+  }
+  if (a.repeats > 0 && (e > 0 || (hasLastC_ && !ARP_PLANT(repeatsPauseWhileEmpty))) && !ARP_PLANT(repeatsNeverStop) && (!exhausted_ || ARP_PLANT(morphRevives))) {
+    const bool spent = repeatSteps_ >= a.repeats * lastC_;
     if (spent && !exhausted_) ++counters_.rows[20];   // T20: the repeats ran out
     exhausted_ = spent;
   }
@@ -1217,13 +1253,6 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
   // SPEC 4.3 step 1: prob 0 never fires and 100 always does, exactly (a draw is a uniform 32-bit number mod 100)
   const std::uint32_t dv = draw(a.seed, kAbs, 2) % 100;
   const bool fires = ARP_PLANT(probLE) ? dv <= static_cast<std::uint32_t>(st.prob) : dv < static_cast<std::uint32_t>(st.prob);
-  // SPEC 5.1: on-times anchor at kAbs * L (never k * L); swing parity comes from kAbs. `swing` is latched per step PAIR (E6, visit()): span(2j) and
-  // on(2j+1) always use one value, so no step's ratchets can sound after the next step's on. The tie look-ahead below uses this step's value too.
-  const std::int64_t swing = swingUsed_;
-  const std::int64_t swingDelay = (timeMode_ && ARP_PLANT(timeIgnoresSwing)) ? 0 : fdiv(L * (2 * swing - 1000), 1000);
-  const std::int64_t srSkew = ARP_PLANT(srTickMath) ? sr_ / 44100 : 0;
-  auto onTick = [&](std::int64_t x) { return gtick(x) + (mod(ARP_PLANT(swingParityK) ? x - anchorK_ : x, 2) == 1 ? swingDelay : 0) + srSkew; };
-  const std::int64_t on0 = onTick(kAbs);
   auto trigger = [&]() { if (fires && st.trig > 0) queueTrigger(I128::mul(on0, D), st.trig, ord); };   // at the FIRST on, once per step (SPEC 8)
 
   if (st.tie && !ARP_PLANT(tieAtTieStep)) {
@@ -1381,6 +1410,18 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
   else ++counters_.stepLogDropped;
 }
 
+// SPEC 5.1 (E10): drop every pending SUB-NOTE (not a trigger) whose start is at or after the evaluated step's on (tick on0). The queue keeps its order.
+void Core::dropSpilledSubnotes(std::int64_t on0) {
+  const I128 from = I128::mul(on0, D_);
+  int w = 0;
+  for (int i = 0; i < pendN_; ++i) {
+    const Pending& p = pending_[static_cast<std::size_t>(i)];
+    if (p.lane == 0 && p.pos >= from) continue;
+    pending_[static_cast<std::size_t>(w++)] = p;
+  }
+  pendN_ = w;
+}
+
 void Core::queueTrigger(I128 pos, std::int32_t lane, std::int64_t ord) {
   Pending p;
   p.pos = pos;
@@ -1523,6 +1564,7 @@ void Core::releaseAll(std::int32_t s, bool includeChord) {
 // Never at a transport edge or an arp_enabled change (T21).
 
 bool Core::chordStart(std::int32_t key, std::int32_t vel, std::int32_t ch, std::int32_t s, NoteRef& refOut) {
+  if (ARP_PLANT(chordOnLate) && sr_ >= 96000 && s + 1 < n_) ++s;   // plant (G4 / CH1): the on lands a sample after its cause, at 96 kHz and up
   // T13 (SPEC 14): refused at the event cap, a chord note stays silent and is counted; no sounding entry, so no off is owed.
   if (!room(2)) { ++counters_.rows[13]; ++counters_.refused; return false; }
   if (chordSoundN_ >= kMaxChordSounding || soundN_ >= static_cast<int>(sounding_.size())) { ++counters_.refused; return false; }
@@ -1540,7 +1582,7 @@ bool Core::chordStart(std::int32_t key, std::int32_t vel, std::int32_t ch, std::
   ev.key = key;
   ev.vel = vel;
   ev.stream = (ARP_PLANT(chordTaggedArp) && ref.id % 2 == 1) ? Stream::Arp : Stream::Chord;
-  ev.tick = tickOf(posAt(s));
+  ev.tick = tickOf(posAt(s)) + (ARP_PLANT(chordOnTickSkew) ? 1 : 0);
   ev.stepSeq = -1;   // chord-stream ons sort BEFORE the arp's at one offset (SPEC 1.1, r4 L2)
   pushEvent(ev);     // cannot fail: room(2) reserved this slot and the off's
   refOut = ref;
@@ -1669,8 +1711,12 @@ void Core::chordSync(std::int32_t s) {
       *rec = ChordRec{};
       rec->h = H[j];
       mapRec(*rec);
-    } else if (remap) {
-      mapRec(*rec);
+    } else {
+      // SPEC 3 / 14: H' orders keys by the press of the EARLIEST LIVE ref of a source key, which moves when the earliest of two refs on
+      // one key is released. Refresh the record's held key (press time, velocity, channel) from H on every sync; the STORED keys are
+      // untouched (a re-map below is the only thing that recomputes them). Plant chordStalePressTime keeps the entering press.
+      if (!ARP_PLANT(chordStalePressTime)) rec->h = H[j];
+      if (remap) mapRec(*rec);
     }
   }
 

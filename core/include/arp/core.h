@@ -123,6 +123,16 @@ struct Plants {
   bool chordTaggedArp = false;      // S1: some chord-stage ons carry the `arp` stream tag
   bool swingPerStep = false;        // SPEC 5.1 E6: swing is read at EVERY step (M2a), not latched per step pair, so a ratcheted step can sound past the next on
   bool chordRootFromChordSet = false; // SPEC 14 / 6: the arp's chord_root anchors on the lowest key of H' (the chord set), not on the lowest PLAYED key
+  // ---- M2b critic follow-up (D-027) ----
+  bool chordSyncBlockStartFirst = false; // CH1 / SPEC 14: the block-start sync runs before an input at offset 0 (a 1-0-1 count at that sample ends and restarts its note; a shift change plus a release starts a 1-sample note)
+  bool adoptKeepsLastBar = false;   // SPEC 4.5 / 9 Q-A2: a morph into restart bar / free keeps the old bar bookkeeping, so a return to bar inside the same bar does not re-anchor
+  bool reanchorKeepsLastBar = false; // SPEC 4.5 / 2.4: a loop wrap or jump (T6) keeps the old bar bookkeeping, so a landing in the same bar index does not re-anchor at the bar start
+  bool repeatsPauseWhileEmpty = false; // SPEC 4.8 E9: with H' empty the repeat count is not checked (the pre-D-027 behaviour: an arp let go early never runs out)
+  bool keepSpilledRatchets = false; // SPEC 5.1 E10: time mode keeps an earlier step's pending sub-notes that fall at or after the next step's on
+  bool swingLatchUnanchored = false;  // SPEC 5.1 / 2.5: a step with no anchor still latches the swing pair (the pre-D-027 order)
+  bool chordStalePressTime = false; // SPEC 3 / 14: a stored chord record keeps the press time it had when its key entered H, not the earliest LIVE ref's
+  bool chordOnLate = false;         // G4 / CH1: a chord-stream NoteOn lands one sample after the input that caused it (96 kHz and up)
+  bool chordOnTickSkew = false;     // G4 / CH1: a chord-stream NoteOn reports the tick one past the host's position at its sample
 };
 #endif
 
@@ -248,6 +258,7 @@ class Core {
   void switchTouch(std::int32_t so);
   void adopt(std::int32_t so);
   void evalStep(std::int64_t kAbs, std::int32_t so);
+  void dropSpilledSubnotes(std::int64_t on0);
   int heldForArp(HeldKey* out) const;
   std::int32_t lowestHeldKey() const;
   struct Note { std::int32_t key = 0, vel = 0, ch = 0; };
@@ -326,6 +337,8 @@ class Core {
   bool hasLastBar_ = false;
   std::int64_t repeatSteps_ = 0;
   bool exhausted_ = false;
+  std::int64_t lastC_ = 0;   // SPEC 4.8 E9: the last non-empty cycle length; kept while H' is empty so the count keeps running (hasLastC_: not before the first gesture)
+  bool hasLastC_ = false;
 
   // scale quantize (SPEC 6): the block's global scale, read at step evaluation, and lastQ, the tie chain (reset at every release-all)
   Scale scale_{};

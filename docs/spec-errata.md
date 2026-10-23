@@ -17,9 +17,14 @@ recorded in the build's trace, not here.
 | E5 | M1b, 2026-10-23 | §2.6: the time clock "stops when Arp is idle" (§2.4's idle), against §2.5's "idle while H is empty" | Trigger-only steps fired after key release while a note rang (M1b critic M1). Now no step is evaluated in time mode while H is empty | §2.6: "it evaluates no step while H is empty (§2.5)…" |
 | E6 | M2a, 2026-10-23 | §5.1: `span(kAbs) = on(kAbs+1) − on(kAbs)` with ons frozen at evaluation, while `swing` is continuous (§9) | A swing change between two steps let a ratcheted step's last sub-notes sound after the next step's on and retrigger it on the same key (M2a critic M2) | §5.1: swing is latched per step pair (even step reads it, its odd partner reuses it) |
 | E7 | M2a, 2026-10-23 | §2.6 and row TM2: "no gap longer than `max(L_old, L_new)`" | With swing above 500 an on-to-on gap is longer by the swing delay, so the sentence was false (M2a critic) | "no gap between grid positions (before swing)…" |
+| E8 | M2b, 2026-10-23 | Row CH1: "deduplicated by (channel, key)", against §14: "keyed by **key** alone" (r4 M2) | The code follows §14 (M2b critic M3) | Row CH1: "deduplicated by key (E8)" |
+| E9 | M2b, 2026-10-23 | §4.8: `C` from the live H′ at each step; with no keys held `P` is 0 | The count paused while no key was held, so trigger-only steps released early fired until the next chord (M2b critic M2) | §4.8: keep the last non-empty `C` while H′ is empty, so the count runs out |
+| E10 | M2b, 2026-10-23 | §5.1 (E6): "a step's ratchets never sound after the next step's on" | False in time mode: a `step_time_us` change can bring the next on before a pending sub-note (M2b critic M4) | §5.1 and §2.6: drop the earlier steps' pending sub-notes at or after the next step's on (one exactly at it yields to the step, ahead of §1.1's pending-first order) |
 
 _Applied 2026-10-23 (D-024): E1 and E3 amended in SPEC §2.3 and §1.3, spec re-pinned. E2 needed no amendment: fixed in code (owed offs are delivered at offset 0 of the first process after prepare), so T10 holds as written._
 
 _Applied 2026-10-23 (D-025): E4 and E5 amended in SPEC §1.2 and §2.6, spec re-pinned._
 
 _Applied 2026-10-23 (D-026): E6 and E7 amended in SPEC §5.1, §9, §2.6 and row TM2, spec re-pinned._
+
+_Applied 2026-10-23 (D-027): E8, E9 and E10 amended in the CH1 row, §4.8, §5.1 and §2.6, spec re-pinned._

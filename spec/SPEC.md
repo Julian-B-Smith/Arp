@@ -1,6 +1,6 @@
 # Arp — 1.0 specification (RATIFIED 2026-10-23, r2.12)
 
-> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026).** This is a protected path: any change needs the human's
+> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026); E8, E9 and E10 approved 2026-10-23 (D-027).** This is a protected path: any change needs the human's
 > gate and a decision record. Revision history: r1 (2026-10-21) to r2.12 (2026-10-22); four independent reviews
 > (`docs/spec-review-r1..r4.md`).
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -275,7 +275,8 @@ accumulated" is about float drift. In practice:
   between grid positions (before swing) longer than `max(L_old, L_new)` and
   **no burst** of overdue steps (E7, D-026);
 - `m`, the pattern position and swing parity (`kAbs`) carry on;
-- sounding notes keep their offs (T18).
+- sounding notes keep their offs (T18); a previous step's sub-notes not yet
+  started at the next step's on are dropped (§5.1, E10).
 
 **Restart is inert in time mode (r3 HIGH-2).** There are no bars in time.
 `bar` and `free` behave as `chord`: the pattern anchors at each gesture
@@ -594,7 +595,10 @@ pattern plays **per chord**, then the arp stops until the next gesture start.
 - **The count runs from the gesture start**, whatever `restart` does:
   `repeatSteps` counts grid steps evaluated since the gesture's first step,
   and resets only at a gesture start (and at T6/T7/T10).
-  - `C` is recomputed from the live H at each step.
+  - `C` is recomputed from the live H at each step. **While H′ is empty, the
+    last non-empty `C` is kept**, so the count keeps running after the keys
+    are released and an arp let go before its repeats are done still
+    exhausts (E9, D-027). Before the first gesture there is no count.
   - When `repeatSteps ≥ repeats · C`, the arp is **exhausted**. Its steps are
     still **consumed by the once-guard** as silent rests, with no notes and no
     triggers, so no burst of overdue steps follows (r4 H4). Sounding notes end
@@ -628,6 +632,14 @@ pattern plays **per chord**, then the arp stops until the next gesture start.
   and `on(2j+1)` always use one swing, and the odd step's span ends at an even
   on, which swing never moves: a step's ratchets never sound after the next
   step's on. A swing change therefore applies from the next even step.
+- **Spilled ratchets in time mode (E10, D-027).** A `step_time_us` change
+  (§2.6) can bring the next step's on before a sub-note of the previous step
+  that is still pending. At that step's evaluation, every pending sub-note of
+  earlier steps at or after its on is **dropped** (none has a NoteOn yet, so
+  none is owed a terminal). Sub-notes already started keep their offs. A
+  pending sub-note exactly **at** that on is dropped too: in time mode it
+  yields to the step at its own sample, ahead of §1.1's pending-first order,
+  so the step's own on never retriggers it.
 - **H2:** the on-time is always anchored at `kAbs·L`, never at `k·L`.
 - **Ratchets:** sub-note i (0 ≤ i < r) starts at `on + fdiv(i · span, r)`.
 - All of a step's ons are **frozen at evaluation** into the pending queue,
@@ -835,7 +847,7 @@ produce no extra and no missing terminal (LIBRARY L0001).
 | TM2 | a `step_time_us` change mid-gesture: the next step lands at `max(lastTick + L_new, changeTick)`, then every `L_new`; no gap between grid positions (before swing) longer than `max(L_old, L_new)`, no burst | re-grid on absolute multiples of `L_new`, or `kAbs·L_new` |
 | TM3 | in time mode `restart` is inert (`bar` = `free` = `chord`) | count bars of 61,440 µs |
 | RP1 | `repeats = N`: `repeats·C` evaluated steps from the gesture start (or the last key-adding press), then exhausted (spent steps consume the once-guard, no burst) until a gesture start or a key-adding press; then nothing until the next gesture; 0 never stops | count step-pattern passes instead of full cycles; never stop |
-| CH1 | chord stage: each held key emits itself plus its enabled shifts (semitones, degrees, or quantized) as `stream = chord`, deduplicated by (channel, key) with a source count; one NoteOff per chord note when its last source leaves; the arp plays the chord stage's keys when the stage is on; the stage works with the arp off | no dedupe (two ons for a shared key); end on the first source's release; feed the arp the raw keys |
+| CH1 | chord stage: each held key emits itself plus its enabled shifts (semitones, degrees, or quantized) as `stream = chord`, deduplicated by key with a source count (E8); one NoteOff per chord note when its last source leaves; the arp plays the chord stage's keys when the stage is on; the stage works with the arp off | no dedupe (two ons for a shared key); end on the first source's release; feed the arp the raw keys |
 | ST1 | the step offset is `step × pattern step_size` in the pattern's unit; at +12 semitones `step ±1` equals the old octave; degrees count in-scale keys | treat every step size as 12; read the GLOBAL step_size/unit for the step offset (tested with values that differ from the pattern's) |
 | X1 | transposition steps: pass t of every style is the base pass shifted by t·step_size (semitones), or moved t·step_size in-scale keys (degrees); `steps = 0` never shifts; the pass returns to 0 after `steps` | merge copies into one range (r2.6 octaves); count degrees as semitones while a scale is on |
 | U1 | the user pattern plays its steps' picks (k-th, low, high, chord) and rhythm exactly; a `setUserPattern` takes effect at the next step | ignore `pick`; swap mid-step |
