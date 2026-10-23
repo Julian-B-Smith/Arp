@@ -5,8 +5,8 @@ plays them as a pattern in time. After 1.0 it grows into step sequencing and gen
 library that horde runs ahead of its engine, plus a browser lab for playing it. "Arp" is a working name; the
 user-facing name is cleared before release.
 
-**Status: Phase A built (2026-10-21/22), functionality FROZEN (D-018), awaiting your playing and ratification.** The
-spec (draft r2.11) is written and four times independently reviewed, and the lab plays all of it.
+**Status: the 1.0 spec is RATIFIED (2026-10-23) and functionality is frozen.** The spec was four times independently
+reviewed, and the lab plays all of it. Next: the C++ core (M1).
 To play it:
 
 ```bash
@@ -61,7 +61,7 @@ landed" (replaying the timing of your presses) is held for after 1.0: `docs/defe
 | `integrations/` | Inbound mailbox (`integrations/<sender>/`) and the outbound thread table | live |
 | `docs/filings/` | Working copies of what Arp filed in other repos | live |
 | `docs/prior-art.md` | Phase 0: pattern-bank landscape, failure modes, grid math, name check (dated, cited) | done |
-| `spec/` | The 1.0 spec (SPEC.md), every setting (params.json), the candidate step-pattern bank | draft r2.12, awaiting ratification |
+| `spec/` | The 1.0 spec (SPEC.md), every setting (params.json), the candidate step-pattern bank | RATIFIED 2026-10-23 (protected) |
 | `lab/arp-lab.html` | The playable twin: Ableton-style computer keys, MIDI, transport, every setting, morph A/B, a small synth, a **pattern view** (one full cycle as the core plays it, plus a live roll), an **order × pattern** thumbnail matrix, and a **build-your-own** step editor | built; play it to settle the open listening questions in ROADMAP (how settings switch during a morph, restart under morph, which patterns ship, pre-roll, tie memory, which pass a pick takes) |
 | `tools/lab_smoke.mjs` | Headless checks of the lab core against the spec's invariants, run by `./verify fast` | live |
 | `docs/spec-review-r1.md` … `-r4.md` | The four independent critic reviews of the spec, and where each finding went | done |

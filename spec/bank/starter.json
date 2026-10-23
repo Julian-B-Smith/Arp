@@ -1,6 +1,6 @@
 {
   "format": "arp-bank/1",
-  "status": "DRAFT 2026-10-22 — CANDIDATES for the starter bank (Q-A3, decided by playing the lab). Clean-room: names and patterns are ours (D-004).",
+  "status": "1.0 BANK (D-021): all 11 step patterns ship; factory presets combining them are curated at M3. Clean-room: names and patterns are ours (D-004).",
   "step_defaults": {
     "on": true,
     "tie": false,

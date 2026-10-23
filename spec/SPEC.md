@@ -1,6 +1,8 @@
-# Arp — 1.0 specification (DRAFT r2.12, Phase A)
+# Arp — 1.0 specification (RATIFIED 2026-10-23, r2.12)
 
-> **Status: DRAFT r2.1, 2026-10-21.** r1 was reviewed by an independent Opus
+> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022).** This is a protected path: any change needs the human's
+> gate and a decision record. Revision history: r1 (2026-10-21) to r2.12 (2026-10-22); four independent reviews
+> (`docs/spec-review-r1..r4.md`).
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
 > folds in every finding; the per-finding record is `docs/spec-review-r1.md`.
 > r2.1 adds §13, which settles the 17 gaps the lab build surfaced. §13 is
@@ -19,8 +21,8 @@
 >
 > - This file becomes a protected path once the human ratifies it (the
 >   ROADMAP Phase A gate).
-> - Rules marked **PROPOSED** are the lead's answers to open questions (Q-A1,
->   Q-A2, Q-A3, Q-A5), settled by playing the lab.
+> - Every rule once marked PROPOSED was settled by the human at ratification
+>   (§12, D-021).
 > - **Normative companions:** `spec/params.json` and `spec/bank/starter.json`.
 > - **Upstream terms:** `intake/`, horde ADR-267 A1 (triggers), DECISIONS
 >   D-000…D-008. The prior-art basis is `docs/prior-art.md`.
@@ -388,7 +390,7 @@ each of them, a step that plays several keys behaves as a `chord` step does:
 **Which key is "source"** for channel and velocity: for an octave copy, the
 held key it was copied from.
 
-**PROPOSED (Q-A3):** the lab exposes all seventeen; the starter bank is chosen
+**SETTLED (Q-A3, D-021):** all sixteen styles ship in 1.0 (`landed` is deferred); the starter bank is chosen
 by playing.
 
 ### 4.3 Step patterns (data)
@@ -696,7 +698,7 @@ hybrid, such as C major's root with A minor's degrees (r2 M2).
     - A refused or capped on still counts, because `lastQ` follows
       evaluation.
     - With quantize `off`, or a zero mask, `lastQ` is not touched.
-  - **When `lastQ` resets, PROPOSED (r2 H2).** It resets to "none" at every
+  - **When `lastQ` resets, SETTLED (r2 H2; D-021).** It resets to "none" at every
     release-all (T4, T6, T7, T10: switch-off, any transport edge, panic,
     reset, prepare, deactivate). Every play-from-here then sounds the same,
     and a bounce matches what was auditioned. The human confirms this at
@@ -766,14 +768,14 @@ produce no extra and no missing terminal (LIBRARY L0001).
   (time mode; it changes smoothly per §2.6).
 - **Discrete settings:** all the rest. All of them are morph targets
   (D-000 Open 5).
-- **Q-A1, PROPOSED.** horde resolves a discrete setting to the value of the
+- **Q-A1, SETTLED (D-021).** horde resolves a discrete setting to the value of the
   corner with the largest weight, **with hysteresis**: it switches only when
   the leading corner's weight exceeds the current value's corner weight by
   0.05. Ties go to the lower corner index. Arp applies any change from the
   next evaluated step. A change of `rate` applies at the next step of the
   **old** rate. With a long rate (2/1) that can lag up to 8 beats. That lag
   is accepted and audible in the lab.
-- **Q-A2, PROPOSED.** A change of `restart` takes effect from the next
+- **Q-A2, SETTLED (D-021).** A change of `restart` takes effect from the next
   evaluated step:
   - into `bar` or `free`: the anchor is recomputed per §4.5, and `m := 0`;
   - into `chord`: the anchor is kept until the next gesture start.
@@ -834,22 +836,26 @@ produce no extra and no missing terminal (LIBRARY L0001).
 
 ---
 
-## 12. Open, decided by playing the lab and then ratified
-- **Q-A1:** the discrete morph rule, with hysteresis (§9).
-- **Q-A2:** restart under morph (§9).
-- **Q-A3:** the starter bank (§4.2 orders; `bank/starter.json` patterns).
-- **Q-A7:** which pass an explicit pick takes (§13b item 7; PROPOSED: the next
-  order note's pass).
-- **Q-A8:** changing the chord shape while holding: leavers end and joiners start at once (PROPOSED).
-- **Q-A5:** pre-roll (**PROPOSED:** played; the grid extends to negative
-  ticks). The tie direction is settled by D-010.
-- **Q-H3** (horde): the trigger-lane handoff.
-- **Q-H6** (horde): how horde's presets carry Arp's user pattern and its pattern **library** (structured
-  blob, not parameters).
-- **Q-H4** (horde, after 1.0): per-channel and MPE pedals; mapping per-note
-  expressions onto Arp's output notes.
+## 12. Settled at ratification (D-021, 2026-10-23)
 
----
+The listening and technical questions are all settled, by the human's poll:
+- **Q-A1** (the discrete morph rule with 0.05 hysteresis, §9);
+- **Q-A2** (restart under morph, §9);
+- **Q-A3** (the bank: all 16 order styles and all 11 step patterns ship;
+  factory presets are curated at M3);
+- **Q-A5** (pre-roll plays; the grid extends to negative ticks);
+- **Q-A7** (a pick takes the next order note's pass, §13b.7);
+- **Q-A8** (a chord-shape change re-voices only the changed notes, at once,
+  §14);
+- **r2 H2** (`lastQ` resets at every release-all, §6);
+- **D-008** (the three-band host-position policy, §2.2).
+
+**Still with horde, not blocking the spec:**
+- Q-H5 (a pedal that sustains direct voices only);
+- Q-H6 (how presets carry the user pattern and its library);
+- Q-H7 (routing the `chord` stream);
+- after 1.0, Q-H4 (per-channel and MPE pedals, and mapping per-note
+  expressions).
 
 ## 13. Clarifications (r2.1, from the lab build; normative)
 
@@ -922,8 +928,7 @@ before ratifying.
 5. **A degree move that runs off 0–127** drops the key (counted, T16).
 6. **Pass 0 in degrees mode** takes the ordinary path. Quantizing first
    changes nothing there.
-7. **Which pass an explicit pick takes, PROPOSED (Q-A7, decided by
-   playing).** A pick reads `t` from `m` at its own step: the pass of the
+7. **Which pass an explicit pick takes, SETTLED (Q-A7, D-021).** A pick reads `t` from `m` at its own step: the pass of the
    **next** order note. A pick that *leads* a pass shifts with it, while a
    pick right after a pass's last order note already belongs to the next
    pass. The smoke pins it: `60 60 64 60 67 | 72 72 72 76 72 79 | 60 60 60`.
