@@ -103,7 +103,7 @@
     <button id="panicBtn">Panic</button>
     <button id="pedalBtn" title="toggle the sustain pedal">Pedal</button>
     <label title="simulates horde routing each stream to its own oscillator: it only mutes voices in this page's synth, never the core">listen to <select id="listen">
-      <option value="all">all (direct + chord + arp)</option><option value="chord">chord only</option><option value="arp">arp only</option><option value="chordarp">chord + arp</option></select></label>
+      <option value="chordarp" selected>arp + chord</option><option value="chord">chord only</option><option value="arp">arp only</option><option value="all">arp + chord + your raw keys (horde's direct stream, unquantized)</option></select></label>
     <span id="midiStatus" class="pcs"></span>
   </div>
   <div class="q" id="clockNote">Transport stopped: the free clock. Step 0 lands on your key press.</div>
@@ -135,8 +135,8 @@
       <div class="q">Each key you hold becomes itself plus up to six intervals, sent as its own <b>chord</b> stream (so horde can feed one oscillator the chord and another the arp). With the stage on, the arp plays the chord's notes. Untick <b>arp on</b> to hear the chord alone: the chord notes behave like held notes and keep sounding when you toggle the arp or stop the transport. The master <b>enabled</b> below switches the whole module.</div>
       <div class="bar"><label><input type="checkbox" id="chEnabled"> chord stage on</label>
         <label title="the arp alone: off leaves the chord notes sounding (the master 'enabled' below switches the whole module)"><input type="checkbox" id="chArp"> arp on</label>
-        <label>unit <select id="chUnit"><option value="semitones">semitones</option><option value="degrees">degrees</option></select></label>
-        <label title="semitones: snap each shifted key to the scale (the ties follow section 6)"><input type="checkbox" id="chQuant"> quantize</label></div>
+        <label>unit <select id="chUnit"><option value="semitones">semitones</option><option value="degrees">degrees</option></select></label></div>
+      <div class="q" style="margin:2px 0 0">Quantize (in Settings) snaps the chord too, including the note you play.</div>
       <div class="chslots" id="chSlots"></div></div>
     <div class="card"><h2>Settings (every key of params.json)</h2><div id="settings"></div><div id="scale" class="bar"></div></div>
   </div>
@@ -189,7 +189,7 @@
 const TPQ = 15360;
 const ARP_PARAMS = {
  "format": "arp-params/1",
- "status": "DRAFT r2.11 2026-10-22 (Phase A); protected once the human ratifies spec/",
+ "status": "DRAFT r2.12 2026-10-22 (Phase A); protected once the human ratifies spec/",
  "tpq": 15360,
  "note": "Every setting is a morph target (D-000 Open 5). All values are INTEGERS in the snapshot (horde rounds morph blends). kind=continuous blends; kind=discrete resolves to the largest-weight corner with 0.05 hysteresis and applies from the next evaluated step (SPEC §9, Q-A1 PROPOSED); `enabled` applies at offset 0 of its block (SPEC T4/T5). Enums are stored by NAME. Tempo is clamped to [20, 999] bpm (SPEC §1.3).",
  "params": [
@@ -391,7 +391,7 @@ const ARP_PARAMS = {
    ],
    "default": "off",
    "ref": "SPEC §6",
-   "note": "off; scale = snap to the scale anchored at its root; chord_root = horde's movable-do 'scale (offset)' mode for an arp: the scale SHAPE anchored on the lowest held key (the root setting is ignored, as in horde ADR-112)"
+   "note": "off; scale = snap to the scale anchored at its root; chord_root = horde's movable-do 'scale (offset)' mode for an arp: the scale SHAPE anchored on the lowest held key (the root setting is ignored, as in horde ADR-112) — governs the arp AND the chord stage: while on, every note Arp emits is in the effective scale, the played note included (D-020)"
   },
   {
    "key": "scale_source",
@@ -536,14 +536,6 @@ const ARP_PARAMS = {
    ],
    "default": "semitones",
    "ref": "SPEC §14"
-  },
-  {
-   "key": "chord_quantize",
-   "kind": "discrete",
-   "type": "bool",
-   "default": false,
-   "ref": "SPEC §14",
-   "note": "with semitones: quantize the shifted keys to the effective scale"
   },
   {
    "key": "chord_on1",
@@ -1260,7 +1252,7 @@ const ARP_PLANTS = ["dropRelease", "doubleRelease", "sameSampleOff", "clampOffse
   "lastQNoReset", "collisionKeepsLast", "prepareResetsUser", "userFirstWins", "transposeMerged", "degreesAsSemis", "stepsZeroShifts", "timeUsesTempo", "timeAnchorsTransport", "stepSizeIgnored",
   "regridAbsolute", "regridKAbs", "timeBarsCount", "offsetsPerStage", "stepOffsetReadsGlobal", "timeEntryNoStart", "inactiveReanchors",
   "repeatsCountPatternPasses", "repeatsNeverStop", "chordNoDedupe", "chordEndsOnFirstSource", "arpIgnoresChord", "chordRestartAll",
-  "chordRecomputeAtRelease", "t2AcrossStreams", "arpToggleEndsChord", "chordT6Restart", "sharedSoundingTable", "exhaustedStopsGuard", "onlyGestureResets", "morphRevives", "chordSyncPerEvent", "chordDedupeByChannelKey", "latchAtNextStep"];
+  "chordRecomputeAtRelease", "t2AcrossStreams", "arpToggleEndsChord", "chordT6Restart", "sharedSoundingTable", "exhaustedStopsGuard", "onlyGestureResets", "morphRevives", "chordSyncPerEvent", "chordDedupeByChannelKey", "latchAtNextStep", "chordPlusZeroUnquantized", "chordSkipQuantize"];
 // Every discrete setting except `enabled` (which applies at offset 0, T4/T5) switches at the next
 // evaluated step (SPEC §9). Derived from params.json, so a new discrete setting cannot be forgotten.
 const DISCRETE_KEYS = ARP_PARAMS.params.filter(p => p.kind === "discrete" && p.key !== "enabled").map(p => p.key);
@@ -1737,19 +1729,21 @@ class ArpCore {
     if (this.incoming.enabled && this.incoming.chord_enabled && !this.lab.plant.arpIgnoresChord) return this.chord.set;
     return this._held();
   }
-  // The chord keys of the held key h, computed ONCE when h enters H and stored (SPEC 14, r4 H1). Slot 0 is h as played, never moved. Semitones: h + shift,
-  // quantized to the effective scale if chord_quantize is on. Degrees: from h's nearest in-scale key, move `shift` in-scale keys (a zero mask: semitones).
-  // Chord-stage ties ALWAYS go to the lower key and the stage never reads or writes lastQ, which is the arp's. Keys outside 0-127 are dropped.
-  // SPEC-GAP: the effective scale is the arp's scale source / root / mask with the chord_root anchor on the played keys H, `quantize = off` read as `scale`.
+  // The chord keys of the held key h, computed ONCE when h enters H and stored per (held key, slot) (SPEC 14, r4 H1). ONE quantize switch (D-020): while the arp's
+  // `quantize` is not off, EVERY chord key is snapped into the effective scale (source / root / mask, the chord_root anchor on the played keys H), the played note
+  // (the +0 slot) included, so nothing Arp emits is out of scale. Ties ALWAYS go to the lower key and the stage never reads or writes lastQ, which is the arp's.
+  // Semitones: h + shift, then snapped. Degrees: from h's nearest in-scale key, move `shift` in-scale keys; with quantize off or a zero mask a degree is a
+  // semitone. Keys outside 0-127 are dropped. Plants: chordPlusZeroUnquantized (the old +0 slot as played), chordSkipQuantize (no snapping on the chord stream).
   _chordMap(h, H, S) {
-    const keys = [{ slot: 0, key: h.key }], degrees = S.chord_unit === "degrees";
-    const sc = this._scaleOf(Object.assign({}, S, { quantize: S.quantize === "off" ? "scale" : S.quantize }), H), scaleOn = sc.mask !== 0;
+    const P = this.lab.plant, degrees = S.chord_unit === "degrees";
+    const sc = this._scaleOf(S, H), qOn = S.quantize !== "off" && sc.mask !== 0 && !P.chordSkipQuantize;
+    const keys = [{ slot: 0, key: qOn && !P.chordPlusZeroUnquantized ? this._quant(h.key, sc, null) : h.key }];
     for (let i = 1; i <= 6; i++) {
       if (!S["chord_on" + i]) continue;
       const shift = S["chord_shift" + i];
       let k;
-      if (degrees) k = this._degreeMove(scaleOn ? this._quant(h.key, sc, null) : h.key, shift, scaleOn ? sc : null);
-      else { k = h.key + shift; if (k >= 0 && k <= 127 && S.chord_quantize && scaleOn) k = this._quant(k, sc, null); }
+      if (degrees) k = this._degreeMove(qOn ? this._quant(h.key, sc, null) : h.key, shift, qOn ? sc : null);
+      else { k = h.key + shift; if (k >= 0 && k <= 127 && qOn) k = this._quant(k, sc, null); }
       if (k < 0 || k > 127) { this.counters.chordDropped++; continue; }
       keys.push({ slot: i, key: k });
     }
@@ -1757,7 +1751,7 @@ class ArpCore {
   }
   // What a re-map depends on: the chord_* settings, the scale settings (and the global scale when it is the source), the arp's quantize mode (the chord_root anchor).
   _chordSig(S) {
-    let t = [S.chord_enabled, S.chord_unit, S.chord_quantize, S.scale_source, S.scale_root, S.quantize];
+    let t = [S.chord_enabled, S.chord_unit, S.scale_source, S.scale_root, S.quantize];
     for (let i = 1; i <= 6; i++) t.push(S["chord_on" + i], S["chord_shift" + i]);
     for (let i = 0; i < 12; i++) t.push(S["scale_deg" + i]);
     if (S.scale_source === "global") t.push(this.scale.root, this.scale.mask);
@@ -2441,12 +2435,11 @@ class ArpCore {
     const arp = $("chArp"); arp.checked = state.cur.arp_enabled !== false;
     arp.addEventListener("change", () => { state.cur.arp_enabled = arp.checked; });
     controls.arp_enabled = { set: v => { arp.checked = v !== false && !!v; } };
-    const en = $("chEnabled"), unit = $("chUnit"), qz = $("chQuant"), box = $("chSlots"); box.textContent = "";
-    en.checked = !!state.cur.chord_enabled; unit.value = state.cur.chord_unit; qz.checked = !!state.cur.chord_quantize;
+    const en = $("chEnabled"), unit = $("chUnit"), box = $("chSlots"); box.textContent = "";
+    en.checked = !!state.cur.chord_enabled; unit.value = state.cur.chord_unit;
     en.addEventListener("change", () => { state.cur.chord_enabled = en.checked; });
     unit.addEventListener("change", () => { state.cur.chord_unit = unit.value; });
-    qz.addEventListener("change", () => { state.cur.chord_quantize = qz.checked; });
-    controls.chord_enabled = { set: v => { en.checked = !!v; } }; controls.chord_unit = { set: v => { unit.value = v; } }; controls.chord_quantize = { set: v => { qz.checked = !!v; } };
+    controls.chord_enabled = { set: v => { en.checked = !!v; } }; controls.chord_unit = { set: v => { unit.value = v; } };
     for (let i = 1; i <= 6; i++) {
       const on = h("input", { type: "checkbox" }), sh = h("input", { type: "number", min: "-24", max: "24", step: "1", title: "slot " + i + ": shift in " + "semitones or degrees (-24..24)" });
       on.checked = !!state.cur["chord_on" + i]; sh.value = String(state.cur["chord_shift" + i]);

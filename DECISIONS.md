@@ -614,3 +614,27 @@ The Opus critic, sourced separately from the author, rated r2.10 **REWORK**
 - an `exhausted` flag;
 - dedupe by key;
 - the chord stage has its own sounding table.
+
+## D-020 — One quantize switch for the arp and the chord stage; the lab plays arp + chord by default (RATIFIED by poll, 2026-10-22)
+
+The human reported "sustained notes layered over the arp" and "the scale
+quantization doesn't really work on either the chord or the arp". The lead
+reproduced both in the browser:
+- **The sustained notes** were the lab's monitor of the raw held keys.
+  "Listen to" defaulted to "all (direct + chord + arp)", and the direct
+  stream is the untouched input, never quantized.
+- **The arp's quantize worked**: C♯ and F♯ held in C major gave D, F, G.
+- **The chord stage had a real bug.** Its `+0` slot was "h as played, never
+  moved" (r2.11, a lead's choice adopted from a build gap), so C♯ sounded
+  as C♯. Only the added intervals snapped.
+
+**By poll:**
+- **One quantize switch for everything Arp emits.** The arp's `quantize`
+  governs the chord stage. While it is on, every chord key snaps, the
+  played note included. `chord_quantize` is **removed**. Rejected: keeping
+  separate switches.
+- **The lab plays arp + chord by default.** Direct becomes opt-in, labelled
+  "your raw keys, unquantized (horde's direct stream)". Rejected: arp only.
+
+A bug fix under the freeze: it removes a setting and adds no new
+functionality.

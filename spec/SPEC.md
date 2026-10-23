@@ -1,4 +1,4 @@
-# Arp — 1.0 specification (DRAFT r2.11, Phase A)
+# Arp — 1.0 specification (DRAFT r2.12, Phase A)
 
 > **Status: DRAFT r2.1, 2026-10-21.** r1 was reviewed by an independent Opus
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -10,6 +10,7 @@
 > the user pattern (§4.6) (D-011). r2.5 added `landed` (D-012); r2.7 defers it past 1.0
 > (`docs/deferred/landed.md`) and replaces `octaves` with Ableton-style **steps** (§4.7, D-014).
 > r2.8 adds **time mode** (§2.6), the per-step **step offset** (§4.3) and the **pattern library** (§4.6) (D-016).
+> r2.12: one `quantize` switch governs the arp AND the chord stage; `chord_quantize` removed; the played note snaps too (D-020).
 > r2.11 folds in the fourth independent review (4 HIGH; `docs/spec-review-r4.md`, D-019). Chord notes behave like held notes.
 > r2.10 adds **repeats** (§4.8) and the **chord stage** (§14), a second processor with its own `chord` stream (D-018).
 > r2.9 folds in the third independent review (2 HIGH, 3 MED, 3 LOW; `docs/spec-review-r3.md`, D-017).
@@ -956,7 +957,6 @@ edges (no T6), the arp's on/off, and the arp's notes.
 **Settings:**
 - `chord_enabled`;
 - `chord_unit` (`semitones` or `degrees`);
-- `chord_quantize`;
 - six slots, `chord_on1..6` and `chord_shift1..6` (−24…+24).
 
 **The module and the arp switch separately.**
@@ -973,11 +973,16 @@ settings, `arp_enabled`, and (for the chord stage) the scale settings.
 **The mapping is stored, not recomputed (r4 H1).** When a held key `h`
 enters H (§3, any of DOWN, PEDAL or LATCHED), its chord keys are computed
 **once** and **stored per (h, slot)**:
-- **The `+0` slot** is `h` itself, as played, never moved.
-- **In semitones:** `h + shift`. With `chord_quantize` on, it is quantized
-  to the effective scale (§6: source, root and mask, the `chord_root`
-  anchor on the played keys H). Chord-stage ties **always go to the lower
-  key**, and the stage **never reads or writes `lastQ`**, which is the arp's.
+- **One quantize switch (D-020, the human).** The arp's `quantize` setting
+  governs the chord stage too. While it is not `off`, **every** chord key is
+  snapped into the effective scale, **the played note itself included**
+  (§6: source, root and mask, the `chord_root` anchor on the played keys H).
+  So nothing Arp emits is out of scale.
+  - Chord-stage ties **always go to the lower key**.
+  - The stage **never reads or writes `lastQ`**, which is the arp's.
+- **The `+0` slot** is `h`, snapped while quantize is on, otherwise as
+  played.
+- **In semitones:** `h + shift`, then snapped while quantize is on.
 - **In degrees:** start from `h`'s nearest in-scale key (ties lower) and
   move `shift` in-scale keys. With a zero mask, a degree is one semitone.
 - Keys outside 0–127 are dropped (T16).
@@ -1033,10 +1038,10 @@ alone; and N1 covers every chord note.
     it at the next arp step; with the arp off, a latched chord then droned
     forever after latch was turned off.
 13. **The chord stage's effective scale** is the arp's scale source, root
-    and mask, with the `chord_root` anchor on the played keys H. With the
-    arp's `quantize` off, the chord stage still uses that scale (as `scale`
-    mode). `chord_quantize` and degrees need a non-zero mask; a zero mask is
-    chromatic.
+    and mask, with the `chord_root` anchor on the played keys H. The stage
+    snaps keys only while `quantize` is not `off` (D-020; `chord_quantize`
+    is removed). In degrees with quantize `off`, or with a zero mask, a
+    degree is one semitone (as §4.7).
 14. **`arp_enabled` off** ends the arp's own notes (the arp's half of T4)
     and clears its pending queue. Chord notes are untouched.
 15. **A chord re-map is triggered** by a changed signature: the chord_*
