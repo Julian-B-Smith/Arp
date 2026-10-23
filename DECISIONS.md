@@ -741,3 +741,59 @@ points that needed the human. Decided by poll:
   `tests/core/test_m1b.cpp` (an edit to `./verify`, a human gate).
 
 `spec/MANIFEST` is re-pinned in the same change, as D-023 requires.
+
+## D-026 — M2a review: swing is latched per step pair (E6); TM2's gap rule counts grid positions (E7) (RATIFIED by poll, 2026-10-23)
+
+The independent critic review of M2a found no HIGH. It found that a swing
+change mid-run could let a ratcheted step's last sub-notes sound after the
+next step's on (and retrigger it on the same key): each step's span is
+frozen at its evaluation with the swing of that moment, while the next
+step's on is computed later, possibly with a different swing. Decided by
+poll:
+- **E6 (§5.1, §9):** swing is **latched per step pair**. The even step reads
+  it; its odd partner reuses it if the even step was the last one evaluated.
+  The odd step's span ends at an even on, which swing never moves, so no
+  step can spill into the next. Cost: a swing move applies up to one step
+  later. Rejected: dropping a step's not-yet-started ratchets at the next
+  step's on (immediate, but notes vanish when the knob moves); accepting the
+  overlap (an audible retrigger at every swing automation point).
+- **E7 (§2.6, row TM2):** "no gap longer than `max(L_old, L_new)`" is about
+  grid positions before swing; with swing above 500 an on-to-on gap is
+  longer by the swing delay. Wording only, no behaviour change.
+
+`spec/MANIFEST` is re-pinned in the same change, as D-023 requires. The lab's
+CORE follows E6 too (its smoke enforces it).
+
+## D-027 — M2b review: chord dedupe by key (E8), repeats run out after release (E9), spilled ratchets dropped in time mode (E10) (RATIFIED by poll, 2026-10-23)
+
+The independent critic review of M2b found no HIGH. Three points needed the
+human; decided by poll:
+- **E8, chord dedupe by key alone.** §14 (r4 M2) keys the chord set by key;
+  the CH1 row said (channel, key). The code follows §14, and the row now
+  matches. Rejected: (channel, key), which would sound two copies of one
+  pitch from sources on different channels.
+- **E9, repeats run out after release.** With no keys held the cycle length
+  `C` had no period, and the code paused the count, so under restart bar or
+  free an arp let go early fired its trigger-only steps until the next
+  chord. Now the last non-empty `C` is kept and the count runs out, as §4.8's
+  "then the arp stops until the next gesture start" intends. Rejected:
+  pausing the count (triggers without end).
+- **E10, spilled ratchets in time mode.** D-026's latch fixed swing, but a
+  `step_time_us` change can still bring the next step's on before the
+  previous step's pending sub-notes. Those are dropped at the next step's
+  evaluation (none has started, so no terminal is owed). "At or after"
+  includes a sub-note exactly at the on: in time mode it yields to the step
+  at that sample, ahead of §1.1's pending-first order (found while building
+  E10; it is the approved rule's literal reach, not a new choice). Rejected: accepting
+  the retrigger; delaying the step-time change to the end of the current
+  step (it would undo the immediate sweep from slow rates, D-016).
+
+The lead also settled, as the literal reading needing no erratum: the swing
+pair's "evaluated" is §2.5's (clock running and an anchor exists), so an
+unanchored step does not latch swing, while a spent step (§4.8, a silent
+rest with an anchor) does (critic L1). And G4's skip of
+chord-stage NoteOn ticks (timed by input, not the grid) is replaced by an
+exact check that each chord on lands on its input's sample, so no gate is
+narrowed (critic L3).
+
+`spec/MANIFEST` is re-pinned in the same change, as D-023 requires.

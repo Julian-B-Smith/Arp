@@ -1017,6 +1017,10 @@ void testFuzz() {
 
 }  // namespace
 
+// The M1b seeded session, exactly as M1b drew it (straight, unquantized, no restart or chord stage): test_m2a / test_m2b layer their own
+// draws on top of it with a SEPARATE generator, so these 30 sessions keep the structure M1b gave them (M2a critic L2).
+Session m1bFuzzSession(std::uint32_t seed, bool keyRefs) { return fuzzSession(seed, keyRefs); }
+
 // The N1 sessions every feature must pass through (test_core.cpp's kSessions appends these).
 Session m1bSession(const char* name) {
   const std::string n = name;

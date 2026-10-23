@@ -2,9 +2,8 @@
 // events out, each at a sample offset. Pure: it reads no clock, makes no system call, and after
 // prepare() allocates nothing. Framework-free; the adapter (CLAP/VST3/AU, horde) owns the rest.
 //
-// M1a scope (ROADMAP T-003): order `up`, the plain one-step pattern, restart `chord`, sync time,
-// the held set, the host and free clocks, the single release path and the event caps. Every
-// setting outside that scope is accepted and ignored (see core.cpp, "SPEC-GAP: M1a").
+// Scope (ROADMAP T-003, T-004, T-005 M2a + M2b): the seam, all order styles and step fields, time mode, scale quantize,
+// the degree unit, swing and velocity, restart (chord / bar / free), repeats, the morph timing of settings and the chord stage.
 #pragma once
 
 #include <array>
@@ -75,6 +74,65 @@ struct Plants {
   bool drawIgnoresEpoch = false; // SPEC 2.4 H7c: the free-clock epoch is left out of the draw (random / shuffle / prob replay on every chord)
   bool timeStepsWhileRinging = false; // SPEC 2.5/2.6: in time mode steps (trigger-only ones too) keep firing with H empty while a note rings (the old 2.4 idle)
   bool sameRefDropsPress = false;// intake 1: a NoteOn whose ref is already known (any state) is dropped, and an ignored ref never expires
+  // ---- M2a ----
+  bool skipQuantizeChord = false;   // Q1: a step that plays several keys (a chord step) is not quantized
+  bool tieAlwaysDown = false;       // Q2 / Q5: a tie always resolves to the lower key, whatever lastQ says
+  bool ownIgnored = false;          // Q3: scale_source = own still reads the global scale
+  bool chordRootAsRoot = false;     // Q4: chord_root anchors the scale shape on the scale_root setting, not on the lowest held key
+  bool lastQAtEmission = false;     // Q5: lastQ updates when an on is EMITTED, not when its step is evaluated (a refused on then never counts)
+  bool lastQNoReset = false;        // Q5: release-all (and reset / prepare) leaves lastQ alone
+  bool collisionKeepsLast = false;  // SPEC 6: two keys landing on one key keep the LAST source's velocity and channel, not the earliest
+  bool degreesAsSemitones = false;  // X1: the transposition steps' degrees count as semitones while a scale is on
+  bool stepDegreesAsSemitones = false;  // ST1: the step offset's degrees count as semitones while a scale is on
+  bool semitoneAfterQuantize = false;   // SPEC 4.7 stage 1: the semitone part is added AFTER quantize instead of before it
+  bool degreeBeforeQuantize = false;    // SPEC 4.7 stage 4: the degree move runs BEFORE quantize instead of after it
+  bool lastQPreMove = false;        // SPEC 4.7 stage 6: lastQ is the quantized key before the degree move, not the final key
+  bool droppedKeySetsLastQ = false; // SPEC 4.7 stage 6: a key dropped at stage 5 still sets lastQ (to its quantized value)
+  bool noStage2Drop = false;        // SPEC 4.7 stage 2: only the final range check drops a key (r2.7's single drop)
+  bool swingParityK = false;        // G3: swing parity follows k = kAbs - anchor instead of kAbs
+  bool timeIgnoresSwing = false;    // TM1: time mode plays every step straight
+  bool releaseKeepsPending = false; // SPEC 5.1 / 8: release-all leaves the pending queue alone (a swung on or trigger survives a Panic)
+  // ---- M2b: restart, repeats, morph timing ----
+  bool restartBarAsChord = false;   // SPEC 4.5: restart `bar` anchors like `chord` (at the gesture start, never at a bar start)
+  bool restartFreeAsChord = false;  // SPEC 4.5: restart `free` anchors like `chord`
+  bool repeatsCountPatternPasses = false; // RP1: one repeat is one pass of the STEP pattern, not a full cycle of the whole pattern
+  bool repeatsNeverStop = false;    // RP1: repeats is ignored, the arp never runs out
+  bool exhaustedStopsGuard = false; // RP1: a spent arp stops consuming the once-guard (a burst of overdue steps at the next gesture)
+  bool onlyGestureResets = false;   // RP1: only a gesture start restarts the repeat count; a key-adding press (latch append, pedal) does not
+  bool morphRevives = false;        // RP1: the exhausted flag is re-derived every step, so raising `repeats` revives a spent arp
+  bool restartMorphKeepsM = false;  // SPEC 9 Q-A2: a morph into restart bar / free leaves the played-note counter alone
+  bool restartMorphReanchors = false; // SPEC 9 Q-A2: a morph into restart `chord` re-anchors at the next step instead of keeping the anchor
+  bool morphSwitchCuts = false;     // SPEC 7 T8: a discrete setting that changes releases the arp's sounding notes
+  bool morphSwitchDropsPending = false; // SPEC 7 T8: a discrete setting that changes clears the pending queue (queued ratchets and triggers vanish)
+  // ---- M2b: the chord stage (CH1) ----
+  bool chordNoDedupe = false;       // CH1: a key shared by two sources is emitted twice (no dedupe)
+  bool chordEndsOnFirstSource = false; // CH1: a chord note ends when its first source leaves, not its last
+  bool arpIgnoresChord = false;     // CH1: the arp plays the raw held keys although the chord stage is on
+  bool chordRestartAll = false;     // CH1: a re-map ends and restarts every chord note, not only the leavers and joiners
+  bool chordRecomputeAtRelease = false; // CH1: the leaver's chord keys are recomputed at release instead of the stored mapping (strands a note)
+  bool t2AcrossStreams = false;     // CH1 / SPEC 5.2: a retriggered arp note ends the chord note sounding on the same key
+  bool arpToggleEndsChord = false;  // CH1: arp_enabled off ends the chord notes too
+  bool chordEndsAtEdge = false;     // CH1: a transport edge ends and restarts the chord notes
+  bool sharedSoundingTable = false; // CH1: T11 counts chord notes in the arp's 128-entry table and may evict one
+  bool chordSyncPerEvent = false;   // CH1: the stage syncs after every input event, so a count going 1-0-1 inside one sample ends and restarts its note
+  bool chordDedupeByChannelKey = false; // CH1: dedupe by (channel, key) instead of key alone
+  bool chordPlusZeroUnquantized = false; // CH1 / D-020: the +0 slot (the played note) is left unquantized while quantize is on
+  bool chordSkipQuantize = false;   // CH1 / D-020: the chord stage never snaps to the scale
+  bool chordReadsLastQ = false;     // CH1 / D-020: the chord stage resolves a tie toward the arp's lastQ instead of always lower
+  bool chordWritesLastQ = false;    // CH1 / D-020: the chord stage writes its snapped keys into the arp's lastQ
+  bool chordTaggedArp = false;      // S1: some chord-stage ons carry the `arp` stream tag
+  bool swingPerStep = false;        // SPEC 5.1 E6: swing is read at EVERY step (M2a), not latched per step pair, so a ratcheted step can sound past the next on
+  bool chordRootFromChordSet = false; // SPEC 14 / 6: the arp's chord_root anchors on the lowest key of H' (the chord set), not on the lowest PLAYED key
+  // ---- M2b critic follow-up (D-027) ----
+  bool chordSyncBlockStartFirst = false; // CH1 / SPEC 14: the block-start sync runs before an input at offset 0 (a 1-0-1 count at that sample ends and restarts its note; a shift change plus a release starts a 1-sample note)
+  bool adoptKeepsLastBar = false;   // SPEC 4.5 / 9 Q-A2: a morph into restart bar / free keeps the old bar bookkeeping, so a return to bar inside the same bar does not re-anchor
+  bool reanchorKeepsLastBar = false; // SPEC 4.5 / 2.4: a loop wrap or jump (T6) keeps the old bar bookkeeping, so a landing in the same bar index does not re-anchor at the bar start
+  bool repeatsPauseWhileEmpty = false; // SPEC 4.8 E9: with H' empty the repeat count is not checked (the pre-D-027 behaviour: an arp let go early never runs out)
+  bool keepSpilledRatchets = false; // SPEC 5.1 E10: time mode keeps an earlier step's pending sub-notes that fall at or after the next step's on
+  bool swingLatchUnanchored = false;  // SPEC 5.1 / 2.5: a step with no anchor still latches the swing pair (the pre-D-027 order)
+  bool chordStalePressTime = false; // SPEC 3 / 14: a stored chord record keeps the press time it had when its key entered H, not the earliest LIVE ref's
+  bool chordOnLate = false;         // G4 / CH1: a chord-stream NoteOn lands one sample after the input that caused it (96 kHz and up)
+  bool chordOnTickSkew = false;     // G4 / CH1: a chord-stream NoteOn reports the tick one past the host's position at its sample
 };
 #endif
 
@@ -135,12 +193,14 @@ class Core {
     RefState state = RefState::Down;
     std::int64_t abs = 0;   // absolute press sample
   };
-  struct HeldKey { std::int32_t key = 0, vel = 0, ch = 0; std::int64_t abs = 0; };
+  // `slot` orders a chord-stage key among keys of one source press (SPEC 14 `Pp`); it is 0 for every key of the plain held set.
+  struct HeldKey { std::int32_t key = 0, vel = 0, ch = 0; std::int64_t abs = 0; std::int32_t slot = 0; };
   struct Sounding {
     NoteRef ref{};
     I128 offPos{};
     bool hasOff = false;       // a scheduled off exists (else: dying, or never)
     bool dying = false;        // released inside its own on sample: its off waits for on + 1 (SPEC 1.1)
+    bool chord = false;        // a chord-stage note (SPEC 14): no scheduled off, it ends with its last source
     std::int64_t onAbs = 0;
     std::int64_t ofsCache = 0; // sample offset of offPos, valid for block cacheBlk
     std::uint64_t cacheBlk = 0;
@@ -150,9 +210,15 @@ class Core {
     std::int32_t key = 0, vel = 0, ch = 0;
     std::int32_t lane = 0;   // > 0: this entry is a TRIGGER on that lane (SPEC 8), not a note
     std::int64_t ord = 0;
+#ifdef ARP_PLANTS
+    bool setsLastQ = false;  // lastQAtEmission: lastQ follows this on when it is emitted
+#endif
   };
   enum class Clock : std::uint8_t { None, Host, Free };
   static constexpr int kSoundingSlack = 16;   // physical room for notes dying inside their own on sample
+  static constexpr int kMaxChordSounding = 224;   // SPEC 14 capacity: its OWN table, 32 held keys x 7 slots (distinct keys never exceed 128)
+  static constexpr int kChordSlots = 7;           // the +0 slot and six shifts
+  static constexpr int kMaxArpKeys = 128;         // the arp's held set H' is the chord set when the stage is on: distinct keys 0..127
   static constexpr int kIgnoredRing = 256;
 
   // time
@@ -171,6 +237,7 @@ class Core {
   std::int64_t tempoMilli(const Transport& tr);
   I128 repOf(const Transport& tr) const;
   void edge();
+  Restart restartMode() const;
   void reanchor(std::int32_t s, bool resetEvaluated);
   void maybeFreeStart(std::int32_t s);
   void freeStart(std::int32_t s);
@@ -187,9 +254,13 @@ class Core {
   template <class Pred> void eraseRefs(Pred pred);   // compacts refs_ in place, keeping order
   // the grid walk
   void visit(std::int32_t so);
-  void switchRate(std::int64_t kAbs);
-  void adopt();
+  void switchRate(std::int64_t kAbs, std::int32_t so);
+  void switchTouch(std::int32_t so);
+  void adopt(std::int32_t so);
   void evalStep(std::int64_t kAbs, std::int32_t so);
+  void dropSpilledSubnotes(std::int64_t on0);
+  int heldForArp(HeldKey* out) const;
+  std::int32_t lowestHeldKey() const;
   struct Note { std::int32_t key = 0, vel = 0, ch = 0; };
   int notesFor(const HeldKey* E, int e, std::int64_t kAbs, std::int32_t pick, Note* out) const;
   int shuffleAt(int e, std::int64_t c, std::int64_t pos) const;
@@ -202,11 +273,17 @@ class Core {
   void pushNonNote(const Event& e);
   void emitOn(const Pending& p, std::int32_t s);
   bool release(const NoteRef& ref, std::int32_t s);
-  void releaseAll(std::int32_t s);
+  void releaseAll(std::int32_t s, bool includeChord = true);
+  void releaseArp(std::int32_t s) { releaseAll(s, false); }   // T6 and the arp's own switch-off: chord notes behave like held keys (SPEC 14)
   void sortEvents();
   void flushOwed();
   void resetState();
   void plantAlloc();
+  // the chord stage (SPEC 14)
+  void chordSync(std::int32_t s);
+  void chordEndAll(std::int32_t s);
+  bool chordStart(std::int32_t key, std::int32_t vel, std::int32_t ch, std::int32_t s, NoteRef& refOut);   // emits the chord-stream NoteOn
+  void chordStop(NoteRef& ref, bool& sounding, std::int32_t s);                                              // the ONE end of a chord note: release()
 
   // configuration, fixed at prepare
   Caps caps_;
@@ -252,13 +329,70 @@ class Core {
   std::int64_t lastEvaluated_ = 0, anchorK_ = 0, m_ = 0;
   std::int64_t stepSeq_ = 0;
 
+  // restart (SPEC 4.5) and repeats (SPEC 4.8)
+  std::int64_t barTicks_ = 4 * kTpq, barPhase_ = 0;   // the bar grid of this block (time mode: 61,440 us, only a plant reads it)
+  // swing is latched per step pair (SPEC 5.1, E6): the even step reads it, its odd partner reuses it when the even step was the last one visited
+  std::int64_t swingUsed_ = 500, swingPair_ = 500, swingPairK_ = INT64_MIN;
+  std::int64_t lastBar_ = 0;
+  bool hasLastBar_ = false;
+  std::int64_t repeatSteps_ = 0;
+  bool exhausted_ = false;
+  std::int64_t lastC_ = 0;   // SPEC 4.8 E9: the last non-empty cycle length; kept while H' is empty so the count keeps running (hasLastC_: not before the first gesture)
+  bool hasLastC_ = false;
+
+  // scale quantize (SPEC 6): the block's global scale, read at step evaluation, and lastQ, the tie chain (reset at every release-all)
+  Scale scale_{};
+  std::int64_t lastQ_ = 0;
+  bool hasLastQ_ = false;
+
   // enable state: moduleOn_ is `enabled`, enabled_ is "the arp is running" (module on and arp_enabled)
   bool moduleOn_ = false, enabled_ = false;
   std::array<std::int64_t, 4> prevCont_{};
   bool havePrevCont_ = false;
 #ifdef ARP_PLANTS
-  std::int64_t plantLastBar_ = INT64_MIN;   // timeBarsCount
   std::int64_t inactSeen_ = -1;   // inactiveReanchors: the last value of the inactive timing setting
+#endif
+
+  // the chord stage (SPEC 14). Records hold the STORED mapping of each held key (computed once when the key enters H, never
+  // recomputed at release); notes are keyed by chord KEY (dedupe by key alone) with a source count; the set is what the arp reads (H').
+  struct ChordRec {
+    HeldKey h{};
+    int n = 0;
+    std::int16_t key[kChordSlots]{};
+    std::int8_t slot[kChordSlots]{};
+  };
+  struct ChordNote {
+    bool used = false;          // count > 0: the note exists (it may be silent: refused at the event cap, SPEC 14 note 17)
+    bool sounding = false;      // an on was emitted and no off yet
+    std::int32_t vel = 0, ch = 0;
+    NoteRef ref{};
+    int count = 0;
+#ifdef ARP_PLANTS
+    int maxCount = 0;
+    bool sounding2 = false;     // chordNoDedupe: the second on for a shared key
+    NoteRef ref2{};
+#endif
+  };
+  struct ChordSigData {
+    StepUnit unit{};
+    ScaleSource source{};
+    Quantize quantize{};
+    std::int32_t root = 0;
+    std::uint16_t ownMask = 0, globalMask = 0;
+    std::int32_t globalRoot = 0;
+    bool on[6]{};
+    std::int32_t shift[6]{};
+    friend constexpr bool operator==(const ChordSigData&, const ChordSigData&) = default;
+  };
+  std::array<ChordRec, kMaxHeldKeys> chordRec_{};
+  int chordRecN_ = 0;
+  std::array<ChordNote, 128> chordNote_{};     // indexed by key 0..127
+  std::array<HeldKey, kMaxArpKeys> chordSet_{};
+  int chordSetN_ = 0;
+  ChordSigData chordSig_{};
+  bool chordSigValid_ = false;
+#ifdef ARP_PLANTS
+  std::array<int, 128> chordDrift_{};          // chordRecomputeAtRelease
 #endif
 
   // held set
@@ -269,14 +403,16 @@ class Core {
   bool pedalDown_ = false;
 
   // sounding notes and the pending queue
-  std::array<Sounding, kMaxSounding + kSoundingSlack> sounding_{};
-  int soundN_ = 0;
+  // One table of entries (arp + chord, `Sounding::chord` tells them apart). The arp's own 128-entry limit (T11) counts only its
+  // entries; the chord stage has 224 of its own (SPEC 14), so arp eviction never reaches a chord note.
+  std::array<Sounding, kMaxSounding + kSoundingSlack + kMaxChordSounding> sounding_{};
+  int soundN_ = 0, chordSoundN_ = 0;
   std::array<Pending, kMaxPending> pending_{};
   int pendN_ = 0;
   std::int64_t idCounter_ = 0;
   // T10 across prepare(): notes still owed a NoteOff when prepare() is called. Their refs live here (sized at construction,
   // untouched by resetState) and are released at offset 0 of the next process() or reset().
-  std::array<NoteRef, kMaxSounding + kSoundingSlack> owed_{};
+  std::array<NoteRef, kMaxSounding + kSoundingSlack + kMaxChordSounding> owed_{};
   int owedN_ = 0;
 
 #ifdef ARP_PLANTS

@@ -7,11 +7,11 @@ lives in `DECISIONS.md`; horde's terms are in `intake/` and `SPINUP-BRIEF.md`.
 ## Status
 
 - **Phase:** **Phase A DONE 2026-10-23**: the spec is RATIFIED (D-022) and protected, and functionality is frozen (D-018).
-  M1a (T-003) merged; **M1b (T-004) gate met 2026-10-23, in its PR**; then M2, M3 (ROADMAP §Phases).
+  M1a (T-003) and M1b (T-004, PR #19) merged; **M2 (T-005) gate met 2026-10-23, in its PR**; then M3 (ROADMAP §Phases).
 - **Oracle:** `./verify fast` = kit integrity, leak gate, private-name gate,
   structure, manifest, intake pin, spec pin, the **lab smoke** (SPEC §11, each
   check proven on a planted fault) and the **C++ core suite** on both int128 paths
-  (189 checks each after M1b) plus the params and bank drift checks. `full` = `fast` for now.
+  (398 checks each after M2) plus the params and bank drift checks. `full` = `fast` for now.
 - **Functionality freeze (the human, 2026-10-22, D-018): IN EFFECT** once the repeats and chord-stage PR merges. 1.0
   scope is frozen; any further feature needs an explicit unfreeze decision. Next: play the lab, ratify the spec, M1.
 - **Hard date:** horde's module cutoff **2026-12-11**. The 1.0 arpeggiator
@@ -128,7 +128,7 @@ not a parity target.
 - **Gate:** R1, U1, X1 and ST1 (their semitone parts), TM1–TM3, K1, T1, P1, N2, S1 and the order-style tables,
   each with its plant; the M1a suite still green; a critic review with no open HIGH.
 
-### M2 — C++ core: scale, feel, restart, morph, chord stage (T-005)
+### M2 — C++ core: scale, feel, restart, morph, chord stage (T-005) — gate met 2026-10-23
 - **Scope:**
   - quantize: global or own scale, `scale` or `chord_root`, the `lastQ`
     tie chain and its resets (§6);
@@ -203,10 +203,27 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 - **Out of scope:** everything listed for M1b and M2.
 
 ### T-004 — M1b: every order style, pattern field and clock
-- **Status:** gate met 2026-10-23: 189 checks per int128 path in `./verify fast`, every plant fires, and the independent critic review found **no HIGH**; its MEDs settled by the human (D-025: errata E4, E5, the degree unit to M2) and its LOWs fixed. Trace: `traces/2026-10-23-m1b-styles-patterns.md`. In the M1b PR.
+- **Status:** gate met 2026-10-23: 189 checks per int128 path in `./verify fast`, every plant fires, and the independent critic review found **no HIGH**; its MEDs settled by the human (D-025: errata E4, E5, the degree unit to M2) and its LOWs fixed. Trace: `traces/2026-10-23-m1b-styles-patterns.md`. Merged 2026-10-23 (PR #19).
 - **Scope:** `core/`, `tests/core/`, the trace.
 - **Acceptance criteria:** the M1b gate above.
 - **Out of scope:** everything listed for M2.
+
+### T-005 — M2: scale, feel, restart, morph, chord stage
+- **Status:** in progress (2026-10-23), on `m2/core-scale-feel`, branched from M1b's branch while PR #19 awaits merge.
+  #19 merged 2026-10-23, so the M2 PR opens straight against `main`.
+  M2a committed (6819232); its critic review found no HIGH (D-026: E6 swing latched per pair, E7).
+  M2b committed (b4fc852); its critic review found no HIGH (D-027: E8, E9, E10); the follow-ups are fixed.
+  **Gate met 2026-10-23:** 398 checks per int128 path, every plant fires, no open HIGH. In the M2 PR.
+  Lab CORE gaps left for T-006's cross-check to surface: the chord stage's same-sample 1→0→1, the restart
+  bar bookkeeping, the unanchored swing latch, the press-time refresh (the C++ is the reference).
+- **Dispatches (one implementer at a time, same files):**
+  - **M2a:** quantize (§6: Q1–Q5), the degree unit (X1 and ST1, degree parts; the six-stage offset order, §4.7),
+    swing (G3; TM1's swing term), velocity modes and accents.
+  - **M2b:** restart and repeats (§4.5, §4.8: RP1), the morph timing of discrete and continuous settings (§9:
+    N1 over morph-driven switches, plus known answers), the chord stage (§14: CH1).
+- **Scope:** `core/`, `tests/core/`, the traces.
+- **Acceptance criteria:** the M2 gate above.
+- **Out of scope:** the cross-check (T-006), horde admission (M3), anything past the functionality freeze.
 
 ## Open questions (blocking — ask the human or horde)
 

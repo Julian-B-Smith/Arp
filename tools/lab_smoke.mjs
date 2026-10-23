@@ -66,7 +66,7 @@ function mkCore(plants = [], opts) {
   return c;
 }
 const refStr = r => r.port + ":" + r.channel + ":" + r.key + ":" + r.id;
-const norm = (e, base, epoch) => ({ a: base + e.s, t: e.t, key: e.key !== undefined ? e.key : e.ref && e.ref.key, vel: e.vel, lane: e.lane, id: e.ref ? refStr(e.ref) : undefined, stream: e.stream, tick: e.tick, epoch, pass: e.ev });   // stream: SPEC §1 / S1 — dropping it here made S1's plant pass vacuously
+const norm = (e, base, epoch) => ({ a: base + e.s, t: e.t, key: e.key !== undefined ? e.key : e.ref && e.ref.key, vel: e.vel, lane: e.lane, id: e.ref ? refStr(e.ref) : undefined, stream: e.stream, tick: e.tick, ord: e.ord, epoch, pass: e.ev });   // stream: SPEC §1 / S1 — dropping it here made S1's plant pass vacuously
 const streamOf = evs => evs.map(e => `${e.a} ${e.t} ${e.key} ${e.vel} ${e.lane} ${e.id} ${e.stream}`).join("\n");
 const tickStreamOf = evs => evs.map(e => `${e.t} ${e.key} ${e.vel} ${e.lane} ${e.id} ${e.tick}`).join("\n");
 
@@ -262,6 +262,23 @@ function g1Diverges(plants) {
   const bad = plants => { const got = ons(sess(plants)).map(e => e.a).slice(0, 9), e = exp(); return got.length < 9 || got.some((v, i) => v !== e[i]); };
   plant(bad(["swingParityK"]), "G3 detects swing parity taken from k under restart=chord (first step on an odd kAbs)");
   check(!bad([]), "G3: with the chord anchored on odd kAbs 3, the swung steps are still the odd kAbs (swing 667 permille)");
+}
+
+// ---- 6b. E6: swing is latched per step pair (SPEC 5.1, D-026) ------------------------------------------------------------------
+{
+  const RT4 = { length: 1, steps: [{ ratchet: 4 }] };
+  const scene = (plants, block) => run({ core: mkCore(plants), block, total: 9000, userPattern: RT4, base: { pattern: "user", swing: 750, gate: 100 }, cfg: [{ at: 2500, set: { swing: 500 } }], ins: [K(0, "a", 60)] });
+  // the critic's case: swing 750, one step of 4 ratchets, swing 500 from sample 2500. Every sub-note of a step starts BEFORE the next step's on, at every block size
+  const spans = r => { const m = new Map(); for (const e of ons(r)) { const v = m.get(e.ord) || [Infinity, -Infinity]; m.set(e.ord, [Math.min(v[0], e.tick), Math.max(v[1], e.tick)]); } return [...m.entries()].sort((x, y) => x[0] - y[0]).map(([, v]) => v); };
+  const overlap = plants => [4096, 64, 1].some(b => { const r = scene(plants, b), sp = spans(r); return sp.length < 8 || n1(r.evs).length > 0 || sp.some((v, i) => i + 1 < sp.length && v[1] >= sp[i + 1][0]); });
+  plant(overlap(["swingPerStep"]), "E6 detects swing read at every step (a ratcheted step's sub-notes sound after the next step's on)");
+  const sp = spans(scene([], 64));
+  check(!overlap([]) && sp[3][0] === 13440 && sp[4][0] === 15360 && sp[5][0] === 19200,
+    "E6: swing 750 with 4 ratchets and swing 500 from sample 2500: no sub-note at or after the next step's on at block sizes 4096/64/1; the odd partner (step 3) keeps the swing (13440), the change applies from the next even step (4), so step 5 is straight (19200)");
+  // an odd step without its even partner reads the CURRENT swing: a seek at 4500 lands on odd step 5 right after step 4 latched 750; swing was set to 500 at 4200
+  const host = () => { const h = X.simHost({ sr: 8000, bpm: 120, startBeats: 0, playing: true }); h.set(4500, { seekBeats: 1.25 }); return h; };
+  const seek = plants => { const r = run({ core: mkCore(plants), block: 64, host: host(), total: 9000, base: { swing: 750, gate: 50 }, cfg: [{ at: 4200, set: { swing: 500 } }], ins: [K(0, "a", 60)] }); return ons(r).find(e => e.a >= 4500).tick; };
+  check(seek([]) === 19200, "E6: after a seek that lands on odd step 5 (no even partner in the new numbering) the step reads the current swing (500): tick 19200, not the stale 750's 21120");
 }
 
 // ---- 7. G4: the tick of every event is identical at 44.1 / 48 / 96 / 192 kHz ----------------
@@ -698,6 +715,26 @@ const swingDelayUs = (U, swing, k) => (k % 2 === 1 ? Math.floor(U * (2 * swing -
   check(at(syncR, "trig") === "1000,3000" && at(syncR, "off") === "4000", "TM4: SYNC mode on a stopped transport keeps stepping while the note rings (triggers at 1000 and 3000): only time mode changed");
 }
 
+// ---- 17e. TM5: time mode drops an earlier step's pending sub-notes at or after the next step's on (SPEC 5.1, E10, D-027) -------------------
+{
+  // 500 ms steps, 4 ratchets, gate 100 %: step 0's sub-notes at 0 1000 2000 3000 (8 kHz). At 800 the step time becomes 200 ms, so step 1 lands at 1600 with sub-notes at
+  // 1600 2000 2400 2800. Step 0's sub-notes at 2000 and 3000 are still pending then and are dropped (the one at 1000 has sounded and keeps its off).
+  const spill = (plants, block, us = 200000) => run({ core: mkCore(plants), block, total: 6000, userPattern: { length: 1, steps: [{ ratchet: 4 }] },
+    base: { rate_mode: "time", step_time_us: 500000, gate: 100, pattern: "user" }, cfg: [{ at: 800, set: { step_time_us: us } }], ins: [K(0, "a", 60)] });
+  const WANT = "0,1000,1600,2000,2400,2800,3200,3600", EXACT = "0,1000,2000,2500,3000,3500,4000,4500";   // EXACT: 250 ms, the next step lands ON step 0's sub-note at 2000
+  const badE10 = (plants, block, us = 200000, want = WANT) => {
+    const r = spill(plants, block, us), o = ons(r), step1 = o.find(e => e.ord === 1);
+    if (n1(r.evs).length > 0 || !step1) return "N1 or no step 1";
+    const seen = new Set();
+    for (const e of o) { const k = e.a + ":" + e.key; if (seen.has(k)) return "two ons of key " + e.key + " at " + e.a; seen.add(k); if (e.ord === 0 && e.a >= step1.a) return "step 0 sub-note at " + e.a + " after step 1's on at " + step1.a; }
+    return o.slice(0, 8).map(e => e.a).join() === want ? "" : "ons " + o.slice(0, 8).map(e => e.a).join();
+  };
+  plant(badE10(["keepSpilledRatchets"], 64) !== "", "E10 detects pending sub-notes of an earlier step surviving past the next step's on: " + badE10(["keepSpilledRatchets"], 64));
+  plant(badE10(["keepSpilledRatchets"], 64, 250000, EXACT) !== "", "E10 detects a sub-note landing in the SAME sample as the next step surviving it: " + badE10(["keepSpilledRatchets"], 64, 250000, EXACT));
+  check([4096, 64, 1].every(b => badE10([], b) === "" && badE10([], b, 250000, EXACT) === "") && streamOf(spill([], 4096).evs) === streamOf(spill([], 1).evs) && streamOf(spill([], 4096).evs) === streamOf(spill([], 64).evs),
+    "TM5 (E10): 500 ms steps with 4 ratchets, step time 200 ms at sample 800: ons at 0 1000 | 1600 2000 2400 2800 3200 3600 (step 0's sub-notes at 2000 and 3000 dropped); with 250 ms the next step lands ON step 0's sub-note at 2000 and that one is dropped too (0 1000 | 2000 2500 3000 3500); no key retriggered at one sample, N1 holds, identical at block sizes 4096/64/1");
+}
+
 // ---- 18. ST1: the step offset is step x the pattern's step size, in the pattern's unit (SPEC 4.3, 4.7, D-016) ---------------
 {
   const keysOf = (r, n) => ons(r).map(e => e.key).slice(0, n);
@@ -757,14 +794,22 @@ const swingDelayUs = (U, swing, k) => (k % 2 === 1 ? Math.floor(U * (2 * swing -
   const g = plants => { const o = ons(go(plants, { repeats: 2, latch: "append" }, gIns, { total: 40000 })); return o.filter(e => e.a < 20000).length !== 6 || o.filter(e => e.a >= 20000).length !== 8; };
   // (h) a morph of repeats (or steps / pattern) upward never revives an exhausted arp
   const h = plants => ons(go(plants, { repeats: 2 }, keys, { total: 40000, cfg: [{ at: 15000, set: { repeats: 8 } }, { at: 20000, set: { steps: 2, pattern: "gallop" } }, { at: 25000, set: { repeats: 0 } }] })).length !== 6;
+  // (j) E9, D-027: after the keys are released the count keeps running on the last non-empty C and the arp runs out exactly as if held. restart free (host clock), every step
+  //     fires a trigger, 1 repeat over C E G (C = 3 steps), keys pressed at 100 and let go at 1500: the triggers of the same chord held throughout, step 0 (before the
+  //     gesture, no count) then the 3 counted steps 1000 2000 3000. (j0) before the first gesture there is no count: with no key ever pressed every step fires.
+  const trigAt = r => r.evs.filter(e => e.t === "trig").map(e => e.a).join();
+  const jBase = { repeats: 1, restart: "free", pattern: "trg" }, wantJ = "0,1000,2000,3000";
+  const j = plants => trigAt(go(plants, jBase, [...keys, ...[0, 1, 2].map(i => O(1500, "k" + i))], { total: 20000 })) !== wantJ || trigAt(go(plants, jBase, keys, { total: 20000 })) !== wantJ;
+  const j0 = plants => go(plants, jBase, [], { total: 20000 }).evs.filter(e => e.t === "trig").length !== 20;
+  plant(j(["repeatsPauseWhileEmpty"]), "RP1 detects a count that pauses while no key is held (an arp let go before its repeats are done never runs out: triggers without end)");
   plant(f(["exhaustedStopsGuard"]), "RP1 detects a spent arp that stops consuming the once-guard (a burst of overdue steps at the next gesture)");
   plant(g(["onlyGestureResets"]), "RP1 detects a key-adding press (latch append) that does not restart the count");
   plant(h(["morphRevives"]), "RP1 detects a repeats morph that revives an exhausted arp");
   plant(a(["repeatsNeverStop"]) && b(["repeatsNeverStop"]), "RP1 detects repeats that never stop");
   plant(b(["repeatsCountPatternPasses"]) && a(["repeatsCountPatternPasses"]), "RP1 detects step-pattern passes counted instead of full cycles");
   plant(aTrig(["repeatsNeverStop"]), "RP1 detects triggers still firing after the repeats ran out");
-  check(!a([]) && !aTrig([]) && !b([]) && !c([]) && !d([]) && !e([]) && !f([]) && !g([]) && !h([]),
-    "RP1: 2 repeats of up over C E G = C E G C E G then silence (and no triggers); gallop + 1 step of +12 is 8 steps per cycle (12 notes in 2 cycles); 0 never stops; a latched chord stops and a new gesture restarts it; bar and free count from the gesture start; spent steps consume the once-guard (no burst at the next gesture); a key-adding latch press restarts the count; a repeats / steps / pattern morph never revives a spent arp");
+  check(!a([]) && !aTrig([]) && !b([]) && !c([]) && !d([]) && !e([]) && !f([]) && !g([]) && !h([]) && !j([]) && !j0([]),
+    "RP1: after the keys are released the count keeps running on the last non-empty C and the arp runs out as if held (E9); before the first gesture there is no count; 2 repeats of up over C E G = C E G C E G then silence (and no triggers); gallop + 1 step of +12 is 8 steps per cycle (12 notes in 2 cycles); 0 never stops; a latched chord stops and a new gesture restarts it; bar and free count from the gesture start; spent steps consume the once-guard (no burst at the next gesture); a key-adding latch press restarts the count; a repeats / steps / pattern morph never revives a spent arp");
 }
 
 // ---- 20. CH1: the chord stage (SPEC 14, D-018) --------------------------------------------------------------------------------------

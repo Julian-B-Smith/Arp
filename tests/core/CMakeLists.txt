@@ -7,7 +7,7 @@
 #   arp_shipped_smoke   links the shipped `arp_core` (NO ARP_PLANTS) and runs a short session
 # The plant-enabled binaries compile core.cpp themselves, with ARP_PLANTS, so the shipped
 # library target never contains a fault switch.
-set(ARP_TEST_SOURCES test_core.cpp test_m1b.cpp test_int128.cpp alloc_hook.cpp)
+set(ARP_TEST_SOURCES test_core.cpp test_m1b.cpp test_m2a.cpp test_m2b.cpp test_int128.cpp alloc_hook.cpp)
 find_package(Threads REQUIRED)   # U1 runs a real second thread against the triple buffer
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
