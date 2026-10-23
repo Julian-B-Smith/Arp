@@ -62,7 +62,7 @@ structure_gate() {
            SPINUP-BRIEF.md project.manifest.json integrations/README.md traces/README.md \
            intake/MANIFEST intake/note-vocabulary.md intake/engine-note-interface.md \
            intake/quantizer.md intake/tempo-divisions.md \
-           docs/prior-art.md spec/SPEC.md spec/params.json spec/bank/starter.json \
+           docs/prior-art.md spec/SPEC.md spec/params.json spec/bank/starter.json spec/MANIFEST \
            lab/arp-lab.html tools/lab_smoke.mjs \
            .gitattributes .github/workflows/ci.yml; do
     [ -e "$f" ] || { echo "verify: structure — missing $f" >&2; ok=1; }
@@ -96,24 +96,33 @@ PYG
 # bytes, not a "do not edit" note (kit README, gate rule). A re-pin is a human gate.
 # NOTE: horde wrote this MANIFEST with REPO-ROOT paths (`intake/x.md`), unlike
 # Echo's intake-relative ones — this gate is not a drop-in copy of Echo's.
-intake_gate() {
-  local m=intake/MANIFEST ok=0 h f got n=0
-  [ -f "$m" ] || { echo "verify: intake — $m missing" >&2; return 1; }
+# Shared by every hash-pinned directory: $1 = the directory, $2 = why it is pinned
+# (printed on failure). <dir>/MANIFEST holds "sha256  <repo-root path>" lines.
+pinned_dir_gate() {
+  local d=$1 why=$2 m=$1/MANIFEST ok=0 h f got n=0
+  [ -f "$m" ] || { echo "verify: $d — $m missing" >&2; return 1; }
   while read -r h f; do
     case "$h" in ''|'#'*) continue ;; esac
     n=$((n + 1))
     got=$(shasum -a 256 "$f" 2>/dev/null | cut -c1-64)
-    [ "$got" = "$h" ] || { echo "verify: intake — $f does not match its MANIFEST hash (intake is read-only)" >&2; ok=1; }
+    [ "$got" = "$h" ] || { echo "verify: $d — $f does not match its MANIFEST hash ($why)" >&2; ok=1; }
   done < "$m"
-  [ "$n" -gt 0 ] || { echo "verify: intake — no hashed files in $m" >&2; ok=1; }
-  # Unlisted files: everything under intake/ except the MANIFEST itself. Match
+  [ "$n" -gt 0 ] || { echo "verify: $d — no hashed files in $m" >&2; ok=1; }
+  # Unlisted files: everything under the directory except the MANIFEST itself. Match
   # the whole path field at end of line, so `intake/a.md` never vouches for `a.md`.
   while IFS= read -r f; do
     grep -qE "^[0-9a-f]{64}  ${f//./\\.}\$" "$m" \
-      || { echo "verify: intake — $f is not pinned in $m" >&2; ok=1; }
-  done < <(find intake -type f ! -name MANIFEST ! -name .DS_Store | sort)
+      || { echo "verify: $d — $f is not pinned in $m" >&2; ok=1; }
+  done < <(find "$d" -type f ! -name MANIFEST ! -name .DS_Store | sort)
   return $ok
 }
+intake_gate() { pinned_dir_gate intake "intake is read-only"; }
+
+# Spec pin (D-022): the RATIFIED 1.0 spec is a protected path. Same mechanism as the
+# intake pin, so "protected" is enforced, not just written in the charter. A
+# deliberate spec change = the human's gate + a decision record + a re-pin of
+# spec/MANIFEST in the same change.
+spec_gate() { pinned_dir_gate spec "the spec is RATIFIED (D-022): a change needs the human's gate and a re-pin"; }
 
 # The lab smoke needs Node. A missing interpreter is RED, never a skip: a
 # skipped invariant suite reads green while proving nothing (CI's ubuntu
@@ -146,6 +155,7 @@ fast() {
   structure_gate    || ok=1
   manifest_gate     || ok=1
   intake_gate       || ok=1  # intake/ is read-only: pinned bytes
+  spec_gate         || ok=1  # spec/ is RATIFIED (D-022): pinned bytes
   lab_smoke_gate    || ok=1  # Phase A: the lab twin's invariants, each proven on a plant
   # Grows per ROADMAP: the C++ invariant suite (M1).
   return $ok

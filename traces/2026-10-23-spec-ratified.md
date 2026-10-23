@@ -29,3 +29,8 @@
   - **a proposal:** pin `spec/` by hash in `./verify`, as `intake/` is, so
     the protection is enforced and not just stated. This needs the human's
     go-ahead (an edit to `./verify`).
+- **Follow-up (D-023, approved by poll):**
+  - `spec/` is pinned by hash in `./verify fast` (`spec_gate`, sharing
+    `pinned_dir_gate` with the intake pin);
+  - proven on plants: a SPEC.md edit, a new file, a params.json edit, and
+    the intake pin after the refactor all go red; clean is green.

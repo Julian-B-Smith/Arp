@@ -681,3 +681,18 @@ Phase A's gate is met:
 
 **Next: M1**, the self-contained C++20 core that horde copies in at our V1
 (D-015).
+
+## D-023 — The ratified spec is pinned by hash in ./verify (RATIFIED by poll, 2026-10-23)
+
+The human approved, by poll, enforcing D-022's "spec/ is protected" rather
+than only stating it:
+- `spec/MANIFEST` holds the sha256 of `SPEC.md`, `params.json` and
+  `bank/starter.json`;
+- `./verify fast` runs `spec_gate`, which is red on any unpinned edit or new
+  file under `spec/`;
+- the intake pin and the spec pin now share one helper, `pinned_dir_gate`.
+
+Both were proven on plants: an edit to SPEC.md, a new file, an edit to
+params.json, and the intake pin after the refactor all go red; the clean
+tree is green. A deliberate spec change is now three steps: the human's
+gate, a decision record, and a re-pin of `spec/MANIFEST` in the same change.
