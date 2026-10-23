@@ -132,3 +132,62 @@
      items 3 and 4. The lab keeps the M2b order for those.
   4. L2's refresh also refreshes the record's velocity and channel; they only matter when a chord note starts from that record (a later joiner), where they are the earliest
      live ref's, as SPEC 3 says for H.
+
+## Follow-up 2 — the focused critic re-check of `2b438f4` (D-028: E11, E12), 2026-10-23
+
+- **Queue item:** T-005 (ROADMAP M2), the follow-up dispatch after the re-check of `2b438f4`; authored by an implementer dispatch from the lead session. Working
+  tree uncommitted (the lead commits); the lead's own edits (DECISIONS, docs/spec-errata, spec/SPEC.md, spec/MANIFEST) were not touched. No public interface change:
+  `Plants` (test-only) grew 3 members (`cOnlyAtStep`, `edgeRevivesWhileEmpty`, `swingSpentNoLatch`); the private `Core` gained `activePattern()`, `cycleLength()`, `updateCycle()`.
+- **Why:** the re-check found no HIGH; the human decided E11 and E12 by poll (D-028) and the lead ordered the lab CORE to catch up (charter §Domain: "its CORE must keep matching the spec").
+  - **1. E11 (re-check M1).** `updateCycle()` sets `lastC_` / `hasLastC_` from the live H' and the settings in force (`active_`) after the post-input `chordSync` in `process()`,
+    whenever H' is non-empty; `evalStep` shares the C formula (`cycleLength`) and the pattern lookup (`activePattern`), so the two cannot drift. The evalStep comment is rewritten.
+    Known answers (RP1, restart free, a trigger on every step, repeats 1, 4 block sizes): (A) the first gesture ever a C tapped 100-500 -> triggers `0 1000` then none; (B) C E G
+    held 100-1500 (`0 1000 2000 3000`) then a key tapped 8100-8500 -> `9000` only. Plant `cOnlyAtStep` reads triggers without end (A) and `9000 10000 11000` (B).
+  - **2. E12 (re-check L2).** `edge()` clears `exhausted_` only if `refN_ > 0`; the Panic branch no longer clears it (Panic empties H, hence H', so E12 clears nothing there).
+    `repeatSteps_ := 0` is unchanged in both. T10 / `resetState` unchanged. Known answers (same session; release at 1500; 4 block sizes): a loop wrap (host seek to beat 0)
+    at 8000 -> still `0 1000 2000 3000`; a Panic at 8000 -> same; keys held, loop wrap -> fresh round `... 8000 9000 10000`. Plant `edgeRevivesWhileEmpty` reads `8000 9000 10000` appended
+    on both no-key cases.
+  - **3. Lab CORE parity.** The lab already forgot the bar index in `_reanchor` and in `_adopt` into `bar`; what it lacked, now ported: `_adopt` also forgets it into `free`
+    (as the core); `_reanchor` sets the landing step as the bar anchor (as the core does, re-derived at the next evaluated step), which is what makes plant
+    `reanchorKeepsLastBar` observable at all; the block-start chord sync yields to an input at offset 0; the swing pair latches only on an anchored step (`anchored` in
+    `_visit`, after `_adopt` / `_chordSync` as in the core); chord records refresh `rec.h` from H on every sync; E11 (`_updateCycle`, `_cycleLength`); E12 (`_edge`, Panic).
+    lab_smoke gained a check with a plant each, mirroring the core's known answers: 6c (swing unanchored / spent), 6d (restart bar: back into bar, jump), RP1 k and l,
+    CH1 t (block-start sync, both probes) and u (press order), TM5 (tie). The lab's plants: `chordSyncBlockStartFirst`, `adoptKeepsLastBar`, `reanchorKeepsLastBar`,
+    `swingLatchUnanchored`, `chordStalePressTime`, `cOnlyAtStep`, `edgeRevivesWhileEmpty`, `swingSpentNoLatch`.
+  - **4. L1 comment.** core.cpp (the `dropsTie` block) and its lab twin now say swing also queues a sub-note at or after the next step's GRID tick in both modes, and why the
+    tie-break is still correct: it only reorders the evaluation, the drop compares against the SWUNG on (`on0`), so a sub-note between the grid tick and the swung on survives; in
+    sync mode nothing drops and the earlier-kind-wins order stands. The code is unchanged.
+  - **5. L4.** New plant `swingSpentNoLatch` (a spent step clears the pair) for the spent-step latch known answer (core and lab); previously hand-mutated. New known answer pinning that
+    an E10 drop can remove the LAST sub-note of a step, the one carrying the tie look-ahead: time mode, `[ratchet 2, tie]`, 500 ms, gate 100: unchanged run ons `0 2000 8000`, the
+    second held to 8000; with 200 ms at sample 800 the sub-note at 2000 is dropped, ons `0 3200 4000`, step 0 is one note 0-2000 and the tie holds nothing. The existing plant
+    `keepSpilledRatchets` reads red on it; N1 holds; 4096 / 64 / 1.
+- **Evidence consulted:** SPEC 1.1, 2.5, 3, 4.5, 4.8 (as amended: E11, E12), 5.1, 14; DECISIONS D-028; docs/spec-errata.md; the M2a / M2b traces and this file's Follow-up; core.cpp (process, edge,
+  reanchor, evalStep, chordSync, dropSpilledSubnotes); the lab CORE (`_visit`, `_adopt`, `_reanchor`, `_edge`, `_chordSync`, `_evalStep`, `process`) and the lab_smoke RP1 / CH1 / TM5 / E6 sections.
+- **Alternatives rejected:** calling `updateCycle` also at the block-start sync (H' cannot go empty -> non-empty there: latch-off and pedal release only remove keys, a chord_* change keeps H' non-empty
+  iff H is); reading H' emptiness at an edge from `chordSet_` (the stage syncs AFTER `edge()` in `process()`, so a stage turned on in that block would read empty: `refN_` is right and equal);
+  clearing `exhausted` at Panic when keys were held just before (H is gone after the Panic and a revival with no keys is exactly what E12 forbids).
+- **Verify (base git `2b438f4`, tree uncommitted):** `bash tools/core_test.sh` exit 0 (406 passed per int128 path, was 398; smoke PASS; 3 guard lines), `python3 tools/core_params_check.py` exit 0,
+  `--plant` exit 1, `node tools/lab_smoke.mjs` OK (148 PASS lines, was 128), `./verify fast` exit 0. UBSan (`-O1 -fsanitize=undefined -fno-sanitize-recover=undefined`; the suite holds both int128
+  paths): 406 passed per path, 0 runtime errors. ASan / TSan not run (cannot start on this machine).
+- **Open questions (SPEC-GAPs, none blocks):**
+  1. SPEC 4.8 / E11 (spec/SPEC.md ~602-604; core.cpp `updateCycle`, ~1450): C at a press uses the settings in force (`active_`), not a pending morph that the next step would adopt first.
+     It is also refreshed at every input sync with H' non-empty, not only at the empty -> non-empty transition (idempotent: the step recomputes it from the same H').
+  2. SPEC 4.8 / E12 (spec/SPEC.md ~614-616; core.cpp ~401, ~816): an arp NOT yet exhausted, with no keys held, still has its count restarted by a loop wrap, a jump or a Panic
+     (`repeatSteps_ := 0`, `lastC_` kept), so trigger-only steps then run another full repeats x C round. E12 as written covers `exhausted` only. Hypothesis from the code, not pinned by any check.
+  3. H' emptiness at an edge is read as H (`refN_ > 0`): they differ only for a held key outside 0-127 with the chord stage on (its slots all drop).
+  4. The lab's chord-stage earliest-source tie-break is (press sample, slot) with Map insertion order after that; the core's third key is the source key (M2b SPEC-GAP 5). Not ported (not in the brief, no
+     known case where they differ for same-sample presses, which insert in ascending key order).
+
+### Follow-up 2b — E12 amended again: T6/T7 reset the COUNT only while H' is non-empty (D-028, human poll on open question 1), on branch `m2/repeats-followup`
+
+- **Why:** my open question 1 (an arp not yet exhausted, no keys, restarted its round at a loop wrap, jump or Panic) was decided by the human; SPEC 4.8 now says a round in progress finishes and stops.
+- **Changed:** `edge()` resets `repeatSteps_` only if `refN_ > 0`; the Panic branch no longer touches it (Panic empties H, so H' is empty after it: neither the count nor `exhausted` is touched). The same in the
+  lab (`_edge`, Panic). T10 / `resetState` unchanged. Plant `edgeResetsCountWhileEmpty` (core and lab) resets the count anyway. `edgeRevivesWhileEmpty` is redefined as the whole pre-D-028 behaviour
+  (resets the count AND clears `exhausted`): clearing the flag alone is re-latched at once by the still-spent count, so on its own it no longer fired on the E12 known answers.
+- **Known answers (RP1, restart free, a trigger on every step, 2 repeats over C E G, keys released at 3500; core at block sizes 4096 / 256 / 64 / 1, lab at 4096 / 64 / 7):** uninterrupted triggers `0 1000 2000 3000 4000 5000 6000`;
+  loop wrap at 4500, no keys -> `0 1000 2000 3000 4000 4500 5500` (the same 7 triggers); Panic at 4500, no keys -> the uninterrupted run; keys held, loop wrap at 4500 -> fresh round `... 4000 4500 5500 6500 7500 8500 9500`.
+  The plant reads `...4500 5500 6500 7500 8500 9500` (wrap) and `...5000 ... 10000` (Panic).
+- **Verify (tree uncommitted):** core_test exit 0, 409 passed per int128 path (was 406); core_params_check exit 0, `--plant` exit 1; lab_smoke OK, 151 PASS lines (was 148); `./verify fast` exit 0;
+  UBSan (`-O1 -fsanitize=undefined -fno-sanitize-recover=undefined`) 409 passed on both int128 paths, 0 runtime errors.
+- **Open question:** a Panic with keys held just before it: H' is empty AFTER the Panic, so the count is not reset (read literally "while H' is non-empty"). If the human meant "before", a Panic with keys held would
+  start a fresh round of trigger-only steps with no keys, which is what E12 forbids; flagged for the lead.

@@ -133,6 +133,11 @@ struct Plants {
   bool chordStalePressTime = false; // SPEC 3 / 14: a stored chord record keeps the press time it had when its key entered H, not the earliest LIVE ref's
   bool chordOnLate = false;         // G4 / CH1: a chord-stream NoteOn lands one sample after the input that caused it (96 kHz and up)
   bool chordOnTickSkew = false;     // G4 / CH1: a chord-stream NoteOn reports the tick one past the host's position at its sample
+  // ---- M2 re-check (D-028) ----
+  bool cOnlyAtStep = false;         // SPEC 4.8 E11: C is set only at an evaluated step with keys held (a chord tapped and released between two steps never sets it)
+  bool edgeRevivesWhileEmpty = false; // SPEC 4.8 E12: T6 and T7 reset the count and clear `exhausted` even with no key held (the pre-D-028 behaviour: a loop wrap, jump or Panic revives a used-up arp)
+  bool edgeResetsCountWhileEmpty = false; // SPEC 4.8 E12: T6 and T7 reset the repeat count even with no key held (a round in progress restarts after a loop wrap, jump or Panic)
+  bool swingSpentNoLatch = false;   // SPEC 5.1 E6 / L1: a spent step (4.8) does not latch the swing pair, so the odd step after it reads the current swing
 };
 #endif
 
@@ -259,6 +264,9 @@ class Core {
   void adopt(std::int32_t so);
   void evalStep(std::int64_t kAbs, std::int32_t so);
   void dropSpilledSubnotes(std::int64_t on0);
+  void activePattern(const PatternStep*& steps, std::int64_t& plen, std::int64_t& pSize, StepUnit& pUnit) const;
+  std::int64_t cycleLength(const PatternStep* steps, std::int64_t plen, int e) const;
+  void updateCycle();
   int heldForArp(HeldKey* out) const;
   std::int32_t lowestHeldKey() const;
   struct Note { std::int32_t key = 0, vel = 0, ch = 0; };

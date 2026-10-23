@@ -1,6 +1,6 @@
 # Arp — 1.0 specification (RATIFIED 2026-10-23, r2.12)
 
-> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026); E8, E9 and E10 approved 2026-10-23 (D-027).** This is a protected path: any change needs the human's
+> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026); E8, E9 and E10 approved 2026-10-23 (D-027); E11 and E12 approved 2026-10-23 (D-028).** This is a protected path: any change needs the human's
 > gate and a decision record. Revision history: r1 (2026-10-21) to r2.12 (2026-10-22); four independent reviews
 > (`docs/spec-review-r1..r4.md`).
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -594,11 +594,15 @@ pattern plays **per chord**, then the arp stops until the next gesture start.
     `C E G C E G`, then silence.
 - **The count runs from the gesture start**, whatever `restart` does:
   `repeatSteps` counts grid steps evaluated since the gesture's first step,
-  and resets only at a gesture start (and at T6/T7/T10).
+  and resets only at a gesture start (and at T6/T7 while H′ is non-empty,
+  and T10; E12).
   - `C` is recomputed from the live H at each step. **While H′ is empty, the
     last non-empty `C` is kept**, so the count keeps running after the keys
     are released and an arp let go before its repeats are done still
     exhausts (E9, D-027). Before the first gesture there is no count.
+    `C` is also set **the moment H′ becomes non-empty**, so a chord tapped
+    and released before the next step has its own cycle length and runs
+    out like a held one (E11, D-028).
   - When `repeatSteps ≥ repeats · C`, the arp is **exhausted**. Its steps are
     still **consumed by the once-guard** as silent rests, with no notes and no
     triggers, so no burst of overdue steps follows (r4 H4). Sounding notes end
@@ -608,7 +612,11 @@ pattern plays **per chord**, then the arp stops until the next gesture start.
     - **any NoteOn that adds a key to H**, under latch append or the pedal
       too (the human, by poll). That press also restarts `repeatSteps` at 0,
       without re-anchoring the pattern unless it is a gesture start;
-    - T6, T7 or T10.
+    - T6, T7 or T10. **T6 and T7 clear it only while H′ is non-empty**: with
+      no keys held, a loop, jump or Panic leaves an exhausted arp silent
+      until a key-adding press or a gesture start (E12, D-028). Likewise T6
+      and T7 reset `repeatSteps` only while H′ is non-empty: with no keys
+      held, a round in progress finishes and stops, never restarts (E12).
 
     Morphs of `repeats`, `steps` or `pattern` never revive an exhausted arp.
   - `C` uses `P` from the arp's held set **H′** (§14), not H (r4 L4).

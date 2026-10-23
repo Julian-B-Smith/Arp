@@ -397,8 +397,12 @@ void Core::edge() {
   if (plants.chordEndsAtEdge) { chordEndAll(0); chordSync(0); }   // plant: the r2.10 behaviour, chord notes end and restart at an edge
 #endif
   swingPairK_ = INT64_MIN;  // the step numbering restarts: no pair partner survives an edge (SPEC 5.1)
-  repeatSteps_ = 0;         // SPEC 4.8: T6 restarts the repeat count and clears `exhausted`
-  exhausted_ = false;
+  // SPEC 4.8 (E12, D-028): T6 restarts the repeat count and clears `exhausted` only while keys are held. With none, a loop or jump must neither revive a used-up arp
+  // nor start a fresh round of trigger-only steps: a round in progress finishes and stops. H' is empty iff H is (every held key keeps its +0 slot).
+  // Plants: edgeResetsCountWhileEmpty (resets the count anyway); edgeRevivesWhileEmpty (the M2 behaviour: resets the count AND clears `exhausted`; clearing the flag alone
+  // would be re-latched at once, the count still being spent).
+  if (refN_ > 0 || ARP_PLANT(edgeResetsCountWhileEmpty) || ARP_PLANT(edgeRevivesWhileEmpty)) repeatSteps_ = 0;
+  if (refN_ > 0 || ARP_PLANT(edgeRevivesWhileEmpty)) exhausted_ = false;
   active_.rate = S_.rate;   // SPEC-GAP: the rate is adopted immediately at an edge (13.8)
   L_ = curL();
   gO_ = 0;
@@ -656,8 +660,12 @@ EventSpan Core::process(const Block& b) {
       const I128 stepPos = I128::mul(gtick(lastEvaluated_ + 1), D_);
       const std::int64_t s = std::max<std::int64_t>(0, ofs(stepPos));
       // SPEC 5.1 (E10): "at or after the step's on" includes a sub-note landing in the SAME sample as the step: the step is evaluated first so it can
-      // drop that sub-note (it has no NoteOn yet). Without this tie-break the sub-note sounds first and the step's own on retriggers its key at that sample.
-      // Only time mode can queue a sub-note at or after the next step's tick; a sub-note BEFORE the step's tick keeps the earlier-kind-wins order.
+      // drop that sub-note (it has no NoteOn yet), else the sub-note sounds first and the step's own on retriggers its key at that sample. Only TIME
+      // mode drops, so only there does the tie-break apply. Swing also queues a sub-note at or after the next step's GRID tick (stepPos), in both
+      // modes: an even step's span runs to the odd step's SWUNG on, so its later sub-notes can sit past the odd step's grid tick. The tie-break is
+      // still right there: evaluating the step first reorders nothing the output shows, and the drop compares against the step's SWUNG on (on0), so a
+      // sub-note between the grid tick and the swung on survives and is emitted in its own time; only one at or after the swung on (straight swing:
+      // the grid tick itself) is dropped, which is what E10 asks. In sync mode nothing drops, so the earlier-kind-wins order stands.
       const bool dropsTie = s == t && kind == 2 && timeMode_ && !ARP_PLANT(keepSpilledRatchets) && pending_[idx].lane == 0 && !(pending_[idx].pos < stepPos);
       if (s < t || dropsTie) { t = s; kind = 3; }
     }
@@ -670,7 +678,10 @@ EventSpan Core::process(const Block& b) {
       input(b.in[ii++], so);
       // The chord stage follows H sample-exactly, but syncs after the LAST input event of a sample, so a key count going 1 -> 0 -> 1
       // inside one sample keeps its note (SPEC 14, r4 M3). Plant chordSyncPerEvent syncs after every event.
-      if (ARP_PLANT(chordSyncPerEvent) || !(ii < b.in.size() && b.in[ii].offset == b.in[ii - 1].offset)) chordSync(so);
+      if (ARP_PLANT(chordSyncPerEvent) || !(ii < b.in.size() && b.in[ii].offset == b.in[ii - 1].offset)) {
+        chordSync(so);
+        updateCycle();   // SPEC 4.8 (E11): H' may have just become non-empty
+      }
     } else if (kind == 1) {
       const NoteRef ref = sounding_[idx].ref;
       if (sounding_[idx].hasOff) ++counters_.rows[1];
@@ -805,8 +816,10 @@ void Core::input(const Event& e, std::int32_t s) {
       break;
     case EventType::Panic: {   // T7: release-all, clear H, latch state and the pedal, then forward Panic after the offs
       if (soundN_ > 0) ++counters_.rows[7];
-      repeatSteps_ = 0;   // SPEC 4.8: T7 restarts the repeat count and clears `exhausted`
-      exhausted_ = false;
+      // SPEC 4.8 (E12): T7 resets the count and clears `exhausted` only while H' is non-empty. Panic empties H (and so H'), so neither happens: the count in
+      // progress runs on and stops where an uninterrupted run would. Plants edgeResetsCountWhileEmpty / edgeRevivesWhileEmpty do each anyway.
+      if (ARP_PLANT(edgeResetsCountWhileEmpty) || ARP_PLANT(edgeRevivesWhileEmpty)) repeatSteps_ = 0;
+      if (ARP_PLANT(edgeRevivesWhileEmpty)) exhausted_ = false;
       refN_ = 0;
       ignoredN_ = 0;
       pedalDown_ = false;
@@ -1184,13 +1197,7 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
   const PatternStep* steps;
   std::int64_t plen, pSize;
   StepUnit pUnit;
-  if (a.pattern == Pattern::User) {
-    const UserPattern& u = userSlots_[static_cast<std::size_t>(r_)];
-    steps = u.steps; plen = u.length; pSize = u.stepSize; pUnit = u.stepUnit;
-  } else {
-    const std::size_t bi = static_cast<std::size_t>(a.pattern) < static_cast<std::size_t>(kBankCount) ? static_cast<std::size_t>(a.pattern) : 0;
-    steps = kBank[bi].steps; plen = kBank[bi].length; pSize = kBank[bi].stepSize; pUnit = kBank[bi].stepUnit;
-  }
+  activePattern(steps, plen, pSize, pUnit);
   if (ARP_PLANT(stepSizeIgnored)) { pSize = 12; pUnit = StepUnit::Semitones; }
   if (ARP_PLANT(stepOffsetReadsGlobal)) { pSize = a.stepSize; pUnit = a.stepUnit; }
   // SPEC 4.5: the anchor. `bar`: the first grid step at or after each bar start, m := 0 there. `free`: tick 0 of the active clock.
@@ -1222,19 +1229,17 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
   // Those are dropped here (none has a NoteOn yet, so none is owed a terminal). Done for every EVALUATED step, a spent one too.
   if (timeMode_ && !ARP_PLANT(keepSpilledRatchets)) dropSpilledSubnotes(on0);
   // SPEC 4.8: one repeat is one full cycle of the whole pattern, C grid steps: the step pattern, the order style (through every
-  // held note) and the transposition passes all come round together. C is recomputed from the live H' at each step; while H' is EMPTY the
-  // last non-empty C is kept (E9, D-027), so the count keeps running after the keys are released and an arp let go early still runs out
-  // (before the first gesture there is no C, hence no count). SPEC-GAP: T6 and T7 restart the count but keep the last C; only T10 forgets it.
-  // Once repeatSteps >= repeats * C the arp is EXHAUSTED, a latched flag: the
-  // step is still consumed by the once-guard (visit() already advanced it) as a silent rest, with no note, no trigger and no step record
-  // (13 note 18). Morphs of repeats, steps or pattern never revive it; only a gesture start, a key-adding NoteOn, T6, T7 or T10 does
-  // (noteOn, edge, input, resetState). C is worked out whenever keys are held, whatever `repeats` is, so a repeats morph after release
-  // never reads the cycle length of an older gesture. Plant repeatsPauseWhileEmpty: no check while H' is empty (the M2b behaviour).
+  // held note) and the transposition passes all come round together. C is recomputed from the live H' at each step and also the moment H'
+  // becomes non-empty (updateCycle, E11); while H' is EMPTY the last non-empty C is kept (E9, D-027), so the count keeps running after
+  // the keys are released and an arp let go early still runs out (before the first gesture there is no C, hence no count).
+  // SPEC-GAP: T6 and T7 keep the last C (and, with no keys held, the count itself); only T10 forgets it.
+  // Once repeatSteps >= repeats * C the arp is EXHAUSTED, a latched flag: the step is still consumed by the once-guard (visit() already
+  // advanced it) as a silent rest, with no note, no trigger and no step record (13 note 18). Morphs of repeats, steps or pattern never
+  // revive it; only a gesture start, a key-adding NoteOn, T6/T7 with keys held (E12) or T10 does (noteOn, edge, resetState). C is worked
+  // out whenever keys are held, whatever `repeats` is, so a repeats morph after release never reads the cycle length of an older gesture.
+  // Plant repeatsPauseWhileEmpty: no check while H' is empty (the M2b behaviour).
   if (e > 0) {
-    std::int64_t plays = 0;
-    for (std::int64_t q = 0; q < plen; ++q) plays += steps[q].on && !steps[q].tie && normPick(steps[q].pick) == kPickOrder;   // a static count: prob is ignored
-    const std::int64_t pn = periodOf(a.order, e, ARP_PLANT(orderTables)) * (a.steps + 1);
-    lastC_ = ARP_PLANT(repeatsCountPatternPasses) ? plen : plays > 0 ? plen * (pn / std::gcd(pn, plays)) : plen;
+    lastC_ = cycleLength(steps, plen, e);
     hasLastC_ = true;
   }
   if (a.repeats > 0 && (e > 0 || (hasLastC_ && !ARP_PLANT(repeatsPauseWhileEmpty))) && !ARP_PLANT(repeatsNeverStop) && (!exhausted_ || ARP_PLANT(morphRevives))) {
@@ -1242,7 +1247,10 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
     if (spent && !exhausted_) ++counters_.rows[20];   // T20: the repeats ran out
     exhausted_ = spent;
   }
-  if (exhausted_) return;
+  if (exhausted_) {
+    if (ARP_PLANT(swingSpentNoLatch)) swingPairK_ = INT64_MIN;   // plant (E6 / L1): a spent step does not latch the swing pair
+    return;
+  }
   ++repeatSteps_;
   StepRecord rec;
   rec.offset = so;
@@ -1420,6 +1428,42 @@ void Core::dropSpilledSubnotes(std::int64_t on0) {
     pending_[static_cast<std::size_t>(w++)] = p;
   }
   pendN_ = w;
+}
+
+// The step pattern in force: a bank entry, or the user pattern as it stood when this block began (SPEC 4.6).
+void Core::activePattern(const PatternStep*& steps, std::int64_t& plen, std::int64_t& pSize, StepUnit& pUnit) const {
+  if (active_.pattern == Pattern::User) {
+    const UserPattern& u = userSlots_[static_cast<std::size_t>(r_)];
+    steps = u.steps; plen = u.length; pSize = u.stepSize; pUnit = u.stepUnit;
+  } else {
+    const std::size_t bi = static_cast<std::size_t>(active_.pattern) < static_cast<std::size_t>(kBankCount) ? static_cast<std::size_t>(active_.pattern) : 0;
+    steps = kBank[bi].steps; plen = kBank[bi].length; pSize = kBank[bi].stepSize; pUnit = kBank[bi].stepUnit;
+  }
+}
+
+// SPEC 4.8: C = plays > 0 ? Ls * (P*(steps+1) / gcd(P*(steps+1), plays)) : Ls, for e >= 1 keys of H'. `plays` is a static count: prob is ignored.
+std::int64_t Core::cycleLength(const PatternStep* steps, std::int64_t plen, int e) const {
+  std::int64_t plays = 0;
+  for (std::int64_t q = 0; q < plen; ++q) plays += steps[q].on && !steps[q].tie && normPick(steps[q].pick) == kPickOrder;
+  const std::int64_t pn = periodOf(active_.order, e, ARP_PLANT(orderTables)) * (active_.steps + 1);
+  return ARP_PLANT(repeatsCountPatternPasses) ? plen : plays > 0 ? plen * (pn / std::gcd(pn, plays)) : plen;
+}
+
+// SPEC 4.8 (E11, D-028): C is also set the moment H' becomes non-empty, not only at an evaluated step with keys held. Otherwise a chord
+// tapped and released before the next step never gets a C: the first such tap would count nothing (triggers without end) and a later one
+// would borrow the previous chord's. Called after the post-input chordSync, so it sees the H' this input produced; uses the settings in
+// force (active_), like the step that would have read it. Plant cOnlyAtStep: the M2b rule, C only at an evaluated step.
+void Core::updateCycle() {
+  if (ARP_PLANT(cOnlyAtStep)) return;
+  HeldKey E[kMaxArpKeys];
+  const int e = heldForArp(E);
+  if (e == 0) return;
+  const PatternStep* steps;
+  std::int64_t plen, pSize;
+  StepUnit pUnit;
+  activePattern(steps, plen, pSize, pUnit);
+  lastC_ = cycleLength(steps, plen, e);
+  hasLastC_ = true;
 }
 
 void Core::queueTrigger(I128 pos, std::int32_t lane, std::int64_t ord) {
