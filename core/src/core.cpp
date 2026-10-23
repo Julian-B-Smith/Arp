@@ -1,37 +1,40 @@
-// core.cpp - Arp's note processor, M1a scope (ROADMAP T-003).
+// core.cpp - Arp's note processor, M1b scope (ROADMAP T-003, T-004).
 //
-// Implemented: SPEC 1 (block I/O, 1.1 event order, 1.2 identity, 1.3 capacities), 2.1-2.5 (tick
-// grid, exact three-band position, host + free clocks, epoch), 3 (held set), 4.1 (counters,
-// once-guard), 4.2 order `up`, 4.3 the plain one-step pattern, 4.4 velocity, 4.5 restart `chord`,
-// 5.1-5.2 (on-times, span, pending queue, gate incl. > 100 %, T2), 7 (terminals), 9, 10.
+// Implemented: SPEC 1 (block I/O, 1.1 event order, 1.2 identity, 1.3 capacities), 2.1-2.6 (tick grid, exact three-band
+// position, host + free clocks, epoch, TIME MODE with the smooth step-time sweep), 3 (held set), 4.1 (counters,
+// once-guard), 4.2 all 16 order styles, 4.3 every step-pattern field (bank embedded from spec/bank/starter.json, plus the
+// user pattern, 4.6), 4.4 velocity, 4.5 restart `chord`, 4.7 transposition steps and step offsets IN SEMITONES, 5.1-5.2
+// (on-times, span, ratchets, ties by look-ahead, gate incl. > 100 %, T2), 7 (terminals), 8 (triggers), 9, 10.
 //
-// SPEC-GAP: M1a - settings outside that scope are ACCEPTED AND IGNORED, never half-implemented:
-//   order != up (plays as `up`), pattern != none (plays as `none`), steps / step_size / step_unit,
-//   rate_mode = time / step_time_us (plays as sync), restart bar / free (plays as `chord`), repeats,
-//   quantize / scale_*, seed (the draw is not used by `up`), chord_* and the chord stage.
+// SPEC-GAP: M2 - settings outside that scope are ACCEPTED AND IGNORED, never half-implemented:
+//   step_unit = degrees (global or per pattern: played as SEMITONES until the effective scale exists, M2),
+//   restart bar / free (play as `chord`), repeats, quantize / scale_*, chord_* and the chord stage,
 //   swing (every step is straight; the SPEC 5.1 on-time formula is in place for M2 to feed).
-//   M1b / M2 replace each of these by the real behaviour; none changes the public seam.
 //
 // Everything is fixed-capacity: the only allocations are in prepare().
-#if defined(__FAST_MATH__)
-#error "arp core requires IEEE semantics (NaN/inf checks on the host's floats): build without -ffast-math"
+// (__FINITE_MATH_ONLY__ is predefined as 0 normally and 1 under -ffinite-math-only, so test its VALUE.)
+#if defined(__FAST_MATH__) || (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__)
+#error "arp core requires IEEE semantics (NaN/inf checks on the host's floats): build without -ffast-math / -ffinite-math-only"
 #endif
 
 #include "arp/core.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <iterator>
 
+#include "arp/bank_data.h"
 #include "arp/draw.h"
 
 namespace arp {
 
+static_assert(bankOrderMatchesPatternEnum(kBankIds, kBankCount, kPatternNames, static_cast<int>(Pattern::User)),
+              "arp::kBank (generated from spec/bank/starter.json) must list the patterns in the order of arp::Pattern, user last");
+
 namespace {
 
 constexpr std::int64_t kNever = INT64_MAX;
-constexpr std::int32_t kStepVel = 100;   // the plain step: vel 100 % (SPEC 4.3)
-constexpr std::int32_t kStepGate = 100;  // the plain step: gate 100 %
 constexpr std::int32_t kReleaseVel = 64;
 // SPEC-GAP: M1a - `swing` is accepted and ignored: every step is straight (500 permille). The on-time
 // formula below is already SPEC 5.1's, so M2 only has to read the clamped setting in place of this constant.
@@ -42,6 +45,57 @@ constexpr std::int64_t kStraightSwing = 500;
 std::int64_t rateTicks(Rate r) {
   const auto i = static_cast<std::size_t>(r);
   return i < std::size(kRateTicks) ? kRateTicks[i] : kRateTicks[static_cast<std::size_t>(Rate::R1_16)];
+}
+
+// Finite = the exponent bits are not all ones. Done on the bits, not with std::isfinite / a comparison, so that the answer
+// does not depend on the compiler's floating-point mode (the #error above is the first line of defence, this the second).
+bool finiteBits(double v) {
+  std::uint64_t b;
+  std::memcpy(&b, &v, sizeof b);
+  return ((b >> 52) & 0x7FF) != 0x7FF;
+}
+
+// SPEC 4.2: the length of one pass of an order style over e >= 1 held keys. `random` has no period of its own: e.
+// `tables` is the orderTables plant (bounce borrows bounce2's period).
+std::int64_t periodOf(Order o, int e, bool tables) {
+  switch (o) {
+    case Order::Bounce: return tables ? 2 * e : (e == 1 ? 1 : 2 * e - 2);
+    case Order::Bounce2: return 2 * e;
+    case Order::Chord: return 1;
+    case Order::PedalLow: case Order::PedalHigh: return e == 1 ? 1 : 2 * (e - 1);
+    case Order::ChordWalk: return e + 1;
+    case Order::Stride: return 2;
+    case Order::ChordBetween: return 2 * e;
+    case Order::Pairs: return e == 1 ? 1 : e - 1;
+    default: return e;   // up down played shuffle converge diverge random
+  }
+}
+
+// converge: E[0], E[e-1], E[1], E[e-2], ...
+std::int64_t convergeIndex(std::int64_t q, int e) { return q % 2 == 0 ? q / 2 : e - 1 - (q - 1) / 2; }
+
+std::int32_t normPick(std::int32_t v) { return v >= kPickOrder && v <= kPickChord ? v : kPickOrder; }
+
+// SPEC 4.6: numeric fields clamp to their ranges, an invalid pick or unit becomes its default.
+UserPattern validated(const UserPattern& in) {
+  UserPattern v;
+  v.length = static_cast<std::int32_t>(clampi(in.length, 1, kMaxUserSteps));
+  v.stepSize = static_cast<std::int32_t>(clampi(in.stepSize, -48, 48));
+  v.stepUnit = static_cast<std::uint8_t>(in.stepUnit) <= 1 ? in.stepUnit : StepUnit::Semitones;
+  for (int i = 0; i < v.length; ++i) {   // steps past `length` stay default, so equal patterns compare equal
+    const PatternStep& a = in.steps[i];
+    PatternStep& d = v.steps[i];
+    d.on = a.on;
+    d.tie = a.tie;
+    d.vel = static_cast<std::int32_t>(clampi(a.vel, 0, 200));
+    d.gate = static_cast<std::int32_t>(clampi(a.gate, 1, 200));
+    d.step = static_cast<std::int32_t>(clampi(a.step, -8, 8));
+    d.prob = static_cast<std::int32_t>(clampi(a.prob, 0, 100));
+    d.ratchet = static_cast<std::int32_t>(clampi(a.ratchet, 1, 4));
+    d.trig = static_cast<std::int32_t>(clampi(a.trig, 0, 8));
+    d.pick = normPick(a.pick);
+  }
+  return v;
 }
 
 // SPEC 1.1 order at one offset: offs, Panic, ons, triggers, pass-through.
@@ -100,6 +154,17 @@ bool Core::prepare(int sampleRate, int maxBlock) {
   steps_.assign(static_cast<std::size_t>(bound + 8), StepRecord{});
   counters_ = Counters{};
   resetState();
+  // LOW-A: an owed off still holds its ref id; a note emitted after prepare() must never share one with it
+  // (intake/note-vocabulary.md 1). The counter starts above the largest owed id (else at 0, SPEC 1.2).
+  if (!ARP_PLANT(owedIdCollision))
+    for (int i = 0; i < owedN_; ++i) idCounter_ = std::max(idCounter_, owed_[static_cast<std::size_t>(i)].id + 1);
+#ifdef ARP_PLANTS
+  if (plants.prepareResetsUser) {   // plant: the user pattern is "runtime state" and prepare() wipes it
+    latest_ = UserPattern{};
+    userSlots_[static_cast<std::size_t>(r_)] = UserPattern{};
+    mid_.store(mid_.load() & 3);
+  }
+#endif
   prepared_ = true;
   return true;
 }
@@ -128,6 +193,10 @@ void Core::resetState() {
   anchorK_ = 0;
   m_ = 0;
   stepSeq_ = 0;
+  timeMode_ = false;
+  D_ = static_cast<std::int64_t>(60) * sr_ * 1000;
+  gO_ = 0;
+  gK1_ = 0;
   haveActive_ = false;
   havePrevCont_ = false;
 #ifdef ARP_PLANTS
@@ -160,7 +229,7 @@ std::uint32_t Core::draw(std::uint32_t seed, std::int64_t x, std::uint32_t lane)
   static std::uint32_t plantedTicks = 0;   // shared across instances ON PURPOSE: two same-seed runs must differ
   if (plants.timeInDraw) seed ^= plantedTicks++;
 #endif
-  return arp::draw(seed, x, lane, epoch_);
+  return arp::draw(seed, x, lane, ARP_PLANT(drawIgnoresEpoch) ? 0 : epoch_);
 }
 
 std::size_t Core::heldKeyCount() const {
@@ -168,7 +237,56 @@ std::size_t Core::heldKeyCount() const {
   return static_cast<std::size_t>(collectHeld(tmp));
 }
 
+// SPEC 4.6, writer side. Validate, remember as the latest copy, and publish through the triple buffer: fill the writer's
+// private slot, then ONE atomic exchange hands it over as the fresh slot and returns the slot to write next. No lock,
+// nothing tears, a later call simply replaces an unconsumed earlier one. The audio thread never sees a slot being written.
+void Core::setUserPattern(const UserPattern& p) {
+  const UserPattern v = validated(p);
+#ifdef ARP_PLANTS
+  if (plants.userFirstWins && (mid_.load(std::memory_order_acquire) & kFresh)) return;   // plant: a write is dropped while an earlier one is unconsumed
+#endif
+  latest_ = v;
+#ifdef ARP_PLANTS
+  if (plants.swapMidStep) {   // plant: write the READER's slot in place, so an edit can land in the middle of a block
+    userSlots_[static_cast<std::size_t>(r_)] = v;
+    return;
+  }
+#endif
+  userSlots_[static_cast<std::size_t>(w_)] = v;
+  w_ = mid_.exchange(w_ | kFresh, std::memory_order_acq_rel) & 3;
+}
+
 // ------------------------------------------------------------------------------------------ time
+
+std::int64_t Core::curL() const {
+  return timeMode_ ? clampi(S_.stepTimeUs, 10000, 2000000) : rateTicks(S_.rate);
+}
+
+// SPEC 2.6: step_time_us changed (read at the block start). The next unevaluated step k1 = lastEvaluated + 1 lands at
+// max(lastTick + L_new, changeTick), later steps are spaced L_new: integer-exact, no burst, kAbs / m / swing parity carry
+// on, sounding notes keep their offs (T18). changeTick is the block-start position rounded up to a whole microsecond.
+void Core::timeRegrid() {
+  const std::int64_t Lnew = curL();
+  if (Lnew == L_) return;
+  if (ARP_PLANT(regridAbsolute)) return;   // plant: handled in visit() on absolute multiples
+  if (soundN_ > 0) ++counters_.rows[18];
+  if (hasLastEvaluated_ && lastEvaluated_ >= 0 && !ARP_PLANT(regridKAbs)) {   // a change before any step of the gesture just sets L (13b.10)
+    const std::int64_t lastTick = gtick(lastEvaluated_);
+    const std::int64_t changeTick = start_.ceilDiv(D_);
+    gO_ = std::max(lastTick + Lnew, changeTick);
+    gK1_ = lastEvaluated_ + 1;
+  }
+  L_ = Lnew;
+}
+
+// Plant regridAbsolute: r2.8's behaviour, a re-grid on absolute multiples of the new step time at the old step's tick.
+void Core::regridAbsolute(std::int64_t kAbs) {
+  const std::int64_t oldTick = kAbs * L_;
+  L_ = curL();
+  const std::int64_t kNew = cdiv(oldTick, L_);
+  lastEvaluated_ = kNew - 1;
+  if (hasAnchor_) anchorK_ = kNew - (kAbs - anchorK_);
+}
 
 // SPEC 2.3: s = cdiv(x - start, inc). Negative for a LATE event (after a forward re-base); callers clamp to 0.
 std::int64_t Core::ofs(I128 x) const {
@@ -202,7 +320,7 @@ std::int64_t Core::offTime(Sounding& s) {
 }
 
 std::int64_t Core::tempoMilli(const Transport& tr) {
-  if (tr.hasTempo && std::isfinite(tr.tempo)) {   // NaN / inf: as if no tempo were reported (the last valid one stays)
+  if (tr.hasTempo && finiteBits(tr.tempo)) {   // NaN / inf: as if no tempo were reported (the last valid one stays)
     double bpm = tr.tempo;
     if (!(bpm > 1)) bpm = 120;   // horde's rule: a tempo <= 1 means 120
     bpm = std::min(999.0, std::max(20.0, bpm));
@@ -214,7 +332,7 @@ std::int64_t Core::tempoMilli(const Transport& tr) {
 // The floating `beats` fallback is usable only if it is finite and small enough that every cast below is defined.
 // 1e10 quarter notes is about 1.9 years at 120 bpm, far beyond any session.
 static bool beatsUsable(const Transport& tr) {
-  return tr.hasRep || (std::isfinite(tr.beats) && std::fabs(tr.beats) <= 1e10);
+  return tr.hasRep || (finiteBits(tr.beats) && std::fabs(tr.beats) <= 1e10);
 }
 
 I128 Core::repOf(const Transport& tr) const {
@@ -230,7 +348,9 @@ void Core::edge() {
   if (soundN_) ++counters_.rows[6];
   releaseAll(0);
   active_.rate = S_.rate;   // SPEC-GAP: the rate is adopted immediately at an edge (13.8)
-  L_ = rateTicks(S_.rate);
+  L_ = curL();
+  gO_ = 0;
+  gK1_ = 0;
   freeRunning_ = false;
   epoch_ = 0;               // under the host clock epoch = 0 (SPEC 2.4)
   hasLastEvaluated_ = false;
@@ -274,6 +394,8 @@ void Core::freeStart(std::int32_t s) {
   freeRunning_ = true;
   lastEvaluated_ = -1;
   hasLastEvaluated_ = true;
+  gO_ = 0;           // time mode: step 0 lands on the press
+  gK1_ = 0;
   m_ = 0;
   anchorK_ = 0;   // the gesture anchors at tick 0 of the new origin
   hasAnchor_ = true;
@@ -295,16 +417,35 @@ EventSpan Core::process(const Block& b) {
   S_ = b.settings;
   absBase_ = absSample_;
   const Transport& tr = b.transport;
-  inc_ = tempoMilli(tr) * kTpq;
+  // SPEC 4.6: a published user pattern is taken ONCE per process(): it applies from the first step evaluated in this block
+  // and never mid-block (T17). The audio thread never touches the writer's slot.
+  if (mid_.load(std::memory_order_acquire) & kFresh) {
+    r_ = mid_.exchange(r_, std::memory_order_acq_rel) & 3;
+    ++counters_.rows[17];
+  }
+  // SPEC 2.6: in time mode a tick is one microsecond (D = sr, inc = 10^6 per sample) and the host's tempo, position and
+  // transport are ignored. Switching mode changes the unit of every stored position, so it is a clock switch (T6 / T19).
+  const bool tm = S_.rateMode == RateMode::Time;
+  bool modeSwitch = false;
+  if (tm != timeMode_) {
+    modeSwitch = clock_ != Clock::None;
+    timeMode_ = tm;
+    D_ = tm ? sr_ : static_cast<std::int64_t>(60) * sr_ * 1000;
+  }
+  inc_ = tm ? (ARP_PLANT(timeUsesTempo) ? tempoMilli(tr) * 1000000 / 120000 : 1000000) : tempoMilli(tr) * kTpq;
   if (!haveActive_) {   // the first block after prepare / reset adopts every setting at once
     active_ = S_;
     haveActive_ = true;
-    L_ = rateTicks(S_.rate);
+    L_ = curL();
   }
 
   // -- which clock, and where it starts (SPEC 2.2 three bands, 2.4)
-  bool edgeNow = false;
-  if (tr.playing && tr.hasBeats && beatsUsable(tr)) {   // unusable beats (NaN, inf, absurd): no beats timeline, so the free clock
+  bool edgeNow = modeSwitch;
+  if (modeSwitch) {
+    start_ = I128{};
+    if (soundN_ > 0) ++counters_.rows[19];
+  }
+  if (!tm && tr.playing && tr.hasBeats && beatsUsable(tr)) {   // unusable beats (NaN, inf, absurd): no beats timeline, so the free clock
     const I128 rep = repOf(tr);
     if (clock_ != Clock::Host) {
       edgeNow = true;
@@ -321,11 +462,12 @@ EventSpan Core::process(const Block& b) {
     if (clock_ == Clock::Host) {
       edgeNow = true;
       start_ = I128{};
-    } else {
+    } else if (!modeSwitch) {
       start_ = clock_ == Clock::None ? I128{} : next_;
     }
-    clock_ = Clock::Free;
+    clock_ = Clock::Free;   // the time clock IS the free clock, in microsecond units (SPEC 2.6)
   }
+  if (ARP_PLANT(timeAnchorsTransport) && tm) freeRunning_ = true;   // plant: the time grid runs from the start of the run, not from the key press
 #ifdef ARP_PLANTS
   if (plants.floatPosition) {
     tps_ = static_cast<double>(inc_) / static_cast<double>(D_);
@@ -363,7 +505,7 @@ EventSpan Core::process(const Block& b) {
       ++counters_.rows[5];
       enabled_ = true;
       active_.rate = S_.rate;   // SPEC-GAP: the rate is adopted at enable (the grid restarts anyway)
-      L_ = rateTicks(S_.rate);
+      L_ = curL();
       reanchor(0, true);
       // SPEC 13b.17 / 2.4 H7b: turning the arp on with keys held under the free clock starts the clock at offset 0
       // (epoch + 1), even if it was left "running" while disabled: otherwise the grid keeps its old origin and the
@@ -371,7 +513,8 @@ EventSpan Core::process(const Block& b) {
       if (clock_ == Clock::Free && refN_ > 0) freeStart(0);
     }
   }
-  maybeFreeStart(0);   // a clock switch with keys held (T6 edge) starts the free clock too
+  if (!(ARP_PLANT(timeEntryNoStart) && modeSwitch)) maybeFreeStart(0);   // a clock switch with keys held (T6 edge, or entering time mode) starts the free clock too
+  if (timeMode_) timeRegrid();
   // SPEC 13b.12: `latch` applies at OFFSET 0 of its block (it changes H); turning it off drops the LATCHED refs here.
   if (!ARP_PLANT(latchAtNextStep) && S_.latch != active_.latch) {
     if (S_.latch == Latch::Off) eraseRefs([](const Ref& r) { return r.state == RefState::Latched; });
@@ -387,7 +530,12 @@ EventSpan Core::process(const Block& b) {
       ++counters_.badInput;
     }
     if (clock_ == Clock::Free && freeRunning_ && refN_ == 0 && soundN_ == 0 && pendN_ == 0) freeRunning_ = false;   // idle (SPEC 2.4)
-    const bool running = enabled_ && (clock_ == Clock::Host || freeRunning_);
+    // SPEC 2.5 / 2.6: in TIME mode, while H is empty the time clock evaluates NO grid step (no notes, no triggers, trigger-only
+    // steps included) even if a note still rings or a sub-note is pending; those still sound and end on time (offs are never
+    // dropped). The clock itself keeps running until idle (SPEC 2.4) and the next gesture start re-bases it. Sync mode is
+    // unchanged: the free clock steps while anything sounds or is pending, the host clock regardless of H.
+    const bool timeHeldOnly = timeMode_ && refN_ == 0 && !ARP_PLANT(timeStepsWhileRinging);
+    const bool running = enabled_ && (clock_ == Clock::Host || freeRunning_) && !timeHeldOnly;
     if (running && !hasLastEvaluated_) {
       lastEvaluated_ = kAtOrAfter(posAt(static_cast<std::int32_t>(cur))) - 1;
       hasLastEvaluated_ = true;
@@ -408,7 +556,7 @@ EventSpan Core::process(const Block& b) {
       if (s < t) { t = s; kind = 2; idx = pi; }
     }
     if (running) {
-      const std::int64_t s = std::max<std::int64_t>(0, ofs(I128::mul((lastEvaluated_ + 1) * L_, D_)));
+      const std::int64_t s = std::max<std::int64_t>(0, ofs(I128::mul(gtick(lastEvaluated_ + 1), D_)));
       if (s < t) { t = s; kind = 3; }
     }
     const bool inWindow = ARP_PLANT(clampOffset) ? t <= n_ : t < n_;   // half-open window; the plant lets an event at n through
@@ -426,7 +574,16 @@ EventSpan Core::process(const Block& b) {
       const Pending p = pending_[idx];
       for (int q = idx + 1; q < pendN_; ++q) pending_[q - 1] = pending_[q];
       --pendN_;
-      emitOn(p, so);
+      if (p.lane > 0) {   // a TRIGGER (SPEC 8): a performance event with no state and no terminal
+        Event ev;
+        ev.type = EventType::Trigger;
+        ev.offset = so;
+        ev.lane = p.lane;
+        ev.tick = tickOf(p.pos);
+        pushNonNote(ev);
+      } else {
+        emitOn(p, so);
+      }
     } else {
       visit(so);
     }
@@ -626,7 +783,7 @@ void Core::noteOn(const Event& e, std::int32_t s) {
 
 void Core::gesture(std::int32_t s) {
   if (!enabled_) return;
-  if (clock_ == Clock::Free) { freeStart(s); return; }   // re-base the free clock at the press (H7a)
+  if (clock_ == Clock::Free && !(ARP_PLANT(timeAnchorsTransport) && timeMode_)) { freeStart(s); return; }   // re-base the free (or time) clock at the press (H7a)
   // Restart `chord` on the host clock: the anchor is the first step not yet evaluated at this sample (SPEC 13.4).
   if (!hasLastEvaluated_) {
     lastEvaluated_ = kAtOrAfter(posAt(s)) - 1;
@@ -692,7 +849,21 @@ int Core::collectHeld(HeldKey* out) const {
 // Called when the next unevaluated grid step's GRID tick lands at offset `so`.
 void Core::visit(std::int32_t so) {
   const std::int64_t kAbs = lastEvaluated_ + 1;
-  if (S_.rate != active_.rate) { switchRate(kAbs); return; }   // T15: a rate change applies at the next step of the OLD rate (SPEC 9)
+#ifdef ARP_PLANTS
+  if (plants.inactiveReanchors) {   // plant: a change of the INACTIVE timing setting restarts the order
+    const std::int64_t v = timeMode_ ? static_cast<std::int64_t>(S_.rate) : S_.stepTimeUs;
+    if (inactSeen_ >= 0 && inactSeen_ != v) m_ = 0;
+    inactSeen_ = v;
+  }
+#endif
+  // SPEC 2.6: `rate` is ignored in time mode and step_time_us in sync mode (a morph of the inactive one does nothing:
+  // no T15). In time mode a changed step_time_us was already folded into the grid at the block start (timeRegrid).
+  if (timeMode_) {
+    if (ARP_PLANT(regridAbsolute) && curL() != L_) { regridAbsolute(kAbs); return; }
+  } else if (S_.rate != active_.rate) {
+    switchRate(kAbs);   // T15: a rate change applies at the next step of the OLD rate (SPEC 9)
+    return;
+  }
   lastEvaluated_ = kAbs;
   adopt();
   if (!hasAnchor_) return;   // restart `chord`: no anchor before the first gesture (SPEC 2.5)
@@ -732,48 +903,248 @@ void Core::adopt() {
   active_ = t;
 }
 
-// SPEC 4.3 for the plain step (on, vel 100, gate 100, prob 100, ratchet 1, trig 0) and order `up`.
+// SPEC 4.2: the note(s) of one step, before transposition, as (key, velocity, channel). E is the held keys in pitch order
+// (no octave copies); several notes behave as a `chord` step. Returns the count (<= e, or 2 for pairs).
+int Core::notesFor(const HeldKey* E, int e, std::int64_t kAbs, std::int32_t pick, Note* out) const {
+  auto at = [&](int i, int shift = 0) { return Note{E[i].key + shift, E[i].vel, E[i].ch}; };
+  auto all = [&]() { for (int i = 0; i < e; ++i) out[i] = at(i); return e; };
+  if (pick == kPickChord) return all();
+  if (pick != kPickOrder) {   // an explicit pick plays its note without consuming the order stream
+    out[0] = at(pick >= 1 && pick <= 8 ? static_cast<int>(mod(pick - 1, e)) : pick == kPickLow ? 0 : e - 1);
+    return 1;
+  }
+  const Order o = active_.order;
+  const bool tables = ARP_PLANT(orderTables);
+  if (o == Order::Chord) return all();
+  if (o == Order::Played) {   // the press-order list Pp: by the earliest ref's press sample, ties by key
+    HeldKey P[kMaxHeldKeys];
+    for (int i = 0; i < e; ++i) P[i] = E[i];
+    for (int i = 1; i < e; ++i) {
+      const HeldKey h = P[i];
+      int j = i;
+      const bool tieDesc = ARP_PLANT(playedTieByKeyDesc);   // plant: ties of one press sample resolve to the HIGHER key first
+      while (j > 0 && (P[j - 1].abs > h.abs || (P[j - 1].abs == h.abs && (tieDesc ? P[j - 1].key < h.key : P[j - 1].key > h.key)))) { P[j] = P[j - 1]; --j; }
+      P[j] = h;
+    }
+    const HeldKey& h = P[mod(m_, e)];
+    out[0] = Note{h.key, h.vel, h.ch};
+    return 1;
+  }
+  if (o == Order::Random) {   // draw lane 0 (SPEC 10): a pure function of (seed, kAbs, epoch)
+    out[0] = at(static_cast<int>(draw(active_.seed, kAbs, 0) % static_cast<std::uint32_t>(e)));
+    return 1;
+  }
+  if (o == Order::Shuffle) {
+    out[0] = at(shuffleAt(e, fdiv(m_, e), mod(m_, e)));
+    return 1;
+  }
+  const std::int64_t p = mod(m_, periodOf(o, e, tables));
+  switch (o) {
+    case Order::Down: out[0] = at(static_cast<int>(e - 1 - p)); return 1;
+    case Order::Bounce: out[0] = at(static_cast<int>(tables ? (p < e ? p : 2 * e - 1 - p) : (p < e ? p : 2 * e - 2 - p))); return 1;
+    case Order::Bounce2: out[0] = at(static_cast<int>(p < e ? p : 2 * e - 1 - p)); return 1;
+    case Order::Converge: out[0] = at(static_cast<int>(convergeIndex(tables ? p + 1 : p, e) % e)); return 1;
+    case Order::Diverge: out[0] = at(static_cast<int>(convergeIndex(e - 1 - p, e))); return 1;
+    case Order::PedalLow: out[0] = at(static_cast<int>(p % 2 == 0 ? 0 : 1 + (p - 1) / 2)); return 1;
+    case Order::PedalHigh:
+      if (tables) { out[0] = at(static_cast<int>(p % 2 == 0 ? 0 : 1 + (p - 1) / 2)); return 1; }
+      out[0] = at(static_cast<int>(p % 2 == 0 ? e - 1 : e - 2 - (p - 1) / 2));
+      return 1;
+    case Order::ChordWalk:
+      if (p == 0) return all();
+      out[0] = at(static_cast<int>(p - 1));
+      return 1;
+    case Order::ChordBetween:
+      if ((p % 2 == 0) != tables) return all();
+      out[0] = at(static_cast<int>(tables ? p / 2 : (p - 1) / 2));
+      return 1;
+    case Order::Pairs:
+      if (e == 1) { out[0] = at(0); return 1; }
+      out[0] = at(static_cast<int>(p));
+      out[1] = at(static_cast<int>(p + 1));
+      return 2;
+    case Order::Stride:
+      if (p == 0) { out[0] = at(0); return 1; }   // the bass: the lowest held key
+      if (e == 1) { out[0] = at(0, 12); return 1; }   // one key held: the "rest" is that key + 12
+      for (int i = 1; i < e; ++i) out[i - 1] = at(i);
+      return e - 1;
+    default: break;   // Up (and a corrupt enum value)
+  }
+  out[0] = at(static_cast<int>(p));
+  return 1;
+}
+
+// shuffle (SPEC 4.2, D-012a). P_c is a Fisher-Yates of E using draw(seed, c*256 + i, 1, epoch) for i = e-1 .. 1; for c > 0
+// and e >= 2, if P_c[0] equals the LAST note of the previous cycle's (final) order, P_c[0] and P_c[1] swap. Returns the
+// index into E of position `pos` of cycle c.
+//
+// Allocation-free and O(e) with no memo. The previous cycle's last note needs no chain: for e >= 3 the swap never touches
+// the last slot, so it is the raw P_{c-1}[e-1]; for e = 2 the rule makes every cycle end on the same key (if P_c[0] equals
+// the previous last the swap moves it to the front-of-two, otherwise P_c[1] already is the previous last), so it is
+// P_0[1] for every c. tests/core/test_m1b.cpp (testOrderTables, shuffleReference) checks this against a literal replay of the spec's chain.
+int Core::shuffleAt(int e, std::int64_t c, std::int64_t pos) const {
+  auto raw = [&](std::int64_t cycle, int* P) {
+    for (int i = 0; i < e; ++i) P[i] = i;
+    for (int i = e - 1; i > 0; --i) {
+      const int q = static_cast<int>(draw(active_.seed, cycle * 256 + i, 1) % static_cast<std::uint32_t>(i + 1));
+      const int t = P[i]; P[i] = P[q]; P[q] = t;
+    }
+  };
+  int P[kMaxHeldKeys];
+  raw(c, P);
+  if (c > 0 && e >= 2 && !ARP_PLANT(shuffleBoundaryRepeat)) {
+    int Q[kMaxHeldKeys];
+    int prevLast;
+    if (e >= 3) { raw(c - 1, Q); prevLast = Q[e - 1]; } else { raw(0, Q); prevLast = Q[1]; }
+    if (P[0] == prevLast) { const int t = P[0]; P[0] = P[1]; P[1] = t; }
+  }
+  return P[pos];
+}
+
+// SPEC 4.3 for a whole step: probability, ties, order, pick, step offset, transposition, ratchets, gate, triggers.
 void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
+#ifdef ARP_PLANTS
+  if (plants.midBlockHook) plants.midBlockHook();   // U1: stands for another thread's setUserPattern landing now
+#endif
   const std::int64_t L = L_, D = D_;
+  const Settings& a = active_;
+  // -- the pattern: a bank entry, or the user pattern as it stood when this block began
+  const PatternStep* steps;
+  std::int64_t plen, pSize;
+  if (a.pattern == Pattern::User) {
+    const UserPattern& u = userSlots_[static_cast<std::size_t>(r_)];
+    steps = u.steps; plen = u.length; pSize = u.stepSize;
+  } else {
+    const std::size_t bi = static_cast<std::size_t>(a.pattern) < static_cast<std::size_t>(kBankCount) ? static_cast<std::size_t>(a.pattern) : 0;
+    steps = kBank[bi].steps; plen = kBank[bi].length; pSize = kBank[bi].stepSize;
+  }
+  // SPEC-GAP: M2 - a degree unit (global or per pattern) needs the effective scale: it plays as semitones for now.
+  if (ARP_PLANT(stepSizeIgnored)) pSize = 12;
+  if (ARP_PLANT(stepOffsetReadsGlobal)) pSize = a.stepSize;
+#ifdef ARP_PLANTS
+  if (plants.timeBarsCount && timeMode_ && a.restart != Restart::Chord) {   // plant (r2.8): bars of 61,440 us count in time mode
+    const std::int64_t bar = fdiv(kAbs * L_, 61440);
+    if (bar != plantLastBar_) { plantLastBar_ = bar; anchorK_ = cdiv(bar * 61440, L_); m_ = 0; }
+  }
+#endif
+  const std::int64_t k = kAbs - anchorK_, j = mod(k, plen);
+  const PatternStep st = steps[j];
   HeldKey E[kMaxHeldKeys];
   const int e = collectHeld(E);
   StepRecord rec;
   rec.offset = so;
   rec.kAbs = kAbs;
-  rec.k = kAbs - anchorK_;
+  rec.k = k;
   rec.mBefore = m_;
-  const std::int32_t ord = stepSeq_++;
-  if (e > 0) {   // prob 100 always fires, so there is no draw here; `up` has period e
-    const HeldKey h = E[mod(m_, e)];
-    ++m_;        // pick = order: m advances even when the key is dropped below (SPEC 4.3, 13.11)
+  const std::int64_t ord = stepSeq_++;
+  // SPEC 4.3 step 1: prob 0 never fires and 100 always does, exactly (a draw is a uniform 32-bit number mod 100)
+  const std::uint32_t dv = draw(a.seed, kAbs, 2) % 100;
+  const bool fires = ARP_PLANT(probLE) ? dv <= static_cast<std::uint32_t>(st.prob) : dv < static_cast<std::uint32_t>(st.prob);
+  // SPEC 5.1: on-times anchor at kAbs * L (never k * L); swing parity comes from kAbs.
+  const std::int64_t swingDelay = fdiv(L * (2 * kStraightSwing - 1000), 1000);   // 0 until M2
+  const std::int64_t srSkew = ARP_PLANT(srTickMath) ? sr_ / 44100 : 0;
+  auto onTick = [&](std::int64_t x) { return gtick(x) + (mod(x, 2) == 1 ? swingDelay : 0) + srSkew; };
+  const std::int64_t on0 = onTick(kAbs);
+  auto trigger = [&]() { if (fires && st.trig > 0) queueTrigger(I128::mul(on0, D), st.trig, ord); };   // at the FIRST on, once per step (SPEC 8)
+
+  if (st.tie && !ARP_PLANT(tieAtTieStep)) {
+    trigger();   // 2. a tie step plays no note and leaves m alone: the tie was honoured by look-ahead at the step that played
+  } else if (st.on && fires && e > 0) {
     rec.played = true;
-    if (h.key < 0 || h.key > 127) {   // an out-of-range key stays in E and is dropped only at output (T16)
-      ++counters_.rows[16];
-      ++counters_.keysDropped;
-    } else {
-      // SPEC 5.1: on-times anchor at kAbs * L (never k * L); swing parity comes from kAbs.
-      const std::int64_t swingDelay = fdiv(L * (2 * kStraightSwing - 1000), 1000);   // 0 until M2
-      const std::int64_t srSkew = ARP_PLANT(srTickMath) ? sr_ / 44100 : 0;
-      auto onTick = [&](std::int64_t x) { return x * L + (mod(x, 2) == 1 ? swingDelay : 0) + srSkew; };
-      const std::int64_t on0 = onTick(kAbs), span = onTick(kAbs + 1) - on0;
-      // SPEC 5.2: floor first, then gate; > 100 % is allowed, and every note lasts >= 1 tick
-      const std::int64_t gate = clampi(S_.gate, 1, 200);
-      const std::int64_t len = std::max<std::int64_t>(1, fdiv(span * gate * kStepGate, 10000));
-      // SPEC 4.4
-      const std::int64_t base = active_.velMode == VelMode::Fixed ? clampi(S_.velFixed, 1, 127) : h.vel;
-      Pending p;
-      p.pos = I128::mul(on0, D);
-      p.offPos = I128::mul(on0 + len, D);   // offs are scheduled in TICKS, so a tempo change moves them with the music
-      p.key = h.key;
-      p.vel = static_cast<std::int32_t>(clampi(fdiv(base * kStepVel + 50, 100), 1, 127));
-      p.ch = h.ch;
-      p.ord = ord;
-      queueOn(p);
+    const std::int32_t pick = ARP_PLANT(ignorePick) ? kPickOrder : normPick(st.pick);
+    // -- the held keys the style reads: the plant substitutes r2.6's merged octave range
+    const HeldKey* Es = E;
+    int es = e;
+#ifdef ARP_PLANTS
+    std::vector<HeldKey> merged;
+    if (plants.transposeMerged && a.steps > 0) {
+      for (std::int64_t t = 0; t <= a.steps; ++t)
+        for (int i = 0; i < e; ++i) {
+          HeldKey h = E[i];
+          h.key += static_cast<std::int32_t>(t * a.stepSize);
+          bool dup = false;
+          for (const HeldKey& q : merged) dup = dup || q.key == h.key;
+          if (!dup) merged.push_back(h);
+        }
+      std::sort(merged.begin(), merged.end(), [](const HeldKey& x, const HeldKey& y) { return x.key < y.key; });
+      if (merged.size() > static_cast<std::size_t>(kMaxHeldKeys)) merged.resize(static_cast<std::size_t>(kMaxHeldKeys));
+      Es = merged.data();
+      es = static_cast<int>(merged.size());
     }
+    const bool mergedOn = Es != E;
+#else
+    const bool mergedOn = false;
+#endif
+    Note nl[kMaxHeldKeys];
+    const int nn = notesFor(Es, es, kAbs, pick, nl);
+    // -- SPEC 4.7: the pass index t = mod(fdiv(m, P), steps + 1), P the order style's period over the live H; an explicit
+    // pick takes the CURRENT pass (13b.7). Semitones only in M1b: S = t * step_size + step * the PATTERN's step_size.
+    std::int64_t nSteps = a.steps;
+    if (ARP_PLANT(stepsZeroShifts)) nSteps = std::max<std::int64_t>(nSteps, 2);
+    const std::int64_t pass = (mergedOn || nSteps <= 0) ? 0 : mod(fdiv(m_, periodOf(a.order, es, ARP_PLANT(orderTables))), nSteps + 1);
+    const std::int64_t S = pass * a.stepSize + static_cast<std::int64_t>(st.step) * pSize;
+    // -- the keys: shift, DROP outside 0-127 (T16), collisions keep the earliest in the style's order
+    struct Out { std::int32_t key, vel, ch; };
+    Out outs[kMaxHeldKeys];
+    int no = 0;
+    for (int i = 0; i < nn; ++i) {
+      const std::int64_t key = nl[i].key + S;
+      if (key < 0 || key > 127) { ++counters_.rows[16]; ++counters_.keysDropped; continue; }
+      bool seen = false;
+      for (int q = 0; q < no; ++q) seen = seen || outs[q].key == key;
+      if (seen) continue;
+      // SPEC 4.4: round-half-up in integers
+      const std::int64_t base = a.velMode == VelMode::Fixed ? clampi(S_.velFixed, 1, 127) : nl[i].vel;
+      outs[no++] = Out{static_cast<std::int32_t>(key), static_cast<std::int32_t>(clampi(fdiv(base * st.vel + 50, 100), 1, 127)), nl[i].ch};
+    }
+    // -- SPEC 5.2: ties by look-ahead: the consecutive tie steps after this one, cyclic, at most length - 1, ignoring prob
+    std::int64_t t = 0;
+    if (!ARP_PLANT(tieAtTieStep)) while (t < plen - 1 && steps[mod(j + 1 + t, plen)].tie) ++t;
+    if (t > 0) ++counters_.rows[12];
+    // -- ratchets: sub-note i starts at on + fdiv(i * span, r); the length is floored first, then gated
+    const std::int64_t span = onTick(kAbs + 1) - on0, r = clampi(st.ratchet, 1, 4);
+    const std::int64_t gate = clampi(S_.gate, 1, 200);
+    for (std::int64_t i = 0; i < r; ++i) {
+      const std::int64_t subOn = on0 + fdiv(i * span, r);
+      std::int64_t len;
+      if (r == 1) len = std::max<std::int64_t>(1, fdiv(span * gate * st.gate, 10000));
+      else len = std::min(fdiv(span, r), std::max<std::int64_t>(1, fdiv(fdiv(span, r) * gate * st.gate, 10000)));
+      std::int64_t off = subOn + len;
+      if (i == r - 1 && t > 0) {   // the LAST sub-note runs on to the end of the last tied step
+        const std::int64_t x = kAbs + t, sp = onTick(x + 1) - onTick(x);
+        off = onTick(x) + std::max<std::int64_t>(1, fdiv(sp * gate * steps[mod(j + t, plen)].gate, 10000));
+      }
+      for (int q = 0; q < no; ++q) {
+        Pending p;
+        p.pos = I128::mul(subOn, D);
+        p.offPos = I128::mul(off, D);   // offs are scheduled in TICKS, so a tempo change moves them with the music
+        p.key = outs[q].key;
+        p.vel = outs[q].vel;
+        p.ch = outs[q].ch;
+        p.ord = ord;
+        queueOn(p);
+      }
+      if (ARP_PLANT(trigEveryRatchet) && i > 0 && fires && st.trig > 0) queueTrigger(I128::mul(subOn, D), st.trig, ord);   // plant: the trigger on every ratchet
+    }
+    if (pick == kPickOrder || ARP_PLANT(pickAdvancesM)) ++m_;   // only `order` picks consume the order stream, even if every key was dropped
+    trigger();
+  } else if (fires && st.trig > 0) {
+    trigger();   // 4. a rest (or e = 0) that fires its trigger: trigger-only (H11)
+  } else if (ARP_PLANT(advanceOnRest)) {
+    ++m_;
   }
   rec.mAfter = m_;
   if (static_cast<std::size_t>(stepsN_) < steps_.size()) steps_[static_cast<std::size_t>(stepsN_++)] = rec;
   else ++counters_.stepLogDropped;
+}
+
+void Core::queueTrigger(I128 pos, std::int32_t lane, std::int64_t ord) {
+  Pending p;
+  p.pos = pos;
+  p.offPos = pos;
+  p.lane = lane;
+  p.ord = ord;
+  queueOn(p);
 }
 
 void Core::queueOn(const Pending& p) {
@@ -841,7 +1212,7 @@ void Core::emitOn(const Pending& p, std::int32_t s) {
   ev.ref = ref;
   ev.key = p.key;
   ev.vel = p.vel;
-  ev.stream = Stream::Arp;   // every note the arp emits carries `arp` (SPEC 1, D-009)
+  ev.stream = (ARP_PLANT(untaggedOn) && ref.id % 7 == 3) ? Stream::Chord : Stream::Arp;   // every note the arp emits carries `arp` (SPEC 1, D-009)
   ev.tick = tickOf(p.pos);
   ev.stepSeq = p.ord;
   pushEvent(ev);   // cannot fail: room(2) above reserved this slot and the off's

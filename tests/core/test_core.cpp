@@ -20,9 +20,11 @@
 #include <set>
 #include <string>
 
+#include "arp/bank_data.h"
 #include "arp/draw.h"
 #include "harness.h"
 #include "test_int128.h"
+#include "test_m1b.h"
 
 using namespace arp_test;
 
@@ -99,9 +101,14 @@ Session sFree() {   // the free clock: transport stopped, live play; T14 on a ge
   return s;
 }
 
+Session sStyles() { return m1bSession("styles"); }
+Session sPatterns() { return m1bSession("patterns"); }
+Session sTimeMode() { return m1bSession("timemode"); }
+
 const std::vector<std::pair<const char*, Session (*)()>> kSessions = {
     {"held", sHeld}, {"enable", sEnable}, {"transport", sTransport}, {"panic", sPanic}, {"discrete", sDiscrete},
-    {"reset", sReset}, {"overflow", sOverflow}, {"short", sShort}, {"cap", sCap}, {"free", sFree}};
+    {"reset", sReset}, {"overflow", sOverflow}, {"short", sShort}, {"cap", sCap}, {"free", sFree},
+    {"styles", sStyles}, {"patterns", sPatterns}, {"timemode", sTimeMode}};
 
 Session sessionNamed(const char* name, const Plant& plants = {}) {
   for (const auto& kv : kSessions)
@@ -110,7 +117,7 @@ Session sessionNamed(const char* name, const Plant& plants = {}) {
 }
 
 // SPEC 7 rows this scope exercises (T12 ties, T17-T21 belong to M1b/M2).
-const int kRowsRequired[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16};
+const int kRowsRequired[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19};
 std::vector<int> missingRows(const std::int64_t* rows) {
   std::vector<int> m;
   for (int r : kRowsRequired) if (rows[r] == 0) m.push_back(r);
@@ -126,11 +133,11 @@ void testN1() {
   plant(!db.empty(), "N1 detects a doubled release: " + firstViolation(db));
   plant(!ss.empty(), "N1 detects a 1-tick note whose off lands at its own on sample: " + firstViolation(ss));
   { // the coverage detector itself: an empty set of sessions must read as missing rows
-    std::int64_t none[17] = {};
+    std::int64_t none[kRowCount] = {};
     plant(missingRows(none).size() == sizeof(kRowsRequired) / sizeof(int), "the row-coverage check reads red when no row acted");
   }
   std::vector<std::string> bad;
-  std::int64_t rows[17] = {}, events = 0;
+  std::int64_t rows[kRowCount] = {}, events = 0;
   Counters sum;
   for (const auto& kv : kSessions)
     for (int block : blocksFor(kv.first)) {
@@ -138,7 +145,7 @@ void testN1() {
       events += static_cast<std::int64_t>(r.evs.size());
       for (const std::string& b : n1(r)) bad.push_back(std::string(kv.first) + "@" + std::to_string(block) + ": " + b);
       const bool first = block == blocksFor(kv.first)[0];
-      if (first) for (int i = 0; i < 17; ++i) rows[i] += r.core->counters().rows[i];
+      if (first) for (int i = 0; i < kRowCount; ++i) rows[i] += r.core->counters().rows[i];
       if (first) sum.refused += r.core->counters().refused, sum.soundingOverflow += r.core->counters().soundingOverflow, sum.keysDropped += r.core->counters().keysDropped;
       if (r.core->counters().offsLost != 0) bad.push_back(std::string(kv.first) + ": a NoteOff found no room");
     }
@@ -301,8 +308,41 @@ std::string g4Diverges(const Plant& plants) {
   }
   return "";
 }
+// The M1b sessions are written in samples at 8 kHz; replaying one at another rate scales every position (rounded to the
+// nearest sample). Inputs and settings land on or between grid steps either way, and an input that sits exactly ON a step tick
+// still precedes that step at the rounded sample (the step is at cdiv, the input at the nearest), so the musical content is
+// the same and only the sample rate differs.
+Session atRate(Session s, int sr) {
+  auto sc = [sr](int at) { return static_cast<int>((static_cast<long long>(at) * sr + 4000) / 8000); };
+  s.sr = sr;
+  s.total = sc(s.total);
+  for (auto& i : s.ins) i.at = sc(i.at);
+  for (auto& c : s.cfg) c.at = sc(c.at);
+  for (auto& u : s.userEdits) u.first = sc(u.first);
+  for (auto& r : s.resets) r = sc(r);
+  return s;
+}
+std::string g4M1bDiverges(const Plant& plants, const char* name) {
+  std::string ref;
+  for (int sr : {48000, 44100, 96000, 192000}) {
+    Session s = atRate(m1bSession(name), sr);
+    s.plants = plants;
+    const Run r = run(s, 1024);
+    if (r.evs.size() < 100) return "too few events at " + std::to_string(sr);
+    const std::string t = tickStreamOf(r);
+    if (ref.empty()) ref = t; else if (t != ref) return "ticks differ at " + std::to_string(sr) + " Hz";
+  }
+  return "";
+}
+
 void testG4() {
   std::puts("G4: event ticks identical at 44.1 / 48 / 96 / 192 kHz");
+  for (const char* name : {"styles", "patterns"}) {
+    const std::string bad = g4M1bDiverges({"srTickMath"}, name);
+    plant(!bad.empty(), std::string("G4 detects a sample-rate-dependent value in tick math on the M1b session '") + name + "': " + bad);
+    const std::string d = g4M1bDiverges({}, name);
+    check(d.empty(), std::string("G4: the M1b session '") + name + "' (every order style / every pattern field, sync mode) has identical event ticks at 44.1, 48, 96 and 192 kHz" + d);
+  }
   plant(!g4Diverges({"srTickMath"}).empty(), "G4 detects a sample-rate-dependent value read into tick math: " + g4Diverges({"srTickMath"}));
   const std::string d = g4Diverges({});
   check(d.empty(), "G4: the tick of every event is identical at 44.1, 48, 96 and 192 kHz (three keys, a key released mid-run)" + d);
@@ -901,9 +941,25 @@ static void dumpDefaults() {
   for (std::size_t i = 0; i < std::size(arp::kRateNames); ++i) std::printf("rate_ticks.%s=%d\n", arp::kRateNames[i], arp::kRateTicks[i]);
 }
 
+// The COMPILED bank, for tools/core_params_check.py: one line per pattern header and per step.
+static void dumpBank() {
+  for (int i = 0; i < arp::kBankCount; ++i) {
+    const arp::PatternDef& p = arp::kBank[i];
+    std::printf("pattern.%s=%d,%d,%s\n", arp::kBankIds[i], p.length, p.stepSize, arp::kStepUnitNames[static_cast<std::size_t>(p.stepUnit)]);
+    for (int j = 0; j < p.length; ++j) {
+      const arp::PatternStep& s = p.steps[j];
+      std::printf("pattern.%s.%d=%d,%d,%d,%d,%d,%d,%d,%d,%d\n", arp::kBankIds[i], j, s.on, s.tie, s.vel, s.gate, s.step, s.prob, s.ratchet, s.trig, s.pick);
+    }
+  }
+}
+
 int main(int argc, char** argv) {
   if (argc > 1 && std::strcmp(argv[1], "--dump-defaults") == 0) {
     dumpDefaults();
+    return 0;
+  }
+  if (argc > 1 && std::strcmp(argv[1], "--dump-bank") == 0) {
+    dumpBank();
     return 0;
   }
   std::printf("arp core suite (int128 path: %s, plants: %s)\n", arp::kInt128IsNative ? "native" : "two-word fallback", arp::plantsCompiledIntoLibrary() ? "compiled in" : "OFF");
@@ -926,6 +982,7 @@ int main(int argc, char** argv) {
   testT11OneSample();
   testPrepareOwesOffs();
   testHostFloats();
+  runM1bTests();
   testTiming();
   testUpModel();
   std::printf("%s: %d passed, %d failed\n", tally().fail ? "FAIL" : "OK", tally().pass, tally().fail);

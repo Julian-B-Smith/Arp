@@ -684,6 +684,20 @@ const swingDelayUs = (U, swing, k) => (k % 2 === 1 ? Math.floor(U * (2 * swing -
   check(!badInact([]), "TM3: step_time_us is ignored in sync and rate in time mode: changing the inactive one leaves the stream byte-identical");
 }
 
+// ---- 17d. TM4: in time mode the clock evaluates NO step once H is empty, trigger-only steps included (SPEC 2.5, 2.6) ---------------
+{
+  // [note at gate 200 %, rest + trigger 3], global gate 200: the note lasts 4000 samples; the key is released at 1500
+  const rel = (plants, time) => run({ core: mkCore(plants), block: 64, total: 9000, userPattern: { length: 2, steps: [{ gate: 200 }, { on: false, trig: 3 }] },
+    base: Object.assign({ pattern: "user", gate: 200 }, time ? { rate_mode: "time", step_time_us: 125000 } : {}),
+    host: time ? undefined : X.simHost({ sr: 8000, bpm: 120, startBeats: 0, playing: false }), ins: [K(0, "a", 60), O(1500, "a")] });
+  const at = (r, t) => r.evs.filter(e => e.t === t && e.a < 9000).map(e => e.a).join();
+  const badTM4 = plants => { const r = rel(plants, true); return at(r, "trig") !== "1000" || at(r, "off") !== "4000" || n1(r.evs).length > 0; };
+  plant(badTM4(["timeStepsWhileRinging"]), "TM4 detects a trigger-only step still firing after the release while the note rings (the old 2.4 idle in time mode)");
+  check(!badTM4([]), "TM4: time mode, key released at 1500 with the note still ringing: the trigger fires once (1000, key held), NOT at 3000; the note's off stays at 4000; N1 holds");
+  const syncR = rel([], false);
+  check(at(syncR, "trig") === "1000,3000" && at(syncR, "off") === "4000", "TM4: SYNC mode on a stopped transport keeps stepping while the note rings (triggers at 1000 and 3000): only time mode changed");
+}
+
 // ---- 18. ST1: the step offset is step x the pattern's step size, in the pattern's unit (SPEC 4.3, 4.7, D-016) ---------------
 {
   const keysOf = (r, n) => ons(r).map(e => e.key).slice(0, n);

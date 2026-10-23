@@ -1,6 +1,6 @@
 # Arp — 1.0 specification (RATIFIED 2026-10-23, r2.12)
 
-> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024).** This is a protected path: any change needs the human's
+> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025).** This is a protected path: any change needs the human's
 > gate and a decision record. Revision history: r1 (2026-10-21) to r2.12 (2026-10-22); four independent reviews
 > (`docs/spec-review-r1..r4.md`).
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -113,7 +113,9 @@ sample (H4).
 - Output notes get **Arp's own refs**: `(port 0, channel, key, id)`.
   - `channel` is that of the source held key.
   - `id` comes from a per-instance counter that starts at 0 at `prepare` and
-    `reset`, which makes ids deterministic.
+    `reset`, which makes ids deterministic. When `prepare` leaves notes still
+    owed a NoteOff (T10), the counter starts above the largest owed id instead,
+    so a new note never shares a ref with an owed off (E4, D-025).
 - A `NoteOff` carries exactly its `NoteOn`'s ref.
 - Arp emits base keys only; it never bends.
 
@@ -246,6 +248,9 @@ It behaves like the free clock (§2.4):
   press;
 - it re-bases at every gesture start, shifting pending positions exactly
   (T14), with the epoch incremented;
+- it evaluates **no step while H is empty** (§2.5), even while a note still
+  rings or a ratchet sub-note is pending: no notes and no triggers. Notes
+  already scheduled still sound and end on time (E5, D-025);
 - it stops when Arp is idle.
 
 The host's tempo, position and transport edges are **ignored** in time mode

@@ -7,11 +7,11 @@ lives in `DECISIONS.md`; horde's terms are in `intake/` and `SPINUP-BRIEF.md`.
 ## Status
 
 - **Phase:** **Phase A DONE 2026-10-23**: the spec is RATIFIED (D-022) and protected, and functionality is frozen (D-018).
-  **M1a (the C++ skeleton, T-003) is current**; then M1b, M2, M3 (ROADMAP §Phases).
+  M1a (T-003) merged; **M1b (T-004) gate met 2026-10-23, in its PR**; then M2, M3 (ROADMAP §Phases).
 - **Oracle:** `./verify fast` = kit integrity, leak gate, private-name gate,
-  structure, manifest, intake pin, and the **lab smoke** (SPEC §11: N1, G1–G5,
-  D1, Q1–Q4, R1, P1, T1, S1, K1, C1, the order styles; each proven on a planted
-  fault; about 0.3 s). The C++ suite arrives at M1. `full` = `fast` for now.
+  structure, manifest, intake pin, spec pin, the **lab smoke** (SPEC §11, each
+  check proven on a planted fault) and the **C++ core suite** on both int128 paths
+  (189 checks each after M1b) plus the params and bank drift checks. `full` = `fast` for now.
 - **Functionality freeze (the human, 2026-10-22, D-018): IN EFFECT** once the repeats and chord-stage PR merges. 1.0
   scope is frozen; any further feature needs an explicit unfreeze decision. Next: play the lab, ratify the spec, M1.
 - **Hard date:** horde's module cutoff **2026-12-11**. The 1.0 arpeggiator
@@ -110,7 +110,7 @@ not a parity target.
   - every planted control is proven to fire, recorded in a trace;
   - an independent critic review has no open HIGH findings.
 
-### M1b — C++ core: every order style, pattern field and clock (T-004) ← next
+### M1b — C++ core: every order style, pattern field and clock (T-004) — gate met 2026-10-23
 - **First, the M1a critic's two LOWs** (re-check, 2026-10-23):
   - **LOW-A:** after a `prepare()` that leaves owed offs, start the output id counter above the largest owed id,
     so an owed off and a new note never share a ref (`intake/note-vocabulary.md` §1).
@@ -121,23 +121,23 @@ not a parity target.
     `shuffle` without back-to-back repeats;
   - every step-pattern field (§4.3): tie look-ahead, ratchets, probability,
     triggers, picks, and `step` × the pattern step size;
-  - transposition steps in semitones and degrees (§4.7) and the six-stage
-    offsets;
+  - transposition steps and step offsets in **semitones** (§4.7, §4.3). The **degree** unit needs the effective
+    scale and the quantize stage, so it moves to M2 (approved by the human, D-025);
   - the user pattern (§4.6), triple-buffered, storage from construction;
   - time mode (§2.6), with the smooth step-time sweep.
-- **Gate:** R1, U1, X1, ST1, TM1–TM3, K1, T1, P1, N2, S1 and the
-  order-style tables, each with its plant; the M1a suite still green; a
-  critic review with no open HIGH.
+- **Gate:** R1, U1, X1 and ST1 (their semitone parts), TM1–TM3, K1, T1, P1, N2, S1 and the order-style tables,
+  each with its plant; the M1a suite still green; a critic review with no open HIGH.
 
 ### M2 — C++ core: scale, feel, restart, morph, chord stage (T-005)
 - **Scope:**
   - quantize: global or own scale, `scale` or `chord_root`, the `lastQ`
     tie chain and its resets (§6);
+  - the **degree** unit for transposition and step offsets, and the full six-stage offset order (§4.7);
   - swing and velocity;
   - restart and repeats (§4.5, §4.8);
   - the morph timing of discrete and continuous settings (§9);
   - the chord stage with its own stream and sounding table (§14).
-- **Gate:** Q1–Q5, G3, RP1, CH1 and the remaining §11 rows, each with its
+- **Gate:** Q1–Q5, G3, RP1, CH1, X1 and ST1 (their degree parts) and the remaining §11 rows, each with its
   plant; every M1 check still green; a critic review with no open HIGH.
 
 ### Cross-check (Layer-E, measured, never a gate) (T-006)
@@ -201,6 +201,12 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 - **Scope:** `core/`, `tests/core/` (the C++ test runner), the `./verify` wiring (approved by poll, 2026-10-23).
 - **Acceptance criteria:** the M1a gate above.
 - **Out of scope:** everything listed for M1b and M2.
+
+### T-004 — M1b: every order style, pattern field and clock
+- **Status:** gate met 2026-10-23: 189 checks per int128 path in `./verify fast`, every plant fires, and the independent critic review found **no HIGH**; its MEDs settled by the human (D-025: errata E4, E5, the degree unit to M2) and its LOWs fixed. Trace: `traces/2026-10-23-m1b-styles-patterns.md`. In the M1b PR.
+- **Scope:** `core/`, `tests/core/`, the trace.
+- **Acceptance criteria:** the M1b gate above.
+- **Out of scope:** everything listed for M2.
 
 ## Open questions (blocking — ask the human or horde)
 

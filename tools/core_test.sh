@@ -28,6 +28,29 @@ if grep -E "warning:" "$log" >/dev/null 2>&1; then
   cat "$log"; echo "FAIL  core_test: the build printed warnings"; exit 1
 fi
 echo "PASS  core_test: built (Release, -Wall -Wextra, warnings clean)"
+
+# Must-fail builds (LOW-B): the core refuses to compile under -ffast-math / -ffinite-math-only, where the NaN / inf checks on
+# the host's floats could be optimised away. The control compiles the same file WITHOUT the flag and must succeed, so a
+# refusal is proven to come from the flag and not from some other breakage.
+cxx="${CXX:-c++}"
+guard_log="$(mktemp)"
+trap 'rm -f "$log" "$guard_log"' EXIT
+guard_rc=0
+if "$cxx" -std=c++20 -I"$repo/core/include" -fsyntax-only "$repo/core/src/core.cpp" >"$guard_log" 2>&1; then
+  echo "PASS  guard control: core.cpp compiles without a math flag"
+else
+  cat "$guard_log"; echo "FAIL  guard control: core.cpp does not compile even without a math flag"; guard_rc=1
+fi
+for flag in -ffast-math -ffinite-math-only; do
+  if "$cxx" -std=c++20 $flag -I"$repo/core/include" -fsyntax-only "$repo/core/src/core.cpp" >"$guard_log" 2>&1; then
+    echo "FAIL  guard: core.cpp compiled under $flag (it must be refused)"; guard_rc=1
+  elif grep -q "IEEE semantics" "$guard_log"; then
+    echo "PASS  guard: core.cpp is refused under $flag (the #error fired)"
+  else
+    cat "$guard_log"; echo "FAIL  guard: core.cpp failed under $flag but not with the IEEE-semantics #error"; guard_rc=1
+  fi
+done
+[ "$guard_rc" = 0 ] || exit 1
 [ "${1:-}" = "build" ] && exit 0
 
 rc=0
