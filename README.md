@@ -6,7 +6,7 @@ library that horde runs ahead of its engine, plus a browser lab for playing it. 
 user-facing name is cleared before release.
 
 **Status: the 1.0 spec is RATIFIED (2026-10-23) and functionality is frozen.** The spec was four times independently
-reviewed, and the lab plays all of it. Next: the C++ core (M1).
+reviewed, and the lab plays all of it. The C++ core is under way: M1a (the skeleton) is built; M1b next.
 To play it:
 
 ```bash
@@ -68,7 +68,7 @@ landed" (replaying the timing of your presses) is held for after 1.0: `docs/defe
 | `docs/deferred/` | Designs held for after 1.0 (`landed.md`) | live |
 | `lab/patterns/` | Your saved build-your-own patterns (`arp-user-pattern/1` JSON, listed in `index.json`) | live: "Broken chord stabs" |
 | `index.html` | Root landing page: redirects to the lab | done |
-| `core/` | C++ core | not yet built (M1) |
+| `core/` | The C++20 core (standard library only, self-contained; horde copies it in). `tests/core/` is its invariant suite; `tools/core_test.sh` builds and runs it | **M1a skeleton built**: clocks, held set, order `up`, terminals; 94 checks on both int128 paths, in `./verify fast`. M1b next |
 | `verify` | The oracle: `./verify fast` / `full` / `report` | live |
 
 ## Neighbours

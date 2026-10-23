@@ -64,6 +64,7 @@ structure_gate() {
            intake/quantizer.md intake/tempo-divisions.md \
            docs/prior-art.md spec/SPEC.md spec/params.json spec/bank/starter.json spec/MANIFEST \
            lab/arp-lab.html tools/lab_smoke.mjs \
+           core/CMakeLists.txt core/include/arp/core.h core/src/core.cpp tools/core_test.sh tools/core_params_check.py \
            .gitattributes .github/workflows/ci.yml; do
     [ -e "$f" ] || { echo "verify: structure — missing $f" >&2; ok=1; }
   done
@@ -146,6 +147,24 @@ lab_smoke_gate() {
   return 1
 }
 
+# The C++ core (M1a, T-003; approved by poll 2026-10-23): build and run the invariant
+# suite on BOTH int128 paths plus the shipped-library smoke, and check the C++
+# settings defaults against spec/params.json. Every check is proven on a planted
+# fault inside the suite (ARP_PLANTS, a test-only build flag). A missing cmake or
+# compiler is RED, never a skip: a skipped suite reads green while proving nothing.
+# Warm runs take ~1.5 s; a cold build ~25 s.
+core_gate() {
+  command -v cmake >/dev/null 2>&1 || { echo "verify: core — cmake not found; the C++ suite cannot run" >&2; return 1; }
+  local ok=0
+  bash tools/core_test.sh >"$HARNESS_DIR/core_test.out" 2>&1 || {
+    echo "verify: core suite RED — full output in $HARNESS_DIR/core_test.out:" >&2
+    grep -E 'FAIL|error' "$HARNESS_DIR/core_test.out" | head -20 | sed 's/^/    /' >&2; ok=1; }
+  python3 tools/core_params_check.py >"$HARNESS_DIR/core_params.out" 2>&1 || {
+    echo "verify: core defaults drifted from spec/params.json:" >&2
+    grep -E 'RED|FAIL' "$HARNESS_DIR/core_params.out" | head -10 | sed 's/^/    /' >&2; ok=1; }
+  return $ok
+}
+
 fast() {
   # ---- Layer-0: seconds, not minutes. CI-blocking. -------------------------
   local ok=0
@@ -157,7 +176,7 @@ fast() {
   intake_gate       || ok=1  # intake/ is read-only: pinned bytes
   spec_gate         || ok=1  # spec/ is RATIFIED (D-022): pinned bytes
   lab_smoke_gate    || ok=1  # Phase A: the lab twin's invariants, each proven on a plant
-  # Grows per ROADMAP: the C++ invariant suite (M1).
+  core_gate         || ok=1  # M1a: the C++ core's invariant suite (both int128 paths), each proven on a plant
   return $ok
 }
 
