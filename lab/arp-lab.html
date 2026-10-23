@@ -2788,6 +2788,9 @@ class ArpCore {
   }
   function rollOff(e, when) { const n = roll.byId.get(e.ref.id); if (n) { n.off = when; roll.byId.delete(e.ref.id); } }
   const EXAMPLE_CHORD = [60, 63, 67];        // C3 minor in Live's naming, used when nothing is held
+  // With the chord stage on, the stage MAKES the chord, so the example is one note. Feeding it a triad stacks a
+  // triad on each of its notes (C Eb G + {+4, +7} = 7 keys), which the preview then faithfully drew as "too many notes".
+  const EXAMPLE_NOTE = [60];
   const gcd = (a, b) => b ? gcd(b, a % b) : a;
   // The step length in ticks of the clock in use: a sync division, or step_time_us microseconds in time mode (SPEC 2.6).
   const stepLen = S => S.rate_mode === "time" ? S.step_time_us : rateTicks(S.rate);
@@ -2811,7 +2814,9 @@ class ArpCore {
     let H = [];
     try { H = eng.core._held().slice().sort((a, b) => a.abs - b.abs); } catch (err) { H = []; }   // press order
     if (!H.length) H = [...pressed.keys()].sort((a, b) => a - b).map(k => ({ key: k, vel: 100 }));
-    return H.length ? { keys: H, example: false } : { keys: EXAMPLE_CHORD.map(k => ({ key: k, vel: 100 })), example: true };
+    if (H.length) return { keys: H, example: false };
+    const ex = effective().chord_enabled ? EXAMPLE_NOTE : EXAMPLE_CHORD;
+    return { keys: ex.map(k => ({ key: k, vel: 100 })), example: true, exampleLabel: ex.length === 1 ? "Example note C3" : "Example chord C3 E♭3 G3" };
   }
   function computePreview(S, held, cap = 64) {
     const pat = patternById(S.pattern);
@@ -2865,7 +2870,7 @@ class ArpCore {
     pvKey = key; pvAt = now;
     try { pvData = computePreview(S, held); } catch (err) { pvData = null; $("pvNote").textContent = "preview failed: " + err.message; return; }
     const d = pvData;
-    $("pvNote").textContent = (d.example ? "Example chord C3 E♭3 G3 (hold keys to use yours). " : "Your held keys. ") +
+    $("pvNote").textContent = (d.example ? held.exampleLabel + (S.chord_enabled ? " through the chord stage" : "") + " (hold keys to use yours). " : "Your held keys. ") +
       (d.time ? "Time mode: " + (d.L / 1000).toFixed(1) + " ms per step (" + (1e6 / d.L).toFixed(2) + " Hz), the axis is in ms, step 0 lands on the key press. " : "") +
       (d.full > d.n ? "The cycle is " + d.full + " steps; showing the first " + d.n + ". " : d.n + " steps per cycle. ") +
       (S.order === "random" || S.order === "shuffle" || patternById(S.pattern).steps.some(x => x.prob !== undefined && x.prob !== 100) ? "Random draws are seeded, but not the live ones." : "");
@@ -2906,8 +2911,18 @@ class ArpCore {
       if (st.kind === "tie") { g.setLineDash([3, 3]); g.strokeStyle = C.dim; g.strokeRect(a + 1, TOP + 1, b - a - 2, plotH - 2); g.setLineDash([]); }
       if (st.label && b - a > 9) { g.fillStyle = st.now ? C.acc : C.dim; g.font = "9.5px ui-monospace,Menlo,monospace"; g.fillText(st.label, a + 2, 11); }
     }
+    // The chord stream (SPEC 14) sustains under the arp: draw it as a faint full-row band BEHIND the arp, never as
+    // pattern notes, so the view still reads as the arp's pattern (solid chord bars read as "too many notes").
+    for (const n of notes) {
+      if (!n.chord) continue;
+      const a = X(n.on), b = X(n.off === null ? x1 : n.off);
+      if (b < GUT || a > GUT + plotW) continue;
+      g.globalAlpha = 0.16; g.fillStyle = C.chd; g.fillRect(Math.max(a, GUT), Y(n.key), Math.max(2, b - Math.max(a, GUT)), rh);
+    }
+    g.globalAlpha = 1;
     // notes: brighter = louder; a thin outline so ratchets and repeats read as separate notes
     for (const n of notes) {
+      if (n.chord) continue;   // drawn above as a band
       const a = X(n.on), b = X(n.off === null ? x1 : n.off);
       if (b < GUT || a > GUT + plotW) continue;
       const x = Math.max(a, GUT), wN = Math.max(2, b - x - 1);
@@ -2985,7 +3000,7 @@ class ArpCore {
     const key = JSON.stringify([base, held.keys.map(h => h.key), state.scale, eng.core.lab.opts, state.user]);
     if (key !== mxKey) {
       mxKey = key; mxQueue = [...mxCells.keys()];
-      $("mxNote").textContent = (held.example ? "Example chord C3 E♭3 G3." : "Your held keys.");
+      $("mxNote").textContent = (held.example ? held.exampleLabel + "." : "Your held keys.");
     }
     const t0 = performance.now();
     while (mxQueue.length && performance.now() - t0 < 6) {
