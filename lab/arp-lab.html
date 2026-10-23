@@ -134,6 +134,7 @@
     <div class="card"><h2>Chord <span class="chtag">stage before the arp</span></h2>
       <div class="q">Each key you hold becomes itself plus up to six intervals, sent as its own <b>chord</b> stream (so horde can feed one oscillator the chord and another the arp). With the stage on, the arp plays the chord's notes. Untick <b>arp on</b> to hear the chord alone: the chord notes behave like held notes and keep sounding when you toggle the arp or stop the transport. The master <b>enabled</b> below switches the whole module.</div>
       <div class="bar"><label><input type="checkbox" id="chEnabled"> chord stage on</label>
+        <label title="the chord stage always feeds the arp; this only decides whether this page's synth also voices the chord's own sustained notes (in horde, routing decides)"><input type="checkbox" id="chHear"> hear the sustained chord</label>
         <label title="the arp alone: off leaves the chord notes sounding (the master 'enabled' below switches the whole module)"><input type="checkbox" id="chArp"> arp on</label>
         <label>unit <select id="chUnit"><option value="semitones">semitones</option><option value="degrees">degrees</option></select></label></div>
       <div class="q" style="margin:2px 0 0">Quantize (in Settings) snaps the chord too, including the note you play.</div>
@@ -2239,7 +2240,14 @@ class ArpCore {
 
   // ---- synth: saw -> lowpass -> envelope, one voice per output ref ----------
   // "listen to" (the human's per-source routing, simulated): which streams this page's synth voices. The core is never touched.
-  const audible = stream => { const m = $("listen").value; return m === "all" || (m === "chord" ? stream === "chord" : m === "arp" ? stream === "arp" : stream === "chord" || stream === "arp"); };
+  // The chord stage always FEEDS the arp; whether its own sustained notes are voiced is a separate choice. The
+  // human asked for a toggle (2026-10-23): "hear the sustained chord" is off by default, so the chord stage on its
+  // own only shapes the arp. "chord only" still voices the chord, whatever the toggle says.
+  const audible = stream => {
+    const m = $("listen").value, hearChord = $("chHear") && $("chHear").checked;
+    if (stream === "chord") return m === "chord" || (hearChord && m !== "arp");
+    return m === "all" || m === "arp" || m === "chordarp";
+  };
   const directVoices = new Map();   // the player's own keys (horde's `direct` stream), voiced only in "all"
   function synthOn(ref, key, vel, when, kind) {
     const c = eng.ctx;
