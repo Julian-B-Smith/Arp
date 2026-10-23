@@ -65,6 +65,7 @@ structure_gate() {
            docs/prior-art.md spec/SPEC.md spec/params.json spec/bank/starter.json spec/MANIFEST \
            lab/arp-lab.html tools/lab_smoke.mjs \
            core/CMakeLists.txt core/include/arp/core.h core/src/core.cpp tools/core_test.sh tools/core_params_check.py \
+           core/include/arp/pattern.h core/include/arp/bank_data.h tools/gen_bank.py tests/core/test_m1b.cpp \
            .gitattributes .github/workflows/ci.yml; do
     [ -e "$f" ] || { echo "verify: structure — missing $f" >&2; ok=1; }
   done

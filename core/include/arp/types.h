@@ -9,6 +9,7 @@
 
 namespace arp {
 
+inline constexpr int kRowCount = 22;   // SPEC 7 rows T1..T21 (index 0 unused)
 inline constexpr int kTpq = 15360;   // SPEC 2.1: ticks per quarter note
 
 // SPEC 1.3 capacities. Fixed at compile time; nothing grows after prepare().
@@ -180,7 +181,7 @@ struct Counters {
   std::int64_t badInput = 0;          // n out of range, or an input event outside [0, n): ignored
   std::int64_t stepLogDropped = 0;    // a step record that did not fit lastSteps()
   std::int64_t offsLost = 0;          // a NoteOff that found no room in the event buffer: must stay 0 (N1)
-  std::int64_t rows[17] = {};         // rows[i] counts how often SPEC 7 row Ti really acted (index 0 unused)
+  std::int64_t rows[kRowCount] = {};  // rows[i] counts how often SPEC 7 row Ti really acted (index 0 unused)
 };
 
 // One evaluated grid step, for the UI's step highlight and the G5 once-guard check.

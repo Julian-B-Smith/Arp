@@ -714,3 +714,30 @@ at offset 0 of the first `process()` after `prepare()`. The spec as written
 (T10) holds, and no adapter call order can strand a note (critic M1a MED-2).
 
 `spec/MANIFEST` is re-pinned in the same change, as D-023 requires.
+
+## D-025 — M1b review: errata E4 and E5, the degree unit moves to M2, four core files join the structure list (RATIFIED by poll, 2026-10-23)
+
+The independent critic review of M1b (T-004) found no HIGH and raised three
+points that needed the human. Decided by poll:
+- **E5 (§2.6), time mode stops at key release.** §2.5 said the time clock is
+  idle while H is empty; §2.6 said it stops "when Arp is idle" (§2.4's idle:
+  nothing held, sounding or pending), and the code and lab followed §2.6, so a
+  trigger-only step still fired after the keys were released while a long-gate
+  or tied note rang. Chosen: in time mode **no step is evaluated while H is
+  empty** — no notes, no triggers — and notes already scheduled still end on
+  time. Rejected: keeping the §2.4 idle (triggers would outlive the hands in a
+  mode that is defined by the key press). Sync mode is unchanged.
+- **E4 (§1.2), the id counter after `prepare`.** M1a's critic (LOW-A) asked
+  that a new note never share a ref with a note still owed an off after
+  `prepare`. M1b starts the counter above the largest owed id in that case;
+  the spec said "starts at 0". Approved as an amendment (still deterministic).
+- **The degree unit moves from M1b to M2.** Transposition steps and step
+  offsets in scale degrees need the effective scale and the quantize stage,
+  which M2 builds. M1b's gate covers X1 and ST1's semitone parts; M2's covers
+  the degree parts. The lead made this move when starting M1b; the human
+  approved it here, after the fact (critic M3: a gate changed without a record).
+- **`./verify`'s structure list** gains `core/include/arp/pattern.h`,
+  `core/include/arp/bank_data.h`, `tools/gen_bank.py` and
+  `tests/core/test_m1b.cpp` (an edit to `./verify`, a human gate).
+
+`spec/MANIFEST` is re-pinned in the same change, as D-023 requires.

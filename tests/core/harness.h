@@ -34,6 +34,33 @@ inline bool setPlant(Plants& p, const std::string& name) {
       {"allocInReset", &Plants::allocInReset},     {"allocInSettings", &Plants::allocInSettings},
       {"srTickMath", &Plants::srTickMath},         {"latchAtNextStep", &Plants::latchAtNextStep},
       {"noLatchToggle", &Plants::noLatchToggle},   {"pedalIgnored", &Plants::pedalIgnored},
+      {"owedIdCollision", &Plants::owedIdCollision},
+      {"timeStepsWhileRinging", &Plants::timeStepsWhileRinging},
+      {"playedTieByKeyDesc", &Plants::playedTieByKeyDesc},
+      {"drawIgnoresEpoch", &Plants::drawIgnoresEpoch},
+      {"orderTables", &Plants::orderTables},
+      {"shuffleBoundaryRepeat", &Plants::shuffleBoundaryRepeat},
+      {"advanceOnRest", &Plants::advanceOnRest},
+      {"pickAdvancesM", &Plants::pickAdvancesM},
+      {"ignorePick", &Plants::ignorePick},
+      {"swapMidStep", &Plants::swapMidStep},
+      {"userFirstWins", &Plants::userFirstWins},
+      {"prepareResetsUser", &Plants::prepareResetsUser},
+      {"transposeMerged", &Plants::transposeMerged},
+      {"stepsZeroShifts", &Plants::stepsZeroShifts},
+      {"stepSizeIgnored", &Plants::stepSizeIgnored},
+      {"stepOffsetReadsGlobal", &Plants::stepOffsetReadsGlobal},
+      {"tieAtTieStep", &Plants::tieAtTieStep},
+      {"trigEveryRatchet", &Plants::trigEveryRatchet},
+      {"probLE", &Plants::probLE},
+      {"untaggedOn", &Plants::untaggedOn},
+      {"timeUsesTempo", &Plants::timeUsesTempo},
+      {"timeAnchorsTransport", &Plants::timeAnchorsTransport},
+      {"regridAbsolute", &Plants::regridAbsolute},
+      {"regridKAbs", &Plants::regridKAbs},
+      {"timeBarsCount", &Plants::timeBarsCount},
+      {"inactiveReanchors", &Plants::inactiveReanchors},
+      {"timeEntryNoStart", &Plants::timeEntryNoStart},
       {"latchReplaceKeeps", &Plants::latchReplaceKeeps}, {"sameRefDropsPress", &Plants::sameRefDropsPress}, {"t11EvictsFirst", &Plants::t11EvictsFirst}, {"prepareForgetsNotes", &Plants::prepareForgetsNotes},
   };
   for (const Entry& e : table)
@@ -152,6 +179,9 @@ struct Session {
   Caps caps{};
   Plant plants;
   bool finalReset = true;
+  std::optional<UserPattern> userPattern;  // set BEFORE prepare (SPEC 4.6: the user pattern survives it)
+  std::vector<std::pair<int, UserPattern>> userEdits;   // setUserPattern calls between blocks, at a sample, in list order
+  std::function<void(Core&)> midBlockHook;  // called before every step is evaluated (stands for a writer thread landing mid-block)
   bool keyRefs = false;                    // rewrite every input NoteOn / NoteOff ref to the id-less (port, channel, key) form
   bool countAllocs = false;                // count operator-new calls made INSIDE process() / reset()
   std::function<void(int pos, int n, const Core&)> probe;   // called after each block
@@ -195,6 +225,10 @@ inline Run run(const Session& s, int block) {
   Run out;
   out.core = makeCore(s.caps, s.plants);
   Core& c = *out.core;
+  if (s.userPattern) c.setUserPattern(*s.userPattern);
+#ifdef ARP_PLANTS
+  if (s.midBlockHook) c.plants.midBlockHook = [&c, &s] { s.midBlockHook(c); };
+#endif
   if (!c.prepare(s.sr, s.maxBlock)) { std::fprintf(stderr, "harness: prepare(%d, %d) refused\n", s.sr, s.maxBlock); std::abort(); }
   const std::shared_ptr<SimHost> host = s.host ? s.host : std::make_shared<SimHost>(s.sr, s.bpm);
   std::vector<Change> cfg = s.cfg;
@@ -216,6 +250,7 @@ inline Run run(const Session& s, int block) {
   for (int e : host->edges(0, s.total)) cuts.push_back(e);
   for (const Change& ch : cfg) cuts.push_back(ch.at);
   for (int r : s.resets) cuts.push_back(r);
+  for (const auto& ed : s.userEdits) cuts.push_back(ed.first);
   cuts.erase(std::remove_if(cuts.begin(), cuts.end(), [&](int x) { return x <= 0 || x >= s.total; }), cuts.end());
   std::sort(cuts.begin(), cuts.end());
   cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
@@ -231,6 +266,7 @@ inline Run run(const Session& s, int block) {
       for (const Event& e : offs) out.evs.push_back(norm(e, pos, epoch));
       ++epoch;
     }
+    for (const auto& ed : s.userEdits) if (ed.first == pos) c.setUserPattern(ed.second);
     while (ci < cuts.size() && cuts[ci] <= pos) ++ci;
     const int n = std::min(block, (ci < cuts.size() ? cuts[ci] : s.total) - pos);
     inb.clear();
@@ -284,13 +320,13 @@ inline const char* typeStr(EventType t) {
 inline std::string streamOf(const Run& r) {
   std::ostringstream o;
   for (const Rec& e : r.evs)
-    o << e.a << ' ' << typeStr(e.t) << ' ' << e.key << ' ' << e.vel << ' ' << e.data0 << ' ' << refStr(e.ref) << ' ' << static_cast<int>(e.stream) << ' ' << e.epoch << '\n';
+    o << e.a << ' ' << typeStr(e.t) << ' ' << e.lane << ' ' << e.key << ' ' << e.vel << ' ' << e.data0 << ' ' << refStr(e.ref) << ' ' << static_cast<int>(e.stream) << ' ' << e.epoch << '\n';
   return o.str();
 }
 // The stream the sample rate must not change (ticks, no samples).
 inline std::string tickStreamOf(const Run& r) {
   std::ostringstream o;
-  for (const Rec& e : r.evs) o << typeStr(e.t) << ' ' << e.key << ' ' << e.vel << ' ' << e.data0 << ' ' << refStr(e.ref) << ' ' << e.tick << '\n';
+  for (const Rec& e : r.evs) o << typeStr(e.t) << ' ' << e.lane << ' ' << e.key << ' ' << e.vel << ' ' << e.data0 << ' ' << refStr(e.ref) << ' ' << e.tick << '\n';
   return o.str();
 }
 

@@ -1252,7 +1252,7 @@ const ARP_PLANTS = ["dropRelease", "doubleRelease", "sameSampleOff", "clampOffse
   "advanceOnRest", "probLE", "trigEveryRatchet", "tieAtTieStep", "noOffReserve", "untaggedOn", "tieAlwaysDown", "ownIgnored", "chordRootAsRoot",
   "pickAdvancesM", "ignorePick", "swapMidStep", "shuffleBoundaryRepeat",
   "lastQNoReset", "collisionKeepsLast", "prepareResetsUser", "userFirstWins", "transposeMerged", "degreesAsSemis", "stepsZeroShifts", "timeUsesTempo", "timeAnchorsTransport", "stepSizeIgnored",
-  "regridAbsolute", "regridKAbs", "timeBarsCount", "offsetsPerStage", "stepOffsetReadsGlobal", "timeEntryNoStart", "inactiveReanchors",
+  "regridAbsolute", "regridKAbs", "timeBarsCount", "offsetsPerStage", "stepOffsetReadsGlobal", "timeEntryNoStart", "inactiveReanchors", "timeStepsWhileRinging",
   "repeatsCountPatternPasses", "repeatsNeverStop", "chordNoDedupe", "chordEndsOnFirstSource", "arpIgnoresChord", "chordRestartAll",
   "chordRecomputeAtRelease", "t2AcrossStreams", "arpToggleEndsChord", "chordT6Restart", "sharedSoundingTable", "exhaustedStopsGuard", "onlyGestureResets", "morphRevives", "chordSyncPerEvent", "chordDedupeByChannelKey", "latchAtNextStep", "chordPlusZeroUnquantized", "chordSkipQuantize"];
 // Every discrete setting except `enabled` (which applies at offset 0, T4/T5) switches at the next
@@ -1543,7 +1543,9 @@ class ArpCore {
     let ii = 0, cur = 0;
     for (;;) {
       if (this.clock === "free" && this.freeRunning && !this.refs.length && !this.sounding.length && !this.pending.length && !(P.timeAnchorsTransport && tm)) this.freeRunning = false;   // idle (SPEC 2.4)
-      const running = this.enabled && (this.clock === "host" || this.freeRunning) && !(P.exhaustedStopsGuard && this.exhausted);   // plant: a spent arp stops consuming the once-guard (r4 H4)
+      // SPEC 2.5 / 2.6: in TIME mode, while H is empty the clock evaluates NO grid step (trigger-only steps included) even while a note rings or a
+      // sub-note is pending; what is already scheduled still sounds and ends on time. Sync mode keeps 2.4's idle. Plant timeStepsWhileRinging: the old rule.
+      const running = this.enabled && (this.clock === "host" || this.freeRunning) && !(P.exhaustedStopsGuard && this.exhausted) && !(this.timeMode && !this.refs.length && !P.timeStepsWhileRinging);   // plant: a spent arp stops consuming the once-guard (r4 H4)
       if (running && this.lastEvaluated === null) this.lastEvaluated = this._kAtOrAfter(this._posAt(cur)) - 1;
       let t = Infinity, kind = -1, idx = -1;
       if (ii < ins.length) { t = ins[ii].s; kind = 0; idx = ii; }
