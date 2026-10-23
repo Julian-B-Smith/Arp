@@ -551,3 +551,90 @@ Also adopted:
 
 The implementer's earlier reading of a step-time change (re-grid on
 absolute multiples of the new length) is superseded.
+
+## D-018 — Repeats; the chord stage with its own stream; then a functionality freeze (RATIFIED by poll, 2026-10-22)
+
+The human said: "Two last things and then I think we're good to properly
+freeze functionality". By poll:
+- **Lock: no change.** The asked-for "lock" (keep playing the last chord
+  until a new one) is the existing latch `replace`. The human chose to keep
+  latch as it is.
+- **Repeats.** `repeats` runs 0–16, and 0 means forever.
+  - One repeat is **one full cycle of the whole pattern**: the step
+    pattern, the order style through every held note, and the transposition
+    passes, all coming round together.
+  - The count runs from the gesture start. After the last repeat the arp is
+    silent until the next chord.
+  - Rejected: step-pattern passes; one pass through the held notes.
+- **The chord stage.** Pre-arp intervals live in Arp, and **its output is
+  its own stream**. The human's ruling: "I would like to be able to send the
+  chord to oscillators independently as well (one gets the chord, the other
+  gets the chord → the arp, etc.)". So:
+  - SPEC §14 is a second processor before the arp: each held key plus up to
+    6 shifts (−24…+24), in semitones (optionally quantized) or degrees;
+  - its notes carry `stream = chord`, deduplicated with source counts;
+  - the arp plays the chord set when the stage is on;
+  - the stage works with the arp off.
+
+  Rejected: only feeding the arp; and a separate module, which would lose
+  "chord → arp" inside one stream graph.
+- **Intervals:** up to 6 shifts, in semitones or degrees. Rejected: a shape
+  list; both.
+
+**For horde (Q-H7):** horde's per-source selector (ADR-270) must route a
+third stream, `chord`, so that one oscillator can take the chord and another
+the arp. A notice is drafted: `docs/filings/hypersaw-notice-chord-stream.md`.
+
+**The freeze.** The human intends to **freeze functionality** once this
+batch lands. From then on, 1.0 scope changes only by an explicit unfreeze
+decision. Still to place at the next gate: where time mode, the library,
+repeats and the chord stage sit in the cutoff yield order.
+
+## D-019 — Spec r2.11 after the fourth independent review: chord notes behave like held notes; any press restarts repeats (RATIFIED by poll, 2026-10-22)
+
+The Opus critic, sourced separately from the author, rated r2.10 **REWORK**
+(4 HIGH, 6 MED, 4 LOW). The per-finding disposition is in
+`docs/spec-review-r4.md`. The human answered its two questions:
+
+1. **Chord-stage notes behave like the player's held notes.** They follow
+   only the keys, the pedal and the latch, and ignore transport edges, the
+   arp's on/off and the arp's notes.
+   - This adds **`arp_enabled`**, a new setting, approved through this poll.
+     `enabled` is now the whole module, and "chord on, arp off" is a chord
+     generator.
+   - Rejected: behaving like arp output (a held chord would retrigger at
+     every loop and at play/stop).
+2. **Any key-adding press restarts the repeat count**, under latch append
+   and the pedal too. Rejected: only a fresh gesture.
+
+**Structural fixes:**
+- the chord mapping is stored per (held key, slot);
+- T2 applies within one stream;
+- spent repeat steps still consume the once-guard;
+- an `exhausted` flag;
+- dedupe by key;
+- the chord stage has its own sounding table.
+
+## D-020 — One quantize switch for the arp and the chord stage; the lab plays arp + chord by default (RATIFIED by poll, 2026-10-22)
+
+The human reported "sustained notes layered over the arp" and "the scale
+quantization doesn't really work on either the chord or the arp". The lead
+reproduced both in the browser:
+- **The sustained notes** were the lab's monitor of the raw held keys.
+  "Listen to" defaulted to "all (direct + chord + arp)", and the direct
+  stream is the untouched input, never quantized.
+- **The arp's quantize worked**: C♯ and F♯ held in C major gave D, F, G.
+- **The chord stage had a real bug.** Its `+0` slot was "h as played, never
+  moved" (r2.11, a lead's choice adopted from a build gap), so C♯ sounded
+  as C♯. Only the added intervals snapped.
+
+**By poll:**
+- **One quantize switch for everything Arp emits.** The arp's `quantize`
+  governs the chord stage. While it is on, every chord key snaps, the
+  played note included. `chord_quantize` is **removed**. Rejected: keeping
+  separate switches.
+- **The lab plays arp + chord by default.** Direct becomes opt-in, labelled
+  "your raw keys, unquantized (horde's direct stream)". Rejected: arp only.
+
+A bug fix under the freeze: it removes a setting and adds no new
+functionality.

@@ -163,6 +163,17 @@ const SESS = {
         { at: 30000, set: { restart: "bar", step_unit: "degrees", step_size: 2 } }, { at: 35000, set: { restart: "free", step_time_us: 80000 } }],
       ins: [K(100, "a", 60), K(100, "b", 66), O(16000, "a"), K(22000, "c", 62), O(26000, "b"), O(26000, "c"), K(27000, "d", 64), K(31000, "e", 70)] };
   },
+  // SPEC 14 / 4.8: the chord stage with repeats: pedal, latch, panic, a transport stop/start (T6, chord notes restart), the arp toggled off and on,
+  // a shape change, a unit change, stage off and on. Every chord note must end exactly once.
+  chordstage: () => {
+    const host = X.simHost({ sr: 8000, bpm: 120, startBeats: 0, playing: true });
+    host.set(24000, { playing: false }); host.set(27000, { playing: true, seekBeats: 0 });
+    return { total: 44000, host, scale: NDOWN, base: { chord_enabled: true, order: "up", gate: 120, repeats: 3, chord_on1: true, chord_shift1: 4, chord_on2: true, chord_shift2: 7, chord_on3: true, chord_shift3: -12 },
+      cfg: [{ at: 6000, set: { chord_shift2: 9 } }, { at: 10000, set: { enabled: false } }, { at: 13000, set: { enabled: true } }, { at: 16000, set: { chord_unit: "degrees", quantize: "scale" } },
+        { at: 22000, set: { chord_unit: "semitones" } }, { at: 17000, set: { arp_enabled: false } }, { at: 19000, set: { arp_enabled: true } }, { at: 30000, set: { chord_enabled: false } }, { at: 34000, set: { chord_enabled: true, latch: "replace" } }],
+      ins: [K(100, "a", 60), K(300, "b", 64), { at: 3000, t: "pedal", down: true }, O(4000, "a"), { at: 8000, t: "pedal", down: false }, K(9000, "c", 62), { at: 20000, t: "panic" },
+        K(21000, "d", 65), K(28000, "e", 67), O(29500, "d"), K(35000, "f", 60), O(36000, "f"), K(38000, "g", 64), K(38200, "h", 71)] };
+  },
   // T10 reset() mid-run (ids restart), then a new gesture
   reset: () => ({ total: 30000, base: { gate: 150 }, resets: [20000], ins: [K(100, "a", 60), K(100, "b", 64), K(21000, "c", 67)] }),
   // T11 the sounding table is full (a small table keeps the session short)
@@ -210,7 +221,11 @@ function g1Session(plants, block) {
     cfg: [{ at: 9001, set: { order: "shuffle", pattern: "sparse_chance" } }, { at: 18007, set: { rate: "1/16", latch: "replace" } }, { at: 30011, set: { order: "bounce", pattern: "tied_legato", rate: "1/32" } },
       { at: 34003, set: { order: "stride", pattern: "user", steps: 2, step_size: 7, quantize: "scale" } }, { at: 38501, set: { order: "converge", pattern: "none", step_unit: "degrees", step_size: 2 } }, { at: 44001, set: { order: "chord_walk", pattern: "user" } },
       { at: 46001, set: { order: "chord_between" } }, { at: 48003, set: { order: "pairs" } },
-      { at: 49001, set: { rate_mode: "time", step_time_us: 40000 } }],
+      { at: 49001, set: { rate_mode: "time", step_time_us: 40000 } },
+      // the chord stage (shifts +4 +7, then a degrees shape) and repeats, in the same session
+      { at: 12007, set: { chord_enabled: true } }, { at: 26003, set: { chord_unit: "degrees", chord_shift2: 4 } }, { at: 31009, set: { chord_enabled: false } },
+      { at: 42003, set: { chord_enabled: true, chord_unit: "semitones" } },
+      { at: 20011, set: { repeats: 3 } }, { at: 33001, set: { repeats: 0 } }, { at: 23003, set: { arp_enabled: false } }, { at: 25003, set: { arp_enabled: true } }],
     ins: [K(37, "a", 60), K(41, "b", 64), K(3011, "c", 67), O(12003, "a"), { at: 13000, t: "pedal", down: true }, O(14001, "b"), K(17777, "d", 72), O(19000, "c"), { at: 24000, t: "pedal", down: false }, K(25100, "e", 55), K(36000, "f", 59), { at: 38000, t: "panic" }, K(38500, "g", 62), K(41000, "h", 66), O(45000, "h"), K(47000, "i", 69)] });
 }
 function g1Diverges(plants) {
@@ -227,7 +242,7 @@ function g1Diverges(plants) {
   plant(g1Diverges(["floatPosition"]) !== null, "G1 detects a position accumulated in float: " + g1Diverges(["floatPosition"]));
   const r = g1Diverges([]);
   const g1 = g1Session([], 64), n = g1.evs.length;
-  const qd = g1.evs.filter(e => e.t === "on" && e.a >= 36000);   // steps evaluated well after quantize switched on
+  const qd = g1.evs.filter(e => e.t === "on" && e.stream === "arp" && e.a >= 36000);   // steps evaluated well after quantize switched on
   check(r === null && n > 100 && qd.length > 20 && qd.every(e => inScale(e.key, 0, 0xAB5)), `G1: ${n} events, absolute samples identical at block sizes 4096/512/64/7/1 (swing, ratchets, prob, tempo change, stop/start, jumps, latch, pedal, panic, quantize ties, user pattern, the new styles, transposition steps in semitones and degrees, step offsets with a non-12 step size in both units, time mode)` + (r ? " - " + r : ""));
 }
 
@@ -443,13 +458,15 @@ const MAJOR_DEGS = { scale_deg0: true, scale_deg1: false, scale_deg2: true, scal
   check(!bad([]), `T1: ${r.evs.filter(e => e.t === "trig").length} triggers, exactly one per firing step, at the step's first on, none on the extra ratchets`);
 }
 
-// ---- 13b. S1: every emitted NoteOn is on the `arp` stream (SPEC §1, D-009, horde ADR-270) -------
+// ---- 13b. S1: every arp NoteOn is on the `arp` stream, every chord-stage NoteOn on the `chord` stream (SPEC §1, D-009, D-018) -------
 // The plant tags most ons and drops the tag on a few, so the detector must check EVERY on, not one.
 {
-  const sess = plants => run({ core: mkCore(plants), block: 64, total: 60000, base: { order: "bounce", steps: 2, step_size: 7, pattern: "roll_end" }, ins: [K(0, "a", 60), K(0, "b", 64), K(0, "c", 67)] });
-  const bad = plants => { const ons = sess(plants).evs.filter(e => e.t === "on"); return ons.length < 20 || ons.some(e => e.stream !== "arp"); };
-  plant(bad(["untaggedOn"]), "S1 detects a NoteOn emitted without the arp stream tag");
-  check(!bad([]), `S1: all ${sess([]).evs.filter(e => e.t === "on").length} NoteOns carry stream "arp" (bounce, 2 transposition steps, ratchets)`);
+  const sess = (plants, chord) => run({ core: mkCore(plants), block: 64, total: 60000, scale: NDOWN, base: Object.assign({ order: "bounce", steps: 2, step_size: 7, pattern: "roll_end" }, chord ? { chord_enabled: true } : {}), ins: [K(0, "a", 60), K(0, "b", 64), K(0, "c", 67)] });
+  const split = (plants, chord) => { const o = sess(plants, chord).evs.filter(e => e.t === "on"); return { arp: o.filter(e => e.stream === "arp").length, chord: o.filter(e => e.stream === "chord").length, other: o.filter(e => e.stream !== "arp" && e.stream !== "chord").length, n: o.length }; };
+  const badS = (plants, chord) => { const x = split(plants, chord); return x.n < 20 || x.other > 0 || (chord ? x.chord < 3 : x.chord > 0); };
+  plant(badS(["untaggedOn"], false), "S1 detects a NoteOn emitted without a stream tag");
+  const a0 = split([], false), a1 = split([], true);
+  check(!badS([], false) && !badS([], true) && a1.arp > 20, `S1: all ${a0.n} arp NoteOns carry stream "arp"; with the chord stage on, ${a1.arp} are "arp" and ${a1.chord} "chord" and none is untagged`);
 }
 
 // ---- 14. K1: ties engage at gate 80 by look-ahead ----------------------------------------------
@@ -698,14 +715,140 @@ const swingDelayUs = (U, swing, k) => (k % 2 === 1 ? Math.floor(U * (2 * swing -
   check(!bad([]), "ST1: octave_leap at +12 is 60 72 60 48; size +7 with step 2 is +14; +2 degrees with step 1 on C in C major is E (and -1 goes down two degrees; quantize off, two semitones); mixed units sum by kind in 4.7's order; the six stages run per key ({61, 63} + 2 degrees = {64, 67}); the step offset reads the pattern's size/unit, not the global one");
 }
 
+// ---- 19. RP1: repeats = full cycles of the whole pattern per chord (SPEC 4.8, D-018) --------------------------------------------
+{
+  const bank = { step_defaults: X.ARP_BANK.step_defaults, pattern_defaults: X.ARP_BANK.pattern_defaults, patterns: [...X.ARP_BANK.patterns, { id: "trg", name: "trg", length: 1, steps: [{ trig: 1 }] }] };
+  const keys = [60, 64, 67].map((k, i) => K(100, "k" + i, k));
+  const go = (plants, base, ins = keys, o = {}) => run(Object.assign({ core: mkCore(plants, { bank }), block: 256, total: 40000, base: Object.assign({ gate: 30 }, base), ins }, o));
+  const seq = r => ons(r).map(e => e.key).join();
+  // (a) 2 repeats of up over C E G with the plain pattern is C E G C E G, then silence (no notes, no triggers)
+  const a = plants => { const r = go(plants, { repeats: 2 }); return seq(r) !== "60,64,67,60,64,67"; };
+  const aTrig = plants => go(plants, { repeats: 2, pattern: "trg" }).evs.filter(e => e.t === "trig").length !== 6;
+  // (b) a step pattern and transposition: C counts FULL cycles. gallop (3 plays in 4), steps 1 (+12): P*(steps+1) = 6, gcd(6, 3) = 3, C = 4 * 2 = 8 steps;
+  //     2 repeats = 16 steps = 12 notes = both passes of the order twice, then nothing
+  const b = plants => seq(go(plants, { repeats: 2, pattern: "gallop", steps: 1 })) !== "60,64,67,72,76,79,60,64,67,72,76,79";
+  // (c) 0 means forever
+  const c = plants => ons(go(plants, { repeats: 0 })).length < 30;
+  // (d) latch: the latched chord stops after its repeats; a NEW gesture restarts it. Count from each gesture start, not from the transport.
+  const latchIns = [...keys, ...[0, 1, 2].map(i => O(3000, "k" + i)), ...[60, 64, 67].map((k, i) => K(20000, "n" + i, k))];
+  const d = plants => { const o = ons(go(plants, { repeats: 2, latch: "replace" }, latchIns)); return o.filter(e => e.a < 20000).length !== 6 || o.filter(e => e.a >= 20000).length !== 6; };
+  // (e) the count runs from the gesture start whatever restart does (host clock, bar and free keep stepping with no notes before the press)
+  const e = plants => ["bar", "free"].some(rs => seq(go(plants, { repeats: 2, restart: rs }, keys.map(k => Object.assign({}, k, { at: 2345 })))) !== "60,64,67,60,64,67");
+  // (f) exhausted, then a new gesture under the host clock: the spent steps consumed the once-guard (silent rests), so the second gesture starts on its own
+  //     grid step (20000, 21000, 22000) and there is no burst of overdue steps at offset 0
+  const fIns = [...keys.map((k, i) => O(8000, "k" + i)), ...[60, 64, 67].map((k, i) => K(20000, "n" + i, k))];
+  const f = plants => { const o = ons(go(plants, { repeats: 1 }, [...keys, ...fIns], { total: 30000 })).filter(e => e.a >= 20000).map(e => e.a); return o.join() !== "20000,21000,22000"; };
+  // (g) latch append: a press that adds a key to the latched set (not a gesture start) restarts the count: 4 keys x 2 repeats = 8 more notes, no re-anchor
+  const gIns = [...keys, ...[0, 1, 2].map(i => O(3000, "k" + i)), K(20000, "d", 72)];
+  const g = plants => { const o = ons(go(plants, { repeats: 2, latch: "append" }, gIns, { total: 40000 })); return o.filter(e => e.a < 20000).length !== 6 || o.filter(e => e.a >= 20000).length !== 8; };
+  // (h) a morph of repeats (or steps / pattern) upward never revives an exhausted arp
+  const h = plants => ons(go(plants, { repeats: 2 }, keys, { total: 40000, cfg: [{ at: 15000, set: { repeats: 8 } }, { at: 20000, set: { steps: 2, pattern: "gallop" } }, { at: 25000, set: { repeats: 0 } }] })).length !== 6;
+  plant(f(["exhaustedStopsGuard"]), "RP1 detects a spent arp that stops consuming the once-guard (a burst of overdue steps at the next gesture)");
+  plant(g(["onlyGestureResets"]), "RP1 detects a key-adding press (latch append) that does not restart the count");
+  plant(h(["morphRevives"]), "RP1 detects a repeats morph that revives an exhausted arp");
+  plant(a(["repeatsNeverStop"]) && b(["repeatsNeverStop"]), "RP1 detects repeats that never stop");
+  plant(b(["repeatsCountPatternPasses"]) && a(["repeatsCountPatternPasses"]), "RP1 detects step-pattern passes counted instead of full cycles");
+  plant(aTrig(["repeatsNeverStop"]), "RP1 detects triggers still firing after the repeats ran out");
+  check(!a([]) && !aTrig([]) && !b([]) && !c([]) && !d([]) && !e([]) && !f([]) && !g([]) && !h([]),
+    "RP1: 2 repeats of up over C E G = C E G C E G then silence (and no triggers); gallop + 1 step of +12 is 8 steps per cycle (12 notes in 2 cycles); 0 never stops; a latched chord stops and a new gesture restarts it; bar and free count from the gesture start; spent steps consume the once-guard (no burst at the next gesture); a key-adding latch press restarts the count; a repeats / steps / pattern morph never revives a spent arp");
+}
+
+// ---- 20. CH1: the chord stage (SPEC 14, D-018) --------------------------------------------------------------------------------------
+{
+  const CH = { chord_enabled: true, chord_on1: true, chord_shift1: 4, chord_on2: true, chord_shift2: 7, chord_on3: false, enabled: true, arp_enabled: false, gate: 30 };   // arp OFF (the module stays on): a pure chord generator
+  const go = (plants, base, ins, o = {}) => run(Object.assign({ core: mkCore(plants), block: 128, total: 20000, base: Object.assign({}, CH, base), ins }, o));
+  const chordOns = r => r.evs.filter(e => e.t === "on" && e.stream === "chord");
+  const offsOf = (r, key) => r.evs.filter(e => e.t === "off" && e.key === key && chordOnIds(r).has(e.id)).map(e => e.a);
+  const chordOnIds = r => new Set(chordOns(r).map(e => e.id));
+  const setOf = (r, at) => chordOns(r).filter(e => e.a === at).map(e => e.key).sort((x, y) => x - y).join();
+  // (a) C + {+4, +7} = C E G as stream "chord" at the press; with the arp off nothing else sounds; N1 holds
+  const a = plants => { const r = go(plants, {}, [K(100, "a", 60), O(5000, "a")]); return setOf(r, 100) !== "60,64,67" || r.evs.some(e => e.t === "on" && e.stream !== "chord") || n1(r.evs).length > 0; };
+  // (b) C and E held with +4 only: E (64) is made twice, by E itself and by C + 4; it is emitted ONCE and ends only when BOTH sources are gone
+  const b = plants => { const r = go(plants, { chord_on2: false }, [K(100, "c", 60), K(100, "e", 64), O(5000, "c"), O(9000, "e")]);
+    const on64 = chordOns(r).filter(e => e.key === 64).length;
+    return on64 !== 1 || offsOf(r, 64).join() !== "9000" || offsOf(r, 60).join() !== "5000" || offsOf(r, 68).join() !== "9000" || n1(r.evs).length > 0; };
+  // (c) degrees +2 +4 in C major on D: D F A
+  const c = plants => { const r = go(plants, { chord_unit: "degrees", chord_shift1: 2, chord_shift2: 4, quantize: "scale" }, [K(100, "d", 62)], { scale: NDOWN }); return setOf(r, 100) !== "62,65,69"; };
+  // (d) semitones +4 with quantize on, in C minor: C + 4 = E snaps to Eb (a tie goes down with nothing before it), +7 = G is in the scale
+  const d = plants => { const r = go(plants, { quantize: "scale" }, [K(100, "c", 60)], { scale: { root: 0, mask: 0x5AD } }); return setOf(r, 100) !== "60,63,67"; };
+  // (e) the arp plays the chord set when the stage is on (up over C E G, as stream arp), the chord notes sound alongside
+  const e = plants => { const r = run({ core: mkCore(plants), block: 128, total: 20000, base: { chord_enabled: true, chord_on1: true, chord_shift1: 4, chord_on2: true, chord_shift2: 7, order: "up", gate: 30 }, ins: [K(100, "c", 60)] });
+    const arp = r.evs.filter(e => e.t === "on" && e.stream === "arp").map(e => e.key); return arp.length < 9 || arp.slice(0, 9).join() !== "60,64,67,60,64,67,60,64,67" || chordOns(r).length !== 3; };
+  // (f) a shape change mid-hold: C held, +7 becomes +9 at 5000: G leaves, A joins, both at offset 0 of that block; C and E keep sounding (no new on, no off)
+  const f = plants => { const r = go(plants, {}, [K(100, "c", 60)], { cfg: [{ at: 5000, set: { chord_shift2: 9 } }] });
+    const at5k = r.evs.filter(e => e.a === 5000 && (e.t === "on" || e.t === "off") && (e.stream === "chord" || e.t === "off")).map(e => e.t + e.key).sort().join();
+    return at5k !== "off67,on69" || chordOns(r).filter(e => e.key === 60 || e.key === 64).length !== 2 || n1(r.evs).length > 0; };
+  // (g) turning the stage off ends every chord note at that offset and nothing more starts
+  const g = plants => { const r = go(plants, {}, [K(100, "c", 60)], { cfg: [{ at: 5000, set: { chord_enabled: false } }] });
+    return r.evs.filter(e => e.t === "off" && e.a === 5000).length !== 3 || chordOns(r).length !== 3; };
+  // (h) the pedal and the latch: the chord follows H (pedal-held keys keep their chord; latched keys too), and a Panic ends everything once
+  const h = plants => { const r = go(plants, {}, [{ at: 50, t: "pedal", down: true }, K(100, "c", 60), O(2000, "c"), { at: 6000, t: "pedal", down: false }]);
+    return offsOf(r, 60).join() !== "6000" || offsOf(r, 67).join() !== "6000" || n1(r.evs).length > 0; };
+  // (i) the strand case: chord_root quantize, D held, then C pressed, then D released. The mapping is STORED when a key enters H, so releasing D drops exactly
+  //     the keys it made (62, 66, 69) at its release even though the anchor moved from D to C; C's own (60, 64, 67) end with C
+  const strand = { quantize: "chord_root" };
+  const iT = plants => { const r = go(plants, strand, [K(100, "d", 62), K(3000, "c", 60), O(6000, "d"), O(9000, "c")], { scale: NDOWN, total: 14000 });
+    const when = k => offsOf(r, k).join();
+    return chordOns(r).length !== 6 || ![62, 66, 69].every(k => when(k) === "6000") || ![60, 64, 67].every(k => when(k) === "9000") || n1(r.evs).length > 0; };
+  // (j) both streams on, and the arp plays the chord's own keys: an arp note on a chord key must NOT end the chord note (T2 is within one stream)
+  const both = { arp_enabled: true, order: "up" };
+  const jT = plants => { const r = go(plants, both, [K(100, "c", 60), O(9000, "c")]); const arp = r.evs.filter(e => e.t === "on" && e.stream === "arp").length;
+    return arp < 6 || chordOns(r).length !== 3 || ![60, 64, 67].every(k => offsOf(r, k).join() === "9000") || n1(r.evs).length > 0; };
+  // (k) the arp switching off and on leaves the chord notes sounding (no off, no restart); the arp itself stops at 4000 and resumes at 6000
+  const kT = plants => { const r = go(plants, both, [K(100, "c", 60), O(9000, "c")], { cfg: [{ at: 4000, set: { arp_enabled: false } }, { at: 6000, set: { arp_enabled: true } }] });
+    const a = r.evs.filter(e => e.t === "on" && e.stream === "arp").map(e => e.a);
+    return chordOns(r).length !== 3 || ![60, 64, 67].every(k => offsOf(r, k).join() === "9000") || a.some(x => x > 4000 && x < 6000) || !a.some(x => x < 4000) || !a.some(x => x >= 6000) || n1(r.evs).length > 0; };
+  // (l) a transport stop / start (T6) leaves chord notes alone: three ons, offs at the key release only
+  const lT = plants => { const host = X.simHost({ sr: 8000, bpm: 120, startBeats: 0, playing: true }); host.set(3000, { playing: false }); host.set(6000, { playing: true, seekBeats: 0 });
+    const r = go(plants, both, [K(100, "c", 60), O(9000, "c")], { host }); return chordOns(r).length !== 3 || ![60, 64, 67].every(k => offsOf(r, k).join() === "9000") || n1(r.evs).length > 0; };
+  // (m) the arp's T11 eviction (a 1-entry table, long gates) never touches chord notes: they end at the release only
+  const mT = plants => { const r = go(plants, Object.assign({ gate: 200 }, both), [K(100, "c", 60), O(9000, "c")], { core: mkCore(plants, { caps: { sounding: 1 } }), total: 14000 });
+    return r.core.counters.soundingOverflow < 1 || chordOns(r).length !== 3 || ![60, 64, 67].every(k => offsOf(r, k).join() === "9000") || n1(r.evs).length > 0; };
+  // (n) a count going 1 -> 0 -> 1 inside one sample keeps its note: C released and re-pressed at 4000 gives no new on and no off
+  const nT = plants => { const r = go(plants, {}, [K(100, "c", 60), O(4000, "c"), K(4000, "c2", 60), O(9000, "c2")]); return chordOns(r).length !== 3 || ![60, 64, 67].every(k => offsOf(r, k).join() === "9000"); };
+  // (o) dedupe by KEY alone: C on channel 0 and E on channel 1 both make E (C + 4); it is one chord note
+  const oT = plants => { const r = go(plants, { chord_on2: false }, [K(100, "c", 60), K(100, "e", 64, { ch: 1 }), O(9000, "c"), O(9000, "e")]); return chordOns(r).filter(e => e.key === 64).length !== 1; };
+  // (p) latch applies at OFFSET 0 of its block: with the arp OFF there are no arp steps, so a latched chord must end exactly when latch is turned off
+  const pT = plants => { const r = go(plants, { latch: "replace" }, [K(100, "c", 60), O(2000, "c")], { cfg: [{ at: 6000, set: { latch: "off" } }] });
+    return chordOns(r).length !== 3 || ![60, 64, 67].every(k => offsOf(r, k).join() === "6000") || n1(r.evs).length > 0; };
+  // (q) with the arp ON the latched arp stops at the latch-off block too: no arp note from 6000 on, the chord ends there, nothing sticks, N1 holds
+  const qT = plants => { const r = go(plants, Object.assign({ latch: "replace" }, both), [K(100, "c", 60), O(2000, "c")], { cfg: [{ at: 6000, set: { latch: "off" } }] });
+    const a = r.evs.filter(e => e.t === "on" && e.stream === "arp").map(e => e.a);
+    return a.length < 4 || a.some(x => x >= 6000) || ![60, 64, 67].every(k => offsOf(r, k).join() === "6000") || n1(r.evs).length > 0; };
+  plant(pT(["latchAtNextStep"]), "CH1 detects latch applied at the next arp step (with the arp off a latched chord never ends)");
+  // (r) ONE quantize switch (D-020): C# held in C major with quantize on and +4 +7: EVERY chord key is snapped, the played note included (61 -> 60, a tie goes
+  //     down), so the chord is C F G (60 65 67), nothing out of the mask; with quantize OFF the +0 slot is the played key (61, 65, 68)
+  const rT = plants => setOf(go(plants, { quantize: "scale" }, [K(100, "c", 61)], { scale: NDOWN }), 100) !== "60,65,67" || setOf(go(plants, { quantize: "off" }, [K(100, "c", 61)], { scale: NDOWN }), 100) !== "61,65,68";
+  // (s) a session of out-of-scale presses with both streams on: every arp AND chord NoteOn is in the effective scale while quantize is on
+  const sT = plants => { const r = run({ core: mkCore(plants), block: 128, total: 20000, scale: NDOWN, base: { chord_enabled: true, quantize: "scale", order: "up", chord_on3: true, chord_shift3: 12, gate: 30 },
+      ins: [61, 63, 66, 68, 70].map((k, i) => K(100 + 3000 * i, "k" + i, k)) });
+    const o = r.evs.filter(e => e.t === "on"); return o.length < 20 || !o.some(e => e.stream === "chord") || !o.some(e => e.stream === "arp") || o.some(e => !inScale(e.key, 0, 0xAB5)); };
+  plant(rT(["chordPlusZeroUnquantized"]), "CH1 detects the +0 slot (the played note) left unquantized while quantize is on");
+  plant(sT(["chordSkipQuantize"]), "CH1/Q1 detects chord-stream notes out of the effective scale while quantize is on");
+  plant(iT(["chordRecomputeAtRelease"]), "CH1 detects a mapping recomputed at release (the stranded note after an anchor change)");
+  plant(jT(["t2AcrossStreams"]), "CH1 detects a retrigger on one stream ending the other stream's note on that key");
+  plant(kT(["arpToggleEndsChord"]), "CH1 detects the arp's on/off ending chord notes");
+  plant(lT(["chordT6Restart"]), "CH1 detects a transport edge ending and restarting chord notes");
+  plant(mT(["sharedSoundingTable"]), "CH1 detects arp eviction (T11) reaching a chord note");
+  plant(nT(["chordSyncPerEvent"]), "CH1 detects a count going 1-0-1 within one sample that ends and restarts its note");
+  plant(oT(["chordDedupeByChannelKey"]), "CH1 detects dedupe by (channel, key) instead of key");
+  plant(b(["chordNoDedupe"]), "CH1 detects no dedupe (two ons for a shared key)");
+  plant(b(["chordEndsOnFirstSource"]), "CH1 detects a chord note that ends when its FIRST source is released");
+  plant(e(["arpIgnoresChord"]), "CH1 detects the arp reading the raw keys instead of the chord set");
+  plant(f(["chordRestartAll"]), "CH1 detects a shape change that restarts the unchanged chord notes");
+  const bad = [["a", a], ["b", b], ["c", c], ["d", d], ["e", e], ["f", f], ["g", g], ["h", h], ["i", iT], ["j", jT], ["k", kT], ["l", lT], ["m", mT], ["n", nT], ["o", oT], ["p", pT], ["q", qT], ["r", rT], ["s", sT]].filter(([, fn]) => fn([])).map(([n]) => n);
+  check(bad.length === 0, "CH1: C + {+4, +7} = C E G as stream chord at the press (arp off: only chord notes); a shared key is emitted once and ends with its LAST source; degrees +2 +4 on D in C major = D F A; semitones +4 with quantize on in C minor snaps to Eb; the arp plays the chord set; a shape change moves only leavers and joiners at offset 0; stage off ends all; the pedal holds the chord; a stored mapping survives an anchor change (no stranded note); both streams sound on one key; the arp toggle, a transport edge and arp eviction never touch chord notes; 1-0-1 in one sample keeps its note; dedupe is by key; latch-off applies at offset 0 (a latched chord ends there with the arp off, and a latched arp stops there); one quantize switch snaps the chord too, the played note included (C# in C major = C F G), and every arp and chord NoteOn is in the scale" + (bad.length ? " - FAILED: " + bad.join(" ") : ""));
+}
+
 // Coverage: a session that never reaches the style it names proves nothing, so every window must hold notes.
 {
   const w = (evs, a, b) => evs.filter(e => e.t === "on" && e.a >= a && e.a < b).length;
   const wins = [[runSess("styles", 64).evs, [[8000, 14000], [14000, 20000], [20000, 26000], [26000, 32000], [32000, 38000], [38000, 44000]], "styles"],
+    [runSess("chordstage", 64).evs, [[0, 6000], [6000, 10000], [13000, 16000], [16000, 20000], [21000, 24000], [28000, 30000], [34000, 38000], [38000, 44000]], "chord stage"],
     [runSess("time", 64).evs, [[0, 9000], [9000, 14000], [14000, 18000], [18000, 20000], [20000, 24000], [24000, 30000], [30000, 35000], [35000, 40000]], "time"],
     [g1Session([], 64).evs, [[34003, 38501], [38501, 44001], [44001, 46001], [46001, 48003], [48003, 49001], [49001, 52000]], "G1 tail"]];
   const empty = wins.flatMap(([evs, ws, n]) => ws.filter(([a, b]) => !w(evs, a, b)).map(([a, b]) => `${n}@${a}-${b}`));
-  check(empty.length === 0, "coverage: the N1 styles session and the G1 tail play notes in every chord_walk/stride/chord_between/pairs/converge/shuffle/time-mode window (both transposition units)" + (empty.length ? " - EMPTY: " + empty.join(" ") : ""));
+  check(empty.length === 0, "coverage: the N1 styles session and the G1 tail play notes in every chord_walk/stride/chord_between/pairs/converge/shuffle/time-mode/chord-stage window (both transposition units)" + (empty.length ? " - EMPTY: " + empty.join(" ") : ""));
 }
 const ms = Number((process.hrtime.bigint() - t0) / 1000000n);
 console.log(fail ? `lab_smoke: FAIL (${ms} ms)` : `lab_smoke: OK (${ms} ms)`);
