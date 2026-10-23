@@ -741,3 +741,25 @@ points that needed the human. Decided by poll:
   `tests/core/test_m1b.cpp` (an edit to `./verify`, a human gate).
 
 `spec/MANIFEST` is re-pinned in the same change, as D-023 requires.
+
+## D-026 — M2a review: swing is latched per step pair (E6); TM2's gap rule counts grid positions (E7) (RATIFIED by poll, 2026-10-23)
+
+The independent critic review of M2a found no HIGH. It found that a swing
+change mid-run could let a ratcheted step's last sub-notes sound after the
+next step's on (and retrigger it on the same key): each step's span is
+frozen at its evaluation with the swing of that moment, while the next
+step's on is computed later, possibly with a different swing. Decided by
+poll:
+- **E6 (§5.1, §9):** swing is **latched per step pair**. The even step reads
+  it; its odd partner reuses it if the even step was the last one evaluated.
+  The odd step's span ends at an even on, which swing never moves, so no
+  step can spill into the next. Cost: a swing move applies up to one step
+  later. Rejected: dropping a step's not-yet-started ratchets at the next
+  step's on (immediate, but notes vanish when the knob moves); accepting the
+  overlap (an audible retrigger at every swing automation point).
+- **E7 (§2.6, row TM2):** "no gap longer than `max(L_old, L_new)`" is about
+  grid positions before swing; with swing above 500 an on-to-on gap is
+  longer by the swing delay. Wording only, no behaviour change.
+
+`spec/MANIFEST` is re-pinned in the same change, as D-023 requires. The lab's
+CORE follows E6 too (its smoke enforces it).

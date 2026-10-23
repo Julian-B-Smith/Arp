@@ -73,3 +73,13 @@
   3. The global scale is a per-block input, not a setting: it is read at step evaluation, so an adapter that changes it
      mid-block is block-size dependent exactly as it would be for a settings change. The harness cuts blocks at a scale change.
   4. `CODEMAP.md` and README status lines are out of this dispatch's scope and not updated.
+
+## Correction (M2b dispatch, 2026-10-23, after the M2a critic review)
+
+- **The mutation note above was wrong about `resetState()`.** It called clearing `lastQ` in `resetState()` "redundant: the first `process()`
+  after `prepare()` / `reset()` is a clock edge, which runs `releaseAll()`". With a STOPPED transport the first `process()` runs the free
+  clock with no clock edge, so no `releaseAll()` runs and only the `resetState()` clear keeps SPEC 6's T10 reset (critic M1). M2b added the
+  stopped-host `prepare()` variant to the Q5 known answers and to the `lastQNoReset` plant's must-fire set (`tests/core/test_m2a.cpp`,
+  `afterPrepareStopped`), and the mutation (drop the `resetState()` clear) is now caught.
+- The 30 seeded M1b sessions were restored exactly as M1b drew them (critic L2); the M2a draws moved into a NEW set of 30 (`test_m2b.cpp`,
+  `featureFuzz`). Critic L1: a seeded brute-force sweep with a random `lastQ` chain and `degShift` over irregular masks were added.

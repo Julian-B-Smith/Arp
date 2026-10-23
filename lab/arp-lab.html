@@ -1254,7 +1254,7 @@ const ARP_PLANTS = ["dropRelease", "doubleRelease", "sameSampleOff", "clampOffse
   "lastQNoReset", "collisionKeepsLast", "prepareResetsUser", "userFirstWins", "transposeMerged", "degreesAsSemis", "stepsZeroShifts", "timeUsesTempo", "timeAnchorsTransport", "stepSizeIgnored",
   "regridAbsolute", "regridKAbs", "timeBarsCount", "offsetsPerStage", "stepOffsetReadsGlobal", "timeEntryNoStart", "inactiveReanchors", "timeStepsWhileRinging",
   "repeatsCountPatternPasses", "repeatsNeverStop", "chordNoDedupe", "chordEndsOnFirstSource", "arpIgnoresChord", "chordRestartAll",
-  "chordRecomputeAtRelease", "t2AcrossStreams", "arpToggleEndsChord", "chordT6Restart", "sharedSoundingTable", "exhaustedStopsGuard", "onlyGestureResets", "morphRevives", "chordSyncPerEvent", "chordDedupeByChannelKey", "latchAtNextStep", "chordPlusZeroUnquantized", "chordSkipQuantize"];
+  "chordRecomputeAtRelease", "t2AcrossStreams", "arpToggleEndsChord", "chordT6Restart", "sharedSoundingTable", "exhaustedStopsGuard", "onlyGestureResets", "morphRevives", "chordSyncPerEvent", "chordDedupeByChannelKey", "latchAtNextStep", "chordPlusZeroUnquantized", "chordSkipQuantize", "swingPerStep"];
 // Every discrete setting except `enabled` (which applies at offset 0, T4/T5) switches at the next
 // evaluated step (SPEC §9). Derived from params.json, so a new discrete setting cannot be forgotten.
 const DISCRETE_KEYS = ARP_PARAMS.params.filter(p => p.kind === "discrete" && p.key !== "enabled").map(p => p.key);
@@ -1438,6 +1438,7 @@ class ArpCore {
     this.freeRunning = false; this.epoch = 0; this.lastTempoMilli = 120000;
     this.lastEvaluated = null; this.anchorK = null; this.m = 0; this.lastBar = null;
     this.active = null; this.L = 0; this.stepSeq = 0;
+    this._swingUsed = 500; this._swingPair = 500; this._swingPairK = null;   // SPEC 5.1 (E6): swing is latched per step pair
     this.prevCont = null; this._fnext = undefined;
     this.barTicks = 4 * TPQ; this.barPhase = 0;
     this.timeMode = false; this.D = BigInt(60 * this.sr * 1000);   // sync units until a block says rate_mode = time
@@ -1637,6 +1638,7 @@ class ArpCore {
     this.active.rate = this.incoming.rate; this.L = this._curL(this.incoming);   // SPEC-GAP: rate adopted at an edge
     this.freeRunning = false; this.epoch = 0;
     this.lastEvaluated = null; this._gO = 0; this._gK1 = 0; this.repeatSteps = 0; this.exhausted = false;
+    this._swingPairK = null;   // the step numbering restarts: no pair partner survives an edge
     this._reanchor(0, false);
   }
   // Re-anchor at the current position (T5/T6): m := 0; chord anchors only if an anchor exists or keys are held.
@@ -1654,6 +1656,7 @@ class ArpCore {
     const shift = this._posAt(s);
     if (this.freeRunning && (this.sounding.length || this.pending.length)) this.rows.T14++;
     this._start -= shift; this._ver++;
+    this._swingPairK = null;
     for (const x of this.sounding) if (x.offPos !== null) x.offPos -= shift;
     for (const p of this.pending) { p.pos -= shift; if (p.offPos !== undefined) p.offPos -= shift; }
     this.epoch = (this.epoch + 1) >>> 0;
@@ -1837,6 +1840,10 @@ class ArpCore {
     if (this.timeMode) { if (P.regridAbsolute && S.step_time_us !== this.L) { this._regridAbsolute(kAbs); return; } }
     else if (S.rate !== this.active.rate) { this._switchRate(kAbs); return; }   // T15: applies at the next step of the OLD rate (SPEC 9)
     this.lastEvaluated = kAbs;
+    // SPEC 5.1 (E6): swing is latched per step PAIR. The even step 2j reads `swing` now; the odd step 2j+1 reuses that value when 2j was the last step
+    // evaluated, else reads the current one. So span(2j) and on(2j+1) always use one swing and no step's ratchets sound after the next step's on.
+    // Plant swingPerStep: swing is read at every step (the M2a behaviour).
+    { const odd = mod(kAbs, 2) === 1; this._swingUsed = (odd && this._swingPairK === kAbs - 1 && !P.swingPerStep) ? this._swingPair : S.swing; if (!odd) { this._swingPair = this._swingUsed; this._swingPairK = kAbs; } }
     this._adopt();
     this._chordSync(so);   // _adopt may have dropped latched refs (latch off), which changes H
     if (this._rs() === "chord" && this.anchorK === null) return;             // no anchor yet (SPEC 2.5)
@@ -1856,6 +1863,7 @@ class ArpCore {
     this.active.rate = this.incoming.rate; this.L = this._rateTicks(this.active.rate);
     const kNew = Number(cdivB(gOld, BigInt(this.L) * this.D));
     this.lastEvaluated = kNew - 1;
+    this._swingPairK = null;   // the new grid renumbers the steps
     if (this.sounding.length) this.rows.T15++;
     const r = this.active.restart;
     if (r === "chord") { if (this.anchorK !== null) { this.anchorK = kNew; this.m = 0; } }
@@ -1909,7 +1917,7 @@ class ArpCore {
     const fires = P.probLE ? (this._draw(a.seed, kAbs, 2) % 100) <= st.prob : (this._draw(a.seed, kAbs, 2) % 100) < st.prob;
 
     // on-times anchor at kAbs*L (SPEC 5.1, never k*L); swing parity from kAbs (G3)
-    const swingD = fdiv(L * (2 * S.swing - 1000), 1000);
+    const swingD = fdiv(L * (2 * this._swingUsed - 1000), 1000);
     const onT = x => this._gtick(x) + (mod(P.swingParityK && aK !== null ? x - aK : x, 2) === 1 ? swingD : 0) + (P.srTickMath ? Math.floor(this.sr / 44100) : 0);
     const on0 = onT(kAbs);
     const mBefore = this.m;

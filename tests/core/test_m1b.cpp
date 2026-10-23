@@ -989,32 +989,6 @@ Session fuzzSession(std::uint32_t seed, bool keyRefs) {
     else if (r < 9) s.ins.push_back(Pan(at));
     else s.ins.push_back(Other(at, rnd(1000)));
   }
-  // M2a (ROADMAP T-005): quantize, own and global scales, the degree unit, swing and velocity modes. Drawn LAST, so everything
-  // above keeps the structure it had before M2a; only these settings are new.
-  s.base.quantize = static_cast<Quantize>(rnd(3));
-  s.base.scaleSource = rnd(2) ? ScaleSource::Own : ScaleSource::Global;
-  s.base.scaleRoot = rnd(12);
-  for (bool& d : s.base.scaleDeg) d = rnd(3) != 0;   // about a third of the degrees off; the odd all-off scale is a zero mask (quantize disabled)
-  s.base.swing = 500 + rnd(251);
-  s.base.stepUnit = rnd(2) ? StepUnit::Degrees : StepUnit::Semitones;
-  s.scale = Scale{rnd(12), static_cast<std::uint16_t>(g() & 0xFFF)};
-  if (s.userPattern && rnd(2)) s.userPattern->stepUnit = StepUnit::Degrees;
-  for (auto& ed : s.userEdits) if (rnd(2)) ed.second.stepUnit = StepUnit::Degrees;
-  for (int i = rnd(6); i > 0; --i) {
-    const int at = 1 + rnd(s.total - 1), what = rnd(7), v = static_cast<int>(g() % 1000);
-    s.cfg.push_back(C(at, [what, v](Settings& x) {
-      switch (what) {
-        case 0: x.quantize = static_cast<Quantize>(v % 3); break;
-        case 1: x.scaleSource = v % 2 ? ScaleSource::Own : ScaleSource::Global; break;
-        case 2: x.scaleRoot = v % 12; for (int d = 0; d < 12; ++d) x.scaleDeg[d] = ((v * 7 + d * 5) % 3) != 0; break;
-        case 3: x.swing = 500 + v % 251; break;
-        case 4: x.stepUnit = v % 2 ? StepUnit::Degrees : StepUnit::Semitones; x.steps = v % 3; x.stepSize = v % 15 - 7; break;
-        case 5: x.velFixed = 1 + v % 127; x.velMode = v % 2 ? VelMode::Fixed : VelMode::Played; break;
-        default: x.quantize = Quantize::Scale; x.order = static_cast<Order>(v % 16); break;
-      }
-    }));
-  }
-  for (int i = rnd(3); i > 0; --i) s.scaleAt.emplace_back(1 + rnd(s.total - 1), Scale{rnd(12), static_cast<std::uint16_t>(g() & 0xFFF)});
   return s;
 }
 
@@ -1038,10 +1012,14 @@ void testFuzz() {
       if (ref.empty()) ref = st; else if (st != ref && !g1) { g1 = true; ++g1bad; if (first.empty()) first = "session " + std::to_string(i) + " G1 differs at block " + std::to_string(block); }
     }
   }
-  check(n1bad == 0 && g1bad == 0 && lost == 0 && events > 2000, std::to_string(kSessions) + " seeded sessions (all orders, patterns, user edits, ratchets, ties, triggers, transposition, quantize, own and global scales, degrees, swing, velocity modes, time mode, latch, pedal, panic, tempo and seeks; id-ful and id-less refs): N1 violations " + std::to_string(n1bad) + ", G1 divergences " + std::to_string(g1bad) + ", lost offs " + std::to_string(lost) + " (" + std::to_string(events) + " events)" + (first.empty() ? "" : " - " + first));
+  check(n1bad == 0 && g1bad == 0 && lost == 0 && events > 2000, std::to_string(kSessions) + " seeded sessions (all orders, patterns, user edits, ratchets, ties, triggers, transposition, time mode, latch, pedal, panic, tempo and seeks; id-ful and id-less refs): N1 violations " + std::to_string(n1bad) + ", G1 divergences " + std::to_string(g1bad) + ", lost offs " + std::to_string(lost) + " (" + std::to_string(events) + " events)" + (first.empty() ? "" : " - " + first));
 }
 
 }  // namespace
+
+// The M1b seeded session, exactly as M1b drew it (straight, unquantized, no restart or chord stage): test_m2a / test_m2b layer their own
+// draws on top of it with a SEPARATE generator, so these 30 sessions keep the structure M1b gave them (M2a critic L2).
+Session m1bFuzzSession(std::uint32_t seed, bool keyRefs) { return fuzzSession(seed, keyRefs); }
 
 // The N1 sessions every feature must pass through (test_core.cpp's kSessions appends these).
 Session m1bSession(const char* name) {

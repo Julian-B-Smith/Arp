@@ -66,7 +66,7 @@ function mkCore(plants = [], opts) {
   return c;
 }
 const refStr = r => r.port + ":" + r.channel + ":" + r.key + ":" + r.id;
-const norm = (e, base, epoch) => ({ a: base + e.s, t: e.t, key: e.key !== undefined ? e.key : e.ref && e.ref.key, vel: e.vel, lane: e.lane, id: e.ref ? refStr(e.ref) : undefined, stream: e.stream, tick: e.tick, epoch, pass: e.ev });   // stream: SPEC §1 / S1 — dropping it here made S1's plant pass vacuously
+const norm = (e, base, epoch) => ({ a: base + e.s, t: e.t, key: e.key !== undefined ? e.key : e.ref && e.ref.key, vel: e.vel, lane: e.lane, id: e.ref ? refStr(e.ref) : undefined, stream: e.stream, tick: e.tick, ord: e.ord, epoch, pass: e.ev });   // stream: SPEC §1 / S1 — dropping it here made S1's plant pass vacuously
 const streamOf = evs => evs.map(e => `${e.a} ${e.t} ${e.key} ${e.vel} ${e.lane} ${e.id} ${e.stream}`).join("\n");
 const tickStreamOf = evs => evs.map(e => `${e.t} ${e.key} ${e.vel} ${e.lane} ${e.id} ${e.tick}`).join("\n");
 
@@ -262,6 +262,23 @@ function g1Diverges(plants) {
   const bad = plants => { const got = ons(sess(plants)).map(e => e.a).slice(0, 9), e = exp(); return got.length < 9 || got.some((v, i) => v !== e[i]); };
   plant(bad(["swingParityK"]), "G3 detects swing parity taken from k under restart=chord (first step on an odd kAbs)");
   check(!bad([]), "G3: with the chord anchored on odd kAbs 3, the swung steps are still the odd kAbs (swing 667 permille)");
+}
+
+// ---- 6b. E6: swing is latched per step pair (SPEC 5.1, D-026) ------------------------------------------------------------------
+{
+  const RT4 = { length: 1, steps: [{ ratchet: 4 }] };
+  const scene = (plants, block) => run({ core: mkCore(plants), block, total: 9000, userPattern: RT4, base: { pattern: "user", swing: 750, gate: 100 }, cfg: [{ at: 2500, set: { swing: 500 } }], ins: [K(0, "a", 60)] });
+  // the critic's case: swing 750, one step of 4 ratchets, swing 500 from sample 2500. Every sub-note of a step starts BEFORE the next step's on, at every block size
+  const spans = r => { const m = new Map(); for (const e of ons(r)) { const v = m.get(e.ord) || [Infinity, -Infinity]; m.set(e.ord, [Math.min(v[0], e.tick), Math.max(v[1], e.tick)]); } return [...m.entries()].sort((x, y) => x[0] - y[0]).map(([, v]) => v); };
+  const overlap = plants => [4096, 64, 1].some(b => { const r = scene(plants, b), sp = spans(r); return sp.length < 8 || n1(r.evs).length > 0 || sp.some((v, i) => i + 1 < sp.length && v[1] >= sp[i + 1][0]); });
+  plant(overlap(["swingPerStep"]), "E6 detects swing read at every step (a ratcheted step's sub-notes sound after the next step's on)");
+  const sp = spans(scene([], 64));
+  check(!overlap([]) && sp[3][0] === 13440 && sp[4][0] === 15360 && sp[5][0] === 19200,
+    "E6: swing 750 with 4 ratchets and swing 500 from sample 2500: no sub-note at or after the next step's on at block sizes 4096/64/1; the odd partner (step 3) keeps the swing (13440), the change applies from the next even step (4), so step 5 is straight (19200)");
+  // an odd step without its even partner reads the CURRENT swing: a seek at 4500 lands on odd step 5 right after step 4 latched 750; swing was set to 500 at 4200
+  const host = () => { const h = X.simHost({ sr: 8000, bpm: 120, startBeats: 0, playing: true }); h.set(4500, { seekBeats: 1.25 }); return h; };
+  const seek = plants => { const r = run({ core: mkCore(plants), block: 64, host: host(), total: 9000, base: { swing: 750, gate: 50 }, cfg: [{ at: 4200, set: { swing: 500 } }], ins: [K(0, "a", 60)] }); return ons(r).find(e => e.a >= 4500).tick; };
+  check(seek([]) === 19200, "E6: after a seek that lands on odd step 5 (no even partner in the new numbering) the step reads the current swing (500): tick 19200, not the stale 750's 21120");
 }
 
 // ---- 7. G4: the tick of every event is identical at 44.1 / 48 / 96 / 192 kHz ----------------

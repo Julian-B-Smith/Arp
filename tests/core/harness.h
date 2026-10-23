@@ -72,6 +72,21 @@ inline bool setPlant(Plants& p, const std::string& name) {
       {"droppedKeySetsLastQ", &Plants::droppedKeySetsLastQ},   {"noStage2Drop", &Plants::noStage2Drop},
       {"swingParityK", &Plants::swingParityK},                 {"timeIgnoresSwing", &Plants::timeIgnoresSwing},
       {"releaseKeepsPending", &Plants::releaseKeepsPending},
+      // ---- M2b ----
+      {"restartBarAsChord", &Plants::restartBarAsChord},       {"restartFreeAsChord", &Plants::restartFreeAsChord},
+      {"repeatsCountPatternPasses", &Plants::repeatsCountPatternPasses}, {"repeatsNeverStop", &Plants::repeatsNeverStop},
+      {"exhaustedStopsGuard", &Plants::exhaustedStopsGuard},   {"onlyGestureResets", &Plants::onlyGestureResets},
+      {"morphRevives", &Plants::morphRevives},                 {"restartMorphKeepsM", &Plants::restartMorphKeepsM},
+      {"restartMorphReanchors", &Plants::restartMorphReanchors}, {"morphSwitchCuts", &Plants::morphSwitchCuts},
+      {"morphSwitchDropsPending", &Plants::morphSwitchDropsPending},
+      {"chordNoDedupe", &Plants::chordNoDedupe},               {"chordEndsOnFirstSource", &Plants::chordEndsOnFirstSource},
+      {"arpIgnoresChord", &Plants::arpIgnoresChord},           {"chordRestartAll", &Plants::chordRestartAll},
+      {"chordRecomputeAtRelease", &Plants::chordRecomputeAtRelease}, {"t2AcrossStreams", &Plants::t2AcrossStreams},
+      {"arpToggleEndsChord", &Plants::arpToggleEndsChord},     {"chordEndsAtEdge", &Plants::chordEndsAtEdge},
+      {"sharedSoundingTable", &Plants::sharedSoundingTable},   {"chordSyncPerEvent", &Plants::chordSyncPerEvent},
+      {"chordDedupeByChannelKey", &Plants::chordDedupeByChannelKey}, {"chordPlusZeroUnquantized", &Plants::chordPlusZeroUnquantized},
+      {"chordSkipQuantize", &Plants::chordSkipQuantize},       {"chordReadsLastQ", &Plants::chordReadsLastQ}, {"chordWritesLastQ", &Plants::chordWritesLastQ},
+      {"chordTaggedArp", &Plants::chordTaggedArp},             {"chordRootFromChordSet", &Plants::chordRootFromChordSet}, {"swingPerStep", &Plants::swingPerStep},
   };
   for (const Entry& e : table)
     if (name == e.name) { p.*(e.flag) = true; return true; }
@@ -101,10 +116,15 @@ struct SimHost {
   int sr;
   std::int64_t D;
   std::vector<Seg> segs;
+  // The script that built this host, so G4 can replay it at another sample rate (positions in musical units stay put; sample positions scale).
+  struct Op { int at; std::optional<bool> playing; std::optional<double> seekBeats; std::optional<double> bpm; };
+  std::vector<Op> ops;
+  double startBpm = 120, startBeats = 0;
+  bool startPlaying = true;
 
-  explicit SimHost(int sampleRate, double bpm = 120, double startBeats = 0, bool playing = true)
-      : sr(sampleRate), D(static_cast<std::int64_t>(60) * sampleRate * 1000) {
-    segs.push_back(mk(0, playing, bpm, I128::mul(std::llround(startBeats * kTpq), D)));
+  explicit SimHost(int sampleRate, double bpm = 120, double startBeats_ = 0, bool playing = true)
+      : sr(sampleRate), D(static_cast<std::int64_t>(60) * sampleRate * 1000), startBpm(bpm), startBeats(startBeats_), startPlaying(playing) {
+    segs.push_back(mk(0, playing, bpm, I128::mul(std::llround(startBeats_ * kTpq), D)));
   }
   static Seg mk(int start, bool playing, double bpm, I128 base) { return Seg{start, playing, bpm, std::llround(bpm * 1000), base}; }
   const Seg& segAt(int i) const {
@@ -118,10 +138,17 @@ struct SimHost {
   }
   // A transport change at sample `at`: any of play/stop, seek (in beats), tempo.
   void set(int at, std::optional<bool> playing, std::optional<double> seekBeats = std::nullopt, std::optional<double> bpm = std::nullopt) {
+    ops.push_back({at, playing, seekBeats, bpm});
     const Seg prev = segAt(at);
     const I128 pos = posAt(at);
     segs.push_back(mk(at, playing.value_or(prev.playing), bpm.value_or(prev.bpm), seekBeats ? I128::mul(std::llround(*seekBeats * kTpq), D) : pos));
     std::stable_sort(segs.begin(), segs.end(), [](const Seg& a, const Seg& b) { return a.start < b.start; });
+  }
+  // The same script at another sample rate, every sample position mapped through `sc`.
+  std::shared_ptr<SimHost> rescaled(int newSr, const std::function<int(int)>& sc) const {
+    auto h = std::make_shared<SimHost>(newSr, startBpm, startBeats, startPlaying);
+    for (const Op& o : ops) h->set(sc(o.at), o.playing, o.seekBeats, o.bpm);
+    return h;
   }
   Transport at(int i) const {
     const Seg& g = segAt(i);
@@ -207,6 +234,7 @@ struct Rec {
   NoteRef ref{};
   Stream stream = Stream::Arp;
   std::int64_t tick = kNoTick;
+  std::int64_t ord = 0;    // NoteOn: which evaluated step produced it (-1 for the chord stage)
 };
 struct StepRec { std::int64_t a; StepRecord s; };
 
@@ -230,6 +258,7 @@ inline Rec norm(const Event& e, std::int64_t base, int epoch) {
   r.ref = e.ref;
   r.stream = e.stream;
   r.tick = e.tick;
+  r.ord = e.stepSeq;
   return r;
 }
 
@@ -340,9 +369,12 @@ inline std::string streamOf(const Run& r) {
   return o.str();
 }
 // The stream the sample rate must not change (ticks, no samples).
+// A chord-stage NoteOn starts at the sample of the input (or block start) that caused it, so its tick is the floor of the position AT THAT
+// SAMPLE, which another sample rate rounds differently (by a tick or so): it is left out of the tick comparison. The grid-bound events (the
+// arp's notes, triggers) and every off's scheduled tick are compared as before.
 inline std::string tickStreamOf(const Run& r) {
   std::ostringstream o;
-  for (const Rec& e : r.evs) o << typeStr(e.t) << ' ' << e.lane << ' ' << e.key << ' ' << e.vel << ' ' << e.data0 << ' ' << refStr(e.ref) << ' ' << e.tick << '\n';
+  for (const Rec& e : r.evs) o << typeStr(e.t) << ' ' << e.lane << ' ' << e.key << ' ' << e.vel << ' ' << e.data0 << ' ' << refStr(e.ref) << ' ' << ((e.t == EventType::NoteOn && e.stream == Stream::Chord) ? kNoTick : e.tick) << '\n';
   return o.str();
 }
 

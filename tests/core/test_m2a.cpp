@@ -16,6 +16,7 @@
 #include <cstring>
 #include <functional>
 #include <map>
+#include <random>
 #include <set>
 #include <string>
 #include <vector>
@@ -119,10 +120,10 @@ std::vector<int> refUp(const std::vector<int>& E, const RefScale& sc, int n) {
   }
   return out;
 }
-// the in-scale keys of C major, ascending: a degree move is an index walk (a key off the ends is dropped: -1)
-int degShift(int key, int g) {
+// the in-scale keys of a scale (C major by default), ascending: a degree move is an index walk (a key off the ends is dropped: -1)
+int degShift(int key, int g, int root = 0, unsigned mask = kCMajor) {
   std::vector<int> in;
-  for (int k = 0; k <= 127; ++k) if (RefScale{0, kCMajor}.has(k)) in.push_back(k);
+  for (int k = 0; k <= 127; ++k) if (RefScale{root, mask}.has(k)) in.push_back(k);
   const auto it = std::find(in.begin(), in.end(), key);
   if (it == in.end()) return -1;
   const long i = (it - in.begin()) + g;
@@ -192,6 +193,62 @@ void testQ1() {
   Session zc = z;
   zc.base.quantize = Quantize::ChordRoot;
   check(keysOf(run(z, 64), 4) == std::vector<int>({61, 64, 61, 64}) && keysOf(run(zc, 64), 4) == std::vector<int>({61, 64, 61, 64}), "known answer: a zero mask disables quantize, also under chord_root (whose always-admitted anchor applies only to a non-zero mask)");
+  { // SEEDED sweep (M2a critic L1): random scales, random keys, `played` order, so every note after the first resolves its tie against
+    // a RANDOM previous output (the chain), not only against none. The oracle is the brute-force nearest rule with the chain.
+    std::mt19937 g(4242);
+    int notes = 0, badN = 0;
+    std::string first;
+    for (int c = 0; c < 300; ++c) {
+      const int root = static_cast<int>(g() % 12);
+      unsigned mask = static_cast<unsigned>(g() & 0xFFF);
+      if (mask == 0) mask = 1;
+      std::vector<int> pressed;
+      for (int i = 2 + static_cast<int>(g() % 3); i > 0; --i) pressed.push_back(static_cast<int>(g() % 128));
+      Session s = qs(7000);
+      s.base.order = Order::Played;
+      s.scale = Scale{root, static_cast<std::uint16_t>(mask)};
+      for (std::size_t i = 0; i < pressed.size(); ++i) s.ins.push_back(Kk(static_cast<int>(i), pressed[i]));
+      std::vector<int> E;   // played order, distinct keys only (a repeated key is one held key)
+      for (std::size_t i = 0; i < pressed.size(); ++i) {
+        bool dup = false;
+        for (int e : E) dup = dup || e == pressed[i];
+        if (!dup) E.push_back(pressed[i]);
+      }
+      const auto got = keysOf(run(s, 4096), 12);
+      const auto want = refUp(E, RefScale{root, mask}, static_cast<int>(got.size()));
+      notes += static_cast<int>(got.size());
+      if (got.size() < 6 || got != want) { ++badN; if (first.empty()) first = "root " + std::to_string(root) + " mask " + std::to_string(mask) + ": got " + join(got) + " want " + join(want); }
+    }
+    check(badN == 0 && notes > 1500, "known answer: 300 seeded cases (random scale, random 2-4 keys in press order) match the brute-force nearest rule WITH the lastQ chain, so most ties resolve against a random previous output (" + std::to_string(notes) + " notes)" + (first.empty() ? "" : " - " + first));
+  }
+  { // SEEDED sweep: degree moves on IRREGULAR masks (an index walk over that scale's in-scale keys), up and down, off both ends
+    std::mt19937 g(777);
+    int notes = 0, badN = 0;
+    std::string first;
+    for (int c = 0; c < 200; ++c) {
+      const int root = static_cast<int>(g() % 12);
+      unsigned mask = static_cast<unsigned>(g() & 0xFFF);
+      if (mask == 0) mask = 1;
+      std::vector<int> in;
+      for (int k = 0; k <= 127; ++k) if (RefScale{root, mask}.has(k)) in.push_back(k);
+      const int key = in[g() % in.size()];
+      const int deg = static_cast<int>(g() % 9) - 4;
+      Session s = qs(9000);
+      ownScale(s.base, root, mask);
+      s.base.steps = 1;
+      s.base.stepSize = deg;
+      s.base.stepUnit = StepUnit::Degrees;
+      s.ins = {Kk(0, key)};
+      const Run r = run(s, 4096);
+      const int moved = degShift(key, deg, root, mask);
+      std::vector<int> want;
+      for (int i = 0; i < 8; ++i) { const int v = i % 2 ? moved : key; if (v >= 0) want.push_back(v); }
+      const auto got = keysOf(r, want.size());
+      notes += static_cast<int>(got.size());
+      if (got != want) { ++badN; if (first.empty()) first = "root " + std::to_string(root) + " mask " + std::to_string(mask) + " key " + std::to_string(key) + " deg " + std::to_string(deg) + ": got " + join(got) + " want " + join(want); }
+    }
+    check(badN == 0 && notes > 600, "known answer: 200 seeded degree moves on irregular masks (a step of -4..+4 degrees from an in-scale key, up and down, off either end of 0-127) equal an index walk over that scale's own in-scale keys (" + std::to_string(notes) + " notes)" + (first.empty() ? "" : " - " + first));
+  }
 }
 
 // ====================================================================== Q2 / Q5
@@ -231,10 +288,21 @@ void testQ2Q5() {
   auto afterEnable = [&](const Plant& pl) { Session s = tieBase(); s.plants = pl; s.cfg = {C(3500, [](Settings& x) { x.enabled = false; }), C(4000, [](Settings& x) { x.enabled = true; })}; return join(keysFrom(run(s, 64), 4000, 4)); };
   auto afterReset = [&](const Plant& pl) { Session s = tieBase(); s.plants = pl; s.resets = {3500}; s.ins = {K(0, "a", 61), K(0, "b", 72), K(3600, "c", 61), K(3600, "d", 72)}; return join(keysFrom(run(s, 64), 3600, 4)); };
   auto afterPrepare = [&](const Plant& pl) { Session s = tieBase(); s.plants = pl; s.prepares = {3500}; s.ins = {K(0, "a", 61), K(0, "b", 72), K(3600, "c", 61), K(3600, "d", 72)}; return join(keysFrom(run(s, 64), 3600, 4)); };
-  const bool fired = afterPanic({"lastQNoReset"}) != want && afterStop({"lastQNoReset"}) != want && afterEnable({"lastQNoReset"}) != want && afterReset({"lastQNoReset"}) != want && afterPrepare({"lastQNoReset"}) != want;
-  plant(fired, "Q5 detects a lastQ that survives a release-all: Panic, transport stop, enable off/on, reset() and prepare() all play 62 first (" + afterPanic({"lastQNoReset"}) + ")");
-  check(afterPanic({}) == want && afterStop({}) == want && afterEnable({}) == want && afterReset({}) == want && afterPrepare({}) == want,
-        "Q5: after Panic (T7), a transport stop (T6), enabled off/on (T4), reset() and prepare() (T10) the tie chain starts over: 60 72 62 72 each time (lastQ was 72 when the release-all hit)");
+  // A STOPPED transport: the first process() after prepare() runs the free clock with no clock edge, so no releaseAll runs; only
+  // resetState's own clear keeps SPEC 6's T10 reset (M2a critic M1: it is not redundant).
+  auto afterPrepareStopped = [&](const Plant& pl) {
+    Session s = tieBase();
+    s.plants = pl;
+    s.host = std::make_shared<SimHost>(8000, 120, 0, false);
+    s.prepares = {3500};
+    s.ins = {K(0, "a", 61), K(0, "b", 72), K(3600, "c", 61), K(3600, "d", 72)};
+    return join(keysFrom(run(s, 64), 3600, 4));
+  };
+  const bool fired = afterPanic({"lastQNoReset"}) != want && afterStop({"lastQNoReset"}) != want && afterEnable({"lastQNoReset"}) != want && afterReset({"lastQNoReset"}) != want && afterPrepare({"lastQNoReset"}) != want &&
+                     afterPrepareStopped({"lastQNoReset"}) != want;
+  plant(fired, "Q5 detects a lastQ that survives a release-all: Panic, transport stop, enable off/on, reset(), prepare() and prepare() on a stopped transport all play 62 first (" + afterPanic({"lastQNoReset"}) + ")");
+  check(afterPanic({}) == want && afterStop({}) == want && afterEnable({}) == want && afterReset({}) == want && afterPrepare({}) == want && afterPrepareStopped({}) == want,
+        "Q5: after Panic (T7), a transport stop (T6), enabled off/on (T4), reset(), prepare() and prepare() on a STOPPED transport (T10; no clock edge runs there) the tie chain starts over: 60 72 62 72 each time (lastQ was 72 when the release-all hit)");
   // lastQ follows EVALUATION, not emission: a pending queue of 1 refuses the second key of every chord step, but it still counts
   auto refused = [&](const Plant& pl, std::int64_t* overflow) {
     Session s = qs(6000);
@@ -518,9 +586,64 @@ void testSwing() {
     s.ins = {Kk(100, 60)};
     check(joinT(ticksOf(run(s, 64), 5)) == "-10238,-7680,-2558,0,5122", "known answer: pre-roll with swing 667, anchored on kAbs -3 (odd): -3 and -1 are delayed (-11520 -> -10238, -3840 -> -2558), -2 and 0 are not: -10238 -7680 -2558 0 5122");
   }
-  { // swing is continuous: read at each step's evaluation, no re-anchor, nothing sounding is touched
+  { // swing is latched per step PAIR (SPEC 5.1, E6): the even step reads it, its odd partner reuses it. No re-anchor, nothing sounding is touched
     const Run r = onTicks({}, 500, 0, {}, {C(1500, [](Settings& x) { x.swing = 750; })});
-    check(joinT(ticksOf(r, 6)) == "0,3840,7680,13440,15360,21120" && n1(r).empty(), "known answer: swing 500 -> 750 at sample 1500 applies from the next EVALUATED step (step 3): 0 3840 7680 13440 15360 21120, and N1 holds");
+    check(joinT(ticksOf(r, 6)) == "0,3840,7680,13440,15360,21120" && n1(r).empty(), "known answer: swing 500 -> 750 at sample 1500 (mid-pair 0/1) applies from the next EVEN step (2): 0 3840 7680 13440 15360 21120, and N1 holds");
+    // a change between step 2 and its odd partner 3 (at 2500) does NOT reach step 3: it keeps step 2's swing and applies from step 4
+    auto mid = [&](const Plant& pl) { return joinT(ticksOf(onTicks(pl, 750, 0, {}, {C(2500, [](Settings& x) { x.swing = 500; })}), 6)); };
+    plant(mid({"swingPerStep"}) != "0,5760,7680,13440,15360,21120", "E6 detects swing read at every step instead of latched per pair (the odd step 3 would go straight: 11520)");
+    check(mid({}) == "0,5760,7680,13440,15360,19200", "known answer (E6): swing 750 -> 500 at sample 2500 (between step 2 and its partner 3): step 3 stays swung (13440), the change applies from step 4, so 5 is straight (19200)");
+  }
+  { // the critic's case: swing 750, one step with 4 ratchets, swing set to 500 at 2500: every sub-note of a step starts before the NEXT step's on
+    auto scene = [&](const Plant& pl) {
+      Session s;
+      s.total = 9000; s.plants = pl; s.base.gate = 100; s.base.swing = 750; s.base.pattern = Pattern::User; s.userPattern = userPat({B().ratchet(4)});
+      s.cfg = {C(2500, [](Settings& x) { x.swing = 500; })};
+      s.ins = {Kk(0, 60)};
+      return s;
+    };
+    auto overlap = [&](const Plant& pl) {
+      std::string first;
+      for (int block : {4096, 64, 1}) {
+        const Run r = run(scene(pl), block);
+        std::map<std::int64_t, std::pair<std::int64_t, std::int64_t>> span;   // step ordinal -> (first sub-note tick, last sub-note tick)
+        for (const Rec& e : onsOf(r)) { auto it = span.find(e.ord); if (it == span.end()) span[e.ord] = {e.tick, e.tick}; else { it->second.first = std::min(it->second.first, e.tick); it->second.second = std::max(it->second.second, e.tick); } }
+        if (span.size() < 8 || !n1(r).empty()) return std::string("too few steps / N1");
+        for (auto it = span.begin(); std::next(it) != span.end(); ++it)
+          if (it->second.second >= std::next(it)->second.first && first.empty()) first = "step " + std::to_string(it->first) + " has a sub-note at tick " + std::to_string(it->second.second) + " but the next step starts at " + std::to_string(std::next(it)->second.first) + " (block " + std::to_string(block) + ")";
+      }
+      return first;
+    };
+    plant(!overlap({"swingPerStep"}).empty(), "E6 detects a ratcheted step whose sub-notes sound after the next step's on (" + overlap({"swingPerStep"}) + ")");
+    const Run r = run(scene({}), 64);
+    std::map<std::int64_t, std::int64_t> startOf;
+    for (const Rec& e : onsOf(r)) if (!startOf.count(e.ord) || e.tick < startOf[e.ord]) startOf[e.ord] = e.tick;
+    check(overlap({}).empty() && startOf[3] == 13440 && startOf[4] == 15360 && startOf[5] == 19200,
+          "known answer (E6, the critic's case): swing 750 with 4 ratchets, swing 500 from sample 2500: no step has a sub-note at or after the next step's on at block sizes 4096/64/1; step 3 (the odd partner of 2) starts at 13440 still swung, the change takes effect at the next even step 4, so step 5 starts straight at 19200");
+  }
+  { // an odd step evaluated WITHOUT its even partner reads the CURRENT swing. A seek (T6) at 4500 lands on ODD step 5 (beat 1.25) right after step 4
+    // (the last even step, which latched 750) was evaluated: the new numbering has no partner, so the stale 750 must NOT be reused; the swing was set to 500 at 4200
+    Session s;
+    s.total = 9000; s.base.gate = 50; s.base.swing = 750;
+    auto h = std::make_shared<SimHost>(8000, 120, 0, true);
+    h->set(4500, std::nullopt, 1.25);   // a +1920 tick jump (> 1/16 beat): T6
+    s.host = h;
+    s.cfg = {C(4200, [](Settings& x) { x.swing = 500; })};
+    s.ins = {Kk(0, 60)};
+    const Run r = run(s, 64);
+    std::int64_t first = -1;
+    for (const Rec& e : onsOf(r)) if (e.a >= 4500 && first < 0) first = e.tick;
+    check(first == 19200 && n1(r).empty(), "known answer (E6): after a seek that lands on ODD step 5 there is no even partner in the new numbering, so it reads the current swing (500, straight): tick 19200, not the stale 750's 21120");
+  }
+  { // the same through a RATE change: 1/16 -> 1/8T lands the new grid on odd step 5 right after step 5 was the last one visited (its even partner 4 latched 750)
+    Session s;
+    s.total = 9000; s.base.gate = 50; s.base.swing = 750;
+    s.cfg = {C(5200, [](Settings& x) { x.swing = 500; }), C(5500, [](Settings& x) { x.rate = Rate::R1_8T; })};
+    s.ins = {Kk(0, 60)};
+    const Run r = run(s, 64);
+    std::int64_t first = -1;
+    for (const Rec& e : onsOf(r)) if (e.a > 5600 && first < 0) first = e.tick;
+    check(first == 25600 && n1(r).empty(), "known answer (E6): a rate change renumbers the steps; the new grid's odd step 5 reads the current swing (500): tick 25600, not 28160");
   }
   { // ratchets split the SWUNG span: odd step 1920 ticks, even steps 5760
     Session s;
@@ -682,6 +805,38 @@ Session m2aSession(const char* name) {
     std::abort();
   }
   return s;
+}
+
+// The M2a features layered on a (seeded) session: quantize, own and global scales, the degree unit, swing and velocity modes. Drawn from
+// its OWN generator, so the M1b session underneath keeps exactly the structure M1b gave it (M2a critic L2: the 30 M1b sessions are
+// restored as they were; these features live in the new set of 30 in test_m2b.cpp).
+void applyM2aDraws(Session& s, std::uint32_t seed) {
+  std::mt19937 g(seed * 2654435761u + 0x2A);
+  auto rnd = [&](int n) { return static_cast<int>(g() % static_cast<std::uint32_t>(n)); };
+  s.base.quantize = static_cast<Quantize>(rnd(3));
+  s.base.scaleSource = rnd(2) ? ScaleSource::Own : ScaleSource::Global;
+  s.base.scaleRoot = rnd(12);
+  for (bool& d : s.base.scaleDeg) d = rnd(3) != 0;   // about a third of the degrees off; the odd all-off scale is a zero mask (quantize disabled)
+  s.base.swing = 500 + rnd(251);
+  s.base.stepUnit = rnd(2) ? StepUnit::Degrees : StepUnit::Semitones;
+  s.scale = Scale{rnd(12), static_cast<std::uint16_t>(g() & 0xFFF)};
+  if (s.userPattern && rnd(2)) s.userPattern->stepUnit = StepUnit::Degrees;
+  for (auto& ed : s.userEdits) if (rnd(2)) ed.second.stepUnit = StepUnit::Degrees;
+  for (int i = rnd(6); i > 0; --i) {
+    const int at = 1 + rnd(s.total - 1), what = rnd(7), v = static_cast<int>(g() % 1000);
+    s.cfg.push_back(C(at, [what, v](Settings& x) {
+      switch (what) {
+        case 0: x.quantize = static_cast<Quantize>(v % 3); break;
+        case 1: x.scaleSource = v % 2 ? ScaleSource::Own : ScaleSource::Global; break;
+        case 2: x.scaleRoot = v % 12; for (int d = 0; d < 12; ++d) x.scaleDeg[d] = ((v * 7 + d * 5) % 3) != 0; break;
+        case 3: x.swing = 500 + v % 251; break;
+        case 4: x.stepUnit = v % 2 ? StepUnit::Degrees : StepUnit::Semitones; x.steps = v % 3; x.stepSize = v % 15 - 7; break;
+        case 5: x.velFixed = 1 + v % 127; x.velMode = v % 2 ? VelMode::Fixed : VelMode::Played; break;
+        default: x.quantize = Quantize::Scale; x.order = static_cast<Order>(v % 16); break;
+      }
+    }));
+  }
+  for (int i = rnd(3); i > 0; --i) s.scaleAt.emplace_back(1 + rnd(s.total - 1), Scale{rnd(12), static_cast<std::uint16_t>(g() & 0xFFF)});
 }
 
 namespace {

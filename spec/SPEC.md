@@ -1,6 +1,6 @@
 # Arp — 1.0 specification (RATIFIED 2026-10-23, r2.12)
 
-> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025).** This is a protected path: any change needs the human's
+> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026).** This is a protected path: any change needs the human's
 > gate and a decision record. Revision history: r1 (2026-10-21) to r2.12 (2026-10-22); four independent reviews
 > (`docs/spec-review-r1..r4.md`).
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -272,7 +272,8 @@ When the value read differs from the `L` in force:
 This is exact integer arithmetic, a piecewise grid; §2.1's "never
 accumulated" is about float drift. In practice:
 - the arp accelerates or decelerates from the step it is on, with no gap
-  longer than `max(L_old, L_new)` and **no burst** of overdue steps;
+  between grid positions (before swing) longer than `max(L_old, L_new)` and
+  **no burst** of overdue steps (E7, D-026);
 - `m`, the pattern position and swing parity (`kAbs`) carry on;
 - sounding notes keep their offs (T18).
 
@@ -621,6 +622,12 @@ pattern plays **per chord**, then the arp stops until the next gesture start.
   `swing` is in permille, 500–750: 500 is straight, 667 is a triplet feel,
   750 the maximum. Parity comes from `kAbs`, so swing locks to the song grid
   whatever the restart.
+- **Swing is latched per pair (E6, D-026).** The even step `2j` reads `swing`
+  at its evaluation; the odd step `2j+1` uses that same value if `2j` was the
+  last step evaluated, and otherwise reads the current value. So `span(2j)`
+  and `on(2j+1)` always use one swing, and the odd step's span ends at an even
+  on, which swing never moves: a step's ratchets never sound after the next
+  step's on. A swing change therefore applies from the next even step.
 - **H2:** the on-time is always anchored at `kAbs·L`, never at `k·L`.
 - **Ratchets:** sub-note i (0 ≤ i < r) starts at `on + fdiv(i · span, r)`.
 - All of a step's ons are **frozen at evaluation** into the pending queue,
@@ -769,7 +776,7 @@ produce no extra and no missing terminal (LIBRARY L0001).
 ## 9. Settings, morph and timing of changes
 - All settings arrive as **integers** (`params.json`). horde rounds morph
   blends to the nearest integer before the snapshot.
-- **Continuous settings:** `gate` (1–200 %), `swing` (500–750 ‰), `vel_fixed`, and `step_time_us`
+- **Continuous settings:** `gate` (1–200 %), `swing` (500–750 ‰, latched per step pair, §5.1), `vel_fixed`, and `step_time_us`
   (time mode; it changes smoothly per §2.6).
 - **Discrete settings:** all the rest. All of them are morph targets
   (D-000 Open 5).
@@ -825,7 +832,7 @@ produce no extra and no missing terminal (LIBRARY L0001).
 | N2 | `shuffle` never plays the same key twice in a row (e ≥ 2), and every key once per cycle | skip the boundary swap |
 | Q5 | with ties toward a previous note above the tie, ties resolve UP; G1 holds with quantize ties in play; `lastQ` resets at release-all | always down; update `lastQ` at emission; never reset `lastQ` |
 | TM1 | time mode: step k sounds at `cdiv((k·step_time_us + swingDelay(k))·sr, 10⁶)` samples after the gesture's key press, whatever the host tempo, position or transport does; identical at every block size and sample rate (in µs) | use the host tempo; anchor at the transport |
-| TM2 | a `step_time_us` change mid-gesture: the next step lands at `max(lastTick + L_new, changeTick)`, then every `L_new`; no gap longer than `max(L_old, L_new)`, no burst | re-grid on absolute multiples of `L_new`, or `kAbs·L_new` |
+| TM2 | a `step_time_us` change mid-gesture: the next step lands at `max(lastTick + L_new, changeTick)`, then every `L_new`; no gap between grid positions (before swing) longer than `max(L_old, L_new)`, no burst | re-grid on absolute multiples of `L_new`, or `kAbs·L_new` |
 | TM3 | in time mode `restart` is inert (`bar` = `free` = `chord`) | count bars of 61,440 µs |
 | RP1 | `repeats = N`: `repeats·C` evaluated steps from the gesture start (or the last key-adding press), then exhausted (spent steps consume the once-guard, no burst) until a gesture start or a key-adding press; then nothing until the next gesture; 0 never stops | count step-pattern passes instead of full cycles; never stop |
 | CH1 | chord stage: each held key emits itself plus its enabled shifts (semitones, degrees, or quantized) as `stream = chord`, deduplicated by (channel, key) with a source count; one NoteOff per chord note when its last source leaves; the arp plays the chord stage's keys when the stage is on; the stage works with the arp off | no dedupe (two ons for a shared key); end on the first source's release; feed the arp the raw keys |

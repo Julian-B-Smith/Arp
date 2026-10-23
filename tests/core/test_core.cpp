@@ -26,6 +26,7 @@
 #include "test_int128.h"
 #include "test_m1b.h"
 #include "test_m2a.h"
+#include "test_m2b.h"
 
 using namespace arp_test;
 
@@ -107,11 +108,15 @@ Session sPatterns() { return m1bSession("patterns"); }
 Session sTimeMode() { return m1bSession("timemode"); }
 Session sScaleFeel() { return m2aSession("scalefeel"); }
 Session sTies() { return m2aSession("ties"); }
+Session sRestartRepeats() { return m2bSession("restartrepeats"); }
+Session sMorph() { return m2bSession("morph"); }
+Session sChordStage() { return m2bSession("chordstage"); }
 
 const std::vector<std::pair<const char*, Session (*)()>> kSessions = {
     {"held", sHeld}, {"enable", sEnable}, {"transport", sTransport}, {"panic", sPanic}, {"discrete", sDiscrete},
     {"reset", sReset}, {"overflow", sOverflow}, {"short", sShort}, {"cap", sCap}, {"free", sFree},
-    {"styles", sStyles}, {"patterns", sPatterns}, {"timemode", sTimeMode}, {"scalefeel", sScaleFeel}, {"ties", sTies}};
+    {"styles", sStyles}, {"patterns", sPatterns}, {"timemode", sTimeMode}, {"scalefeel", sScaleFeel}, {"ties", sTies},
+    {"restartrepeats", sRestartRepeats}, {"morph", sMorph}, {"chordstage", sChordStage}};
 
 Session sessionNamed(const char* name, const Plant& plants = {}) {
   for (const auto& kv : kSessions)
@@ -119,8 +124,8 @@ Session sessionNamed(const char* name, const Plant& plants = {}) {
   std::abort();
 }
 
-// SPEC 7 rows this scope exercises (T12 ties, T17-T21 belong to M1b/M2).
-const int kRowsRequired[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19};
+// SPEC 7 rows this scope exercises (T20 repeats run out and T21 chord-stage notes join in M2b).
+const int kRowsRequired[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21};
 std::vector<int> missingRows(const std::int64_t* rows) {
   std::vector<int> m;
   for (int r : kRowsRequired) if (rows[r] == 0) m.push_back(r);
@@ -324,15 +329,17 @@ Session atRate(Session s, int sr) {
   for (auto& u : s.userEdits) u.first = sc(u.first);
   for (auto& r : s.resets) r = sc(r);
   for (auto& a : s.scaleAt) a.first = sc(a.first);
+  for (auto& p : s.prepares) p = sc(p);
+  if (s.host) s.host = s.host->rescaled(sr, sc);
   return s;
 }
-std::string g4M1bDiverges(const Plant& plants, const char* name) {
+std::string g4M1bDiverges(const Plant& plants, const char* name, std::size_t minEvents = 100) {
   std::string ref;
   for (int sr : {48000, 44100, 96000, 192000}) {
     Session s = atRate(sessionNamed(name), sr);
     s.plants = plants;
     const Run r = run(s, 1024);
-    if (r.evs.size() < 100) return "too few events at " + std::to_string(sr);
+    if (r.evs.size() < minEvents) return "too few events at " + std::to_string(sr);
     const std::string t = tickStreamOf(r);
     if (ref.empty()) ref = t; else if (t != ref) return "ticks differ at " + std::to_string(sr) + " Hz";
   }
@@ -341,10 +348,11 @@ std::string g4M1bDiverges(const Plant& plants, const char* name) {
 
 void testG4() {
   std::puts("G4: event ticks identical at 44.1 / 48 / 96 / 192 kHz");
-  for (const char* name : {"styles", "patterns", "scalefeel"}) {
-    const std::string bad = g4M1bDiverges({"srTickMath"}, name);
+  for (const char* name : {"styles", "patterns", "scalefeel", "restartrepeats", "chordstage", "morph"}) {
+    const std::size_t minEv = std::strcmp(name, "restartrepeats") == 0 ? 60 : 100;   // its repeats spend the arp on purpose
+    const std::string bad = g4M1bDiverges({"srTickMath"}, name, minEv);
     plant(!bad.empty(), std::string("G4 detects a sample-rate-dependent value in tick math on the session '") + name + "': " + bad);
-    const std::string d = g4M1bDiverges({}, name);
+    const std::string d = g4M1bDiverges({}, name, minEv);
     check(d.empty(), std::string("G4: the session '") + name + "' (sync mode: M1b order styles and pattern fields, M2a quantize / degrees / swing) has identical event ticks at 44.1, 48, 96 and 192 kHz" + d);
   }
   plant(!g4Diverges({"srTickMath"}).empty(), "G4 detects a sample-rate-dependent value read into tick math: " + g4Diverges({"srTickMath"}));
@@ -988,6 +996,7 @@ int main(int argc, char** argv) {
   testHostFloats();
   runM1bTests();
   runM2aTests();
+  runM2bTests();
   testTiming();
   testUpModel();
   std::printf("%s: %d passed, %d failed\n", tally().fail ? "FAIL" : "OK", tally().pass, tally().fail);
