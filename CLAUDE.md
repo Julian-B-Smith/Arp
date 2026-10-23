@@ -67,8 +67,7 @@ lists as protected.
 
 **What this is.** Arp, horde's source of generated notes: a C++ note-processor
 library that HYPERSAW's horde runs ahead of its engine on the instrument's note
-input, plus a browser lab twin for playing and listening (`lab/`, not yet
-built). For horde 1.0 (module cutoff **2026-12-11**): a simple arpeggiator.
+input, plus a browser lab twin for playing and listening (`lab/`, built). For horde 1.0 (module cutoff **2026-12-11**): a simple arpeggiator.
 After 1.0: step sequencing and generative MIDI, here. Not a plugin of its own
 (survey Q1). Provenance and horde's contract needs: `SPINUP-BRIEF.md`; the
 terms: `intake/` (note vocabulary, engine rows IF-1/IF-2/IF-11/VO-6/VO-12, the
@@ -118,11 +117,11 @@ every tracked file; the map lives in untracked `PRIVATE-NOTES.md`, enforced by
 
 **Protected paths** (human gate to modify): `./verify` and `.kit/`;
 `project.manifest.json`; `intake/` (horde's record, sha256-pinned by
-`intake_gate` — annotate in docs/, never edit); `spec/` and `lab/` once the
-human ratifies them; goldens once cut.
+`intake_gate` — annotate in docs/, never edit); **`spec/` (RATIFIED 2026-10-23, D-022; sha256-pinned by `spec_gate`, D-023)**;
+goldens once cut. `lab/` stays editable, but its CORE must keep matching the spec (the smoke enforces it).
 
 **Verify targets.** `fast` (~1 s): kit integrity, leak gate, private-name gate,
-structure, manifest, intake pin. `full`: = fast until the C++ core lands; then
+structure, manifest, intake pin, spec pin, lab smoke. `full`: = fast until the C++ core lands; then
 invariant tests, goldens, sweeps. CI runs `fast` on Linux.
 
 ---

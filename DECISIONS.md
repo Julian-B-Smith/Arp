@@ -638,3 +638,61 @@ reproduced both in the browser:
 
 A bug fix under the freeze: it removes a setting and adds no new
 functionality.
+
+## D-021 — The listening questions settled; the whole bank ships (RATIFIED by poll, 2026-10-23)
+
+Before ratifying the spec, the human accepted all seven proposed rules by
+poll, each implemented and tested in the lab:
+1. **Q-A1, morph:** a discrete setting takes the leading corner's value,
+   switching only when it leads by 0.05, at the next step.
+2. **Q-A2, restart under morph:** into `bar` or `free`, it re-aligns at the
+   next step; into `chord`, it waits for the next gesture.
+3. **Q-A5, pre-roll:** the arp plays during the host's count-in.
+4. **r2 H2, tie memory:** `lastQ` resets at every release-all, so every
+   play-from-here sounds the same.
+5. **Q-A7, pick pass:** a pick takes the next order note's transposition
+   pass.
+6. **Q-A8, chord re-voice:** a shape change while holding swaps only the
+   changed notes, at once.
+7. **D-008, host position:** Arp follows the host silently within 1/16
+   beat; beyond that it is a jump.
+
+**Q-A3, the bank:** all 16 order styles and all 11 step patterns ship in
+1.0. Factory presets that combine them are curated at M3 with horde's
+preset work. Rejected: a curated subset now. The old "12–16 entries" target
+predates the matrix and the user library.
+
+## D-022 — The 1.0 spec is RATIFIED; Phase A closes (RATIFIED by poll, 2026-10-23)
+
+The human ratified `spec/` (SPEC.md r2.12, params.json with 47 settings,
+and the bank with 11 patterns) by poll, with no changes, after D-021
+settled every open rule.
+- **`spec/` is now a protected path.** Any change needs the human's gate
+  and a decision record.
+- **The lab stays editable** as the listening twin; its core must keep
+  matching the spec, which the smoke enforces.
+- **The functionality freeze (D-018) stands.**
+
+Phase A's gate is met:
+- the spec is ratified;
+- the lab smoke is in `./verify fast`, with every detector proven on a
+  plant;
+- the listening questions are closed (D-021).
+
+**Next: M1**, the self-contained C++20 core that horde copies in at our V1
+(D-015).
+
+## D-023 — The ratified spec is pinned by hash in ./verify (RATIFIED by poll, 2026-10-23)
+
+The human approved, by poll, enforcing D-022's "spec/ is protected" rather
+than only stating it:
+- `spec/MANIFEST` holds the sha256 of `SPEC.md`, `params.json` and
+  `bank/starter.json`;
+- `./verify fast` runs `spec_gate`, which is red on any unpinned edit or new
+  file under `spec/`;
+- the intake pin and the spec pin now share one helper, `pinned_dir_gate`.
+
+Both were proven on plants: an edit to SPEC.md, a new file, an edit to
+params.json, and the intake pin after the refactor all go red; the clean
+tree is green. A deliberate spec change is now three steps: the human's
+gate, a decision record, and a re-pin of `spec/MANIFEST` in the same change.

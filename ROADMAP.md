@@ -6,14 +6,8 @@ lives in `DECISIONS.md`; horde's terms are in `intake/` and `SPINUP-BRIEF.md`.
 
 ## Status
 
-- **Phase:** **Phase A: built, awaiting the human** (2026-10-21).
-  - `spec/` is DRAFT r2.1: r1, then the independent critic (13 HIGH, all
-    folded in, D-008), then the lab build's 17 gaps (§13).
-  - `lab/arp-lab.html` is built and was run in a real browser.
-  - The lab smoke is wired into `./verify fast`, with 16 plants.
-
-  **Next:** the human plays the lab to settle Q-A1, Q-A2, Q-A3 and Q-A5,
-  then ratifies `spec/`.
+- **Phase:** **Phase A DONE 2026-10-23**: the spec is RATIFIED (D-022) and protected, and functionality is frozen (D-018).
+  **M1 (the C++ core) is next.**
 - **Oracle:** `./verify fast` = kit integrity, leak gate, private-name gate,
   structure, manifest, intake pin, and the **lab smoke** (SPEC §11: N1, G1–G5,
   D1, Q1–Q4, R1, P1, T1, S1, K1, C1, the order styles; each proven on a planted
@@ -49,7 +43,7 @@ mode names, presets or UI text.
 - **Gate:** `docs/prior-art.md` exists, dated and cited; DECISIONS records what
   it changes (reuse / avoid / differentiate). Name findings go to the human.
 
-### Phase A — Spec + lab twin ← current
+### Phase A — Spec + lab twin — DONE 2026-10-23 (D-022)
 - `spec/`: the scope list (manifest `scope_1_0`) and the parameter manifest:
   every key, unit, range, default, and its morph behaviour (continuous blends;
   discrete switches at a threshold). Also:
@@ -84,7 +78,7 @@ mode names, presets or UI text.
   exactly one terminal over a scripted session; output identical across block
   sizes), each detector with a planted control.
 
-### M1 — C++ core: held set, modes, grid, terminals
+### M1 — C++ core: held set, modes, grid, terminals ← current
 - `core/`: a C++20 library, **self-contained and framework-free, buildable without horde** (horde copies it in at
   our V1, D-015). Buffers sized at prepare. The NoteRef-compatible
   identity type is a local placeholder behind the FOUNDATIONS surface until
@@ -188,15 +182,10 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   sustain `direct` voices only. The ball is horde's, in our
   `integrations/hypersaw/response-note-stream.md`. It blocks nothing in the
   core: Arp's side (the `arp` tag, consuming CC 64) is specified and tested.
-- **Q-A5 — Whether pre-roll plays.** PROPOSED in SPEC §12; decided in the lab.
-  (The quantize tie direction is settled: toward the previous note, D-010.)
-- **Q-A1 — The morph threshold rule for discrete settings.** Decided in
-  Phase A by playing in the lab, then an ADR (survey Open 5).
-- **Q-A2 — Restart × morph.** Does a morph that changes the restart value act
-  at once or at the next restart point? Same venue as Q-A1.
-- **Q-A3 — The starter bank's entries** (about 12–16 order styles and step
-  patterns). Decided in Phase A from the Phase 0 landscape and by playing in
-  the lab (D-004).
+- **Q-A5 — Whether pre-roll plays: SETTLED 2026-10-23 by poll (D-021).**
+- **Q-A1 — The morph threshold rule for discrete settings: SETTLED 2026-10-23 by poll (D-021).**
+- **Q-A2 — Restart × morph: SETTLED 2026-10-23 by poll (D-021).**
+- **Q-A3 — The starter bank's entries: SETTLED 2026-10-23 by poll (D-021).**
 - **Q-A4 — Phase 0 extras:** CLOSED 2026-10-21 by poll (D-006). All four
   are in 1.0.
 - **Q-P1 — Where the step sequencer begins** (an extension of the arp's grid,
