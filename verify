@@ -66,6 +66,7 @@ structure_gate() {
            lab/arp-lab.html tools/lab_smoke.mjs \
            core/CMakeLists.txt core/include/arp/core.h core/src/core.cpp tools/core_test.sh tools/core_params_check.py \
            core/include/arp/pattern.h core/include/arp/bank_data.h tools/gen_bank.py tests/core/test_m1b.cpp \
+           docs/horde-copy-in.md tools/core_bench.sh tools/core_sanitize.sh \
            .gitattributes .github/workflows/ci.yml; do
     [ -e "$f" ] || { echo "verify: structure — missing $f" >&2; ok=1; }
   done
@@ -166,6 +167,20 @@ core_gate() {
   return $ok
 }
 
+# CPU and memory (M3, D-029): the Release benchmark of the shipped core, REPORTED and never gated on its
+# numbers (the human's standing rule: CPU is measured, never a gate). Its exit code is the real-time
+# contract only (no allocation in process()/reset(), no NoteOff lost, the memory figure matching its
+# formula), so THAT is red when broken. CPU follows horde's convention: this machine, x4 as the min-spec
+# heuristic. About two minutes, so `full` only, never `fast` or CI.
+bench_report() {
+  bash tools/core_bench.sh >"$HARNESS_DIR/core_bench.out" 2>&1 || {
+    echo "verify: core bench RED (the real-time contract, not CPU) — full output in $HARNESS_DIR/core_bench.out:" >&2
+    grep -E 'FAIL|error' "$HARNESS_DIR/core_bench.out" | head -10 | sed 's/^/    /' >&2; return 1; }
+  echo "verify: CPU and memory (reported, never gated) — full table in $HARNESS_DIR/core_bench.out:" >&2
+  grep -E 'machine:|sizeof|worst-case total|heaviest' "$HARNESS_DIR/core_bench.out" | sed 's/^/    /' >&2
+  return 0
+}
+
 fast() {
   # ---- Layer-0: seconds, not minutes. CI-blocking. -------------------------
   local ok=0
@@ -184,8 +199,8 @@ fast() {
 full() {
   fast || return $?
   # ---- Layer-E: the whole gate. Run before closing a queue item. -----------
-  # Nothing beyond fast yet: goldens and sweeps arrive with the C++ core (ROADMAP).
-  # CPU (Release) will be reported, NEVER gated.
+  # Goldens arrive at M3 (a human gate). CPU (Release) is reported, NEVER gated.
+  bench_report || return 1
   return 0
 }
 

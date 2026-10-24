@@ -552,7 +552,7 @@ EventSpan Core::process(const Block& b) {
     barTicks_ = 4 * kTpq;
     barPhase_ = 0;
   } else {
-    const std::int64_t num = tr.timeSigNum > 0 ? tr.timeSigNum : 4, den = tr.timeSigDen > 0 ? tr.timeSigDen : 4;
+    const std::int64_t num = tr.timeSigNum > 0 && !ARP_PLANT(meterAs44) ? tr.timeSigNum : 4, den = tr.timeSigDen > 0 && !ARP_PLANT(meterAs44) ? tr.timeSigDen : 4;   // plant meterAs44: every meter reads as 4/4
     barTicks_ = std::max<std::int64_t>(1, (static_cast<std::int64_t>(4) * kTpq * num) / den);
     const bool phased = clock_ == Clock::Host && tr.hasBarStart && finiteBits(tr.barStartBeats) && std::fabs(tr.barStartBeats) <= 1e10;
     barPhase_ = phased ? mod(std::llround(tr.barStartBeats * kTpq), barTicks_) : 0;
@@ -1407,6 +1407,15 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
       if (ARP_PLANT(trigEveryRatchet) && i > 0 && fires && st.trig > 0) queueTrigger(I128::mul(subOn, D), st.trig, ord);   // plant: the trigger on every ratchet
     }
     if (pick == kPickOrder || ARP_PLANT(pickAdvancesM)) ++m_;   // only `order` picks consume the order stream, even if every key was dropped
+    trigger();
+  } else if (ARP_PLANT(emitOnEmptySet) && st.on && fires && e == 0) {
+    Pending p;   // plant: a note out of nothing, key 60, one step long, on a step that found no key held
+    p.pos = I128::mul(on0, D);
+    p.offPos = I128::mul(on0 + std::max<std::int64_t>(1, onTick(kAbs + 1) - on0), D);
+    p.key = 60;
+    p.vel = 100;
+    p.ord = ord;
+    queueOn(p);
     trigger();
   } else if (fires && st.trig > 0) {
     trigger();   // 4. a rest (or e = 0) that fires its trigger: trigger-only (H11)

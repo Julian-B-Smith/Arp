@@ -824,3 +824,28 @@ ports them rather than recording an exception: no human exception is needed
 to follow the charter.
 
 `spec/MANIFEST` is re-pinned in the same change, as D-023 requires.
+
+## D-029 — M3 starts: the notice to horde, sanitizers in CI, CPU reported in `verify full`, FOUNDATIONS through horde (RATIFIED by poll, 2026-10-24)
+
+M3 (horde admission, T-007) began with horde's note-processor 1.0 bar as the
+checklist (D-015). Decided by poll:
+- **File `notice-m3` (seq 7) in horde's `integrations/arp/`.** It answers
+  horde's seq-6 question: with the chord stage on, the played note goes out
+  as `chord` too (SPEC §14, the +0 slot), so a source on Chord alone plays
+  the whole chord. It asks Q-H6 (the user pattern embedded by value in Arp's
+  module preset, per horde ADR-169), Q-H8 (does the bar's "no input, no
+  output" cover triggers, which SPEC §2.5 fires with no keys under restart
+  bar/free), Q-H9 (the face and undo as horde's work, from our settings
+  table) and Q-H10 (who authors the factory presets).
+- **Sanitizers in CI.** A `sanitize` job runs the core suite on Linux under
+  ASan, TSan and UBSan (`tools/core_sanitize.sh`), a real gate: the bar asks
+  for a sanitizer run, and ASan/TSan cannot start on the dev Mac.
+- **CPU and memory reported in `./verify full`**, never gated (the human's
+  standing rule, survey Q4): the Release benchmark prints its figures there.
+  CPU follows horde's convention: this machine, × 4 derate as the min-spec
+  heuristic, never called "min-spec verified".
+- **FOUNDATIONS through horde.** FOUNDATIONS' own registry rule routes
+  modules inside horde's deployable through horde (as MAW). Arp's note
+  identity already follows horde's vocabulary (B92), so no direct brief is
+  filed; the deferred item is closed. Rejected: a direct brief its resident
+  would likely rule out of channel.

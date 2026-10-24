@@ -96,6 +96,8 @@ inline bool setPlant(Plants& p, const std::string& name) {
       // ---- M2 re-check (D-028) ----
       {"cOnlyAtStep", &Plants::cOnlyAtStep},                           {"edgeRevivesWhileEmpty", &Plants::edgeRevivesWhileEmpty},
       {"swingSpentNoLatch", &Plants::swingSpentNoLatch}, {"edgeResetsCountWhileEmpty", &Plants::edgeResetsCountWhileEmpty},
+      // ---- M3a ----
+      {"meterAs44", &Plants::meterAs44},                               {"emitOnEmptySet", &Plants::emitOnEmptySet},
   };
   for (const Entry& e : table)
     if (name == e.name) { p.*(e.flag) = true; return true; }
@@ -106,7 +108,7 @@ inline bool setPlant(Plants& p, const std::string& name) {
 using Plant = std::vector<std::string>;   // the plants to turn on for a fresh core ({} = a clean core)
 
 inline std::unique_ptr<Core> makeCore(const Caps& caps, const Plant& plants) {
-  auto c = std::make_unique<Core>(caps);   // the core is ~50 KB of fixed tables: keep it off the stack
+  auto c = std::make_unique<Core>(caps);   // the core is ~96 KiB of fixed tables (tests/core/bench.cpp prints the figure): keep it off the stack
   for (const std::string& n : plants) {
 #ifdef ARP_PLANTS
     if (!setPlant(c->plants, n)) { std::fprintf(stderr, "unknown plant %s\n", n.c_str()); std::abort(); }
