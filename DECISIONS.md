@@ -863,3 +863,11 @@ output proven byte-identical (the invariant suite plus a before/after
 event-stream comparison). Rejected: reporting it to horde as-is (it leaves
 a known overrun in a module about to ship); capping events per block (a
 behaviour change needing an erratum).
+
+**Correction to D-030 (2026-10-24, lead, from the M3b trace).** The M3a
+benchmark built user patterns for three scenarios but never installed them,
+so its "worst case, ratchet 4" ran at ratchet 1 (about 60k events a second).
+With the pattern installed (about 239k events a second) the pre-optimisation
+core cost **45-52 % after x4**, not "about 11-12 %". The choice stands and is
+met: after M3b the true worst case is **1.2-1.5 % after x4** on both int128
+paths, output byte-identical to the M3a core (`traces/2026-10-24-m3b-cpu-optimisation.md`).

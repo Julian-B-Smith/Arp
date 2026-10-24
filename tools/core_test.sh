@@ -3,6 +3,9 @@
 #   bash tools/core_test.sh          configure + build + run every test binary
 #   bash tools/core_test.sh build    configure + build only (tools/core_params_check.py uses this)
 #   bash tools/core_test.sh copyin-table   print the file table of docs/horde-copy-in.md for the current core/ (paste it in when core/ changes on purpose)
+# Besides the suite and the copy-in list it checks the benchmark stream digest (M3b, D-030: the shipped core's output over the benchmark's scenarios,
+# against tests/core/stream_digest_bench.txt); the suite's own digest check (tests/core/stream_digest.txt) runs inside arp_tests. Regenerate both with
+# tools/core_digest.sh, and only for a change that is meant to move the output.
 #
 # Command Line Tools only on this Mac: Unix Makefiles, never Xcode/Ninja. Every path is ABSOLUTE
 # because the shell's cwd is not reliable (a relative `cmake --build` builds nothing and exits 0).
@@ -100,6 +103,29 @@ for t in arp_tests arp_tests_fallback arp_shipped_smoke; do
   echo "== $t"
   if ! "$build/$t"; then echo "FAIL  core_test: $t exited nonzero"; rc=1; fi
 done
+
+# The benchmark stream digest (M3b, D-030): the SHIPPED core's whole output over the benchmark's scenarios x rates x block sizes, hashed (every event
+# field, step record and counter), against tests/core/stream_digest_bench.txt, generated from the pre-optimisation core. Both int128 paths must match
+# the one file. The plant comes first: the same run with ONE field of ONE event changed in what is hashed (never in the core) must differ.
+bench_digest="$repo/tests/core/stream_digest_bench.txt"
+digest_rc=0
+grep -v '^#' "$bench_digest" >"$copy_dir/bench.want"
+for bin in arp_bench arp_bench_soft; do
+  "$build/$bin" --digest-perturb 2>/dev/null | grep -v '^#' >"$copy_dir/bench.got"
+  if [ -s "$copy_dir/bench.got" ] && ! cmp -s "$copy_dir/bench.want" "$copy_dir/bench.got"; then
+    echo "PASS  bench digest plant ($bin): one field of one event changed is caught ($(diff "$copy_dir/bench.want" "$copy_dir/bench.got" | grep -c '^>') of $(wc -l <"$copy_dir/bench.want" | tr -d ' ') configurations differ)"
+  else
+    echo "FAIL  bench digest plant ($bin): a perturbed event was NOT caught"; digest_rc=1
+  fi
+  "$build/$bin" --digest 2>/dev/null | grep -v '^#' >"$copy_dir/bench.got"
+  if [ -s "$copy_dir/bench.got" ] && cmp -s "$copy_dir/bench.want" "$copy_dir/bench.got"; then
+    echo "PASS  bench digest ($bin): $(wc -l <"$copy_dir/bench.want" | tr -d ' ') configurations (scenario x 4 rates x 5 block sizes, 2 s each) hash to the committed pre-optimisation digest"
+  else
+    diff "$copy_dir/bench.want" "$copy_dir/bench.got" | head -6 | cut -c1-220
+    echo "FAIL  bench digest ($bin): the shipped core's output differs from tests/core/stream_digest_bench.txt"; digest_rc=1
+  fi
+done
+[ "$digest_rc" = 0 ] || rc=1
 
 # The copy-in list (docs/horde-copy-in.md): the file list audited, then the listed files alone built into the shipped-library smoke.
 # Each detector is preceded by its must-fail plant (the project charter): a plant that does NOT fire is itself a FAIL.
