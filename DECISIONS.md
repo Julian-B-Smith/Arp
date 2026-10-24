@@ -849,3 +849,17 @@ checklist (D-015). Decided by poll:
   identity already follows horde's vocabulary (B92), so no direct brief is
   filed; the deferred item is closed. Rejected: a direct brief its resident
   would likely rule out of channel.
+
+## D-030 — The worst case is optimised into the CPU budget, output byte-identical (RATIFIED by poll, 2026-10-24)
+
+The M3a benchmark (Release, Apple M3, horde's x4 min-spec heuristic) put
+every musically plausible load inside horde's 2 % slice (the heaviest, a
+16-key chord through a 6-shift chord stage, about 0.5-1 % after x4), but a
+deliberately capacity-maximal case (112 chord-stage notes, ratchet 4, 1/64
+at 999 bpm, about 60,000 events a second) at about 11-12 % after x4. The
+time is in linear scans of the sounding table and the per-block event sort.
+Chosen: optimise those hot paths so even the extreme case fits, with the
+output proven byte-identical (the invariant suite plus a before/after
+event-stream comparison). Rejected: reporting it to horde as-is (it leaves
+a known overrun in a module about to ship); capping events per block (a
+behaviour change needing an erratum).
