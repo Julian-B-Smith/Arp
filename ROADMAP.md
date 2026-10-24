@@ -7,11 +7,11 @@ lives in `DECISIONS.md`; horde's terms are in `intake/` and `SPINUP-BRIEF.md`.
 ## Status
 
 - **Phase:** **Phase A DONE 2026-10-23**: the spec is RATIFIED (D-022) and protected, and functionality is frozen (D-018).
-  M1a (T-003) and M1b (T-004, PR #19) merged; **M2 (T-005) gate met 2026-10-23, in its PR**; then M3 (ROADMAP §Phases).
+  M1a (T-003) and M1b (T-004, PR #19) merged; **M2 (T-005) gate met 2026-10-23, merged (PR #20)**, with a repeats follow-up PR; then M3 (ROADMAP §Phases).
 - **Oracle:** `./verify fast` = kit integrity, leak gate, private-name gate,
   structure, manifest, intake pin, spec pin, the **lab smoke** (SPEC §11, each
   check proven on a planted fault) and the **C++ core suite** on both int128 paths
-  (398 checks each after M2) plus the params and bank drift checks. `full` = `fast` for now.
+  (409 checks each after M2) plus the params and bank drift checks. `full` = `fast` for now.
 - **Functionality freeze (the human, 2026-10-22, D-018): IN EFFECT** once the repeats and chord-stage PR merges. 1.0
   scope is frozen; any further feature needs an explicit unfreeze decision. Next: play the lab, ratify the spec, M1.
 - **Hard date:** horde's module cutoff **2026-12-11**. The 1.0 arpeggiator
@@ -213,9 +213,9 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   #19 merged 2026-10-23, so the M2 PR opens straight against `main`.
   M2a committed (6819232); its critic review found no HIGH (D-026: E6 swing latched per pair, E7).
   M2b committed (b4fc852); its critic review found no HIGH (D-027: E8, E9, E10); the follow-ups are fixed.
-  **Gate met 2026-10-23:** 398 checks per int128 path, every plant fires, no open HIGH. In the M2 PR.
-  Lab CORE gaps left for T-006's cross-check to surface: the chord stage's same-sample 1→0→1, the restart
-  bar bookkeeping, the unanchored swing latch, the press-time refresh (the C++ is the reference).
+  **Gate met 2026-10-23:** 398 checks per int128 path, every plant fires, no open HIGH. Merged (PR #20).
+  A focused re-check of the follow-ups (no HIGH) led to D-028 (E11, E12) and the lab CORE catching up on four
+  fixes; on `m2/repeats-followup`: 409 checks per int128 path, the lab smoke 151.
 - **Dispatches (one implementer at a time, same files):**
   - **M2a:** quantize (§6: Q1–Q5), the degree unit (X1 and ST1, degree parts; the six-stage offset order, §4.7),
     swing (G3; TM1's swing term), velocity modes and accents.

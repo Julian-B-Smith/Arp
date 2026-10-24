@@ -68,7 +68,7 @@ landed" (replaying the timing of your presses) is held for after 1.0: `docs/defe
 | `docs/deferred/` | Designs held for after 1.0 (`landed.md`) | live |
 | `lab/patterns/` | Your saved build-your-own patterns (`arp-user-pattern/1` JSON, listed in `index.json`) | live: "Broken chord stabs" |
 | `index.html` | Root landing page: redirects to the lab | done |
-| `core/` | The C++20 core (standard library only, self-contained; horde copies it in). `tests/core/` is its invariant suite; `tools/core_test.sh` builds and runs it | **M1a, M1b and M2 built**: clocks (sync, free, time), held set, all 16 order styles, every step-pattern field, transposition, the user pattern, scale quantize, swing, velocity, restart, repeats, the chord stage; 398 checks on both int128 paths, in `./verify fast`. M3 next |
+| `core/` | The C++20 core (standard library only, self-contained; horde copies it in). `tests/core/` is its invariant suite; `tools/core_test.sh` builds and runs it | **M1a, M1b and M2 built**: clocks (sync, free, time), held set, all 16 order styles, every step-pattern field, transposition, the user pattern, scale quantize, swing, velocity, restart, repeats, the chord stage; 409 checks on both int128 paths, in `./verify fast`. M3 next |
 | `verify` | The oracle: `./verify fast` / `full` / `report` | live |
 
 ## Neighbours

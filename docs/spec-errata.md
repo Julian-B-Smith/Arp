@@ -20,6 +20,8 @@ recorded in the build's trace, not here.
 | E8 | M2b, 2026-10-23 | Row CH1: "deduplicated by (channel, key)", against §14: "keyed by **key** alone" (r4 M2) | The code follows §14 (M2b critic M3) | Row CH1: "deduplicated by key (E8)" |
 | E9 | M2b, 2026-10-23 | §4.8: `C` from the live H′ at each step; with no keys held `P` is 0 | The count paused while no key was held, so trigger-only steps released early fired until the next chord (M2b critic M2) | §4.8: keep the last non-empty `C` while H′ is empty, so the count runs out |
 | E10 | M2b, 2026-10-23 | §5.1 (E6): "a step's ratchets never sound after the next step's on" | False in time mode: a `step_time_us` change can bring the next on before a pending sub-note (M2b critic M4) | §5.1 and §2.6: drop the earlier steps' pending sub-notes at or after the next step's on (one exactly at it yields to the step, ahead of §1.1's pending-first order) |
+| E11 | M2 re-check, 2026-10-23 | §4.8 (E9): `C` computed at evaluated steps with keys held | A chord tapped and released before the next step never set `C`: the first such tap fired trigger steps without end, later taps used the previous chord's `C` (re-check M1) | §4.8: `C` is also set the moment H′ becomes non-empty |
+| E12 | M2 re-check, 2026-10-23 | §4.8: `exhausted` clears at T6, T7 or T10 | With no keys held, every loop wrap, jump or Panic revived trigger-only steps for another round (re-check L2) | §4.8: T6/T7 clear it, and reset `repeatSteps`, only while H′ is non-empty |
 
 _Applied 2026-10-23 (D-024): E1 and E3 amended in SPEC §2.3 and §1.3, spec re-pinned. E2 needed no amendment: fixed in code (owed offs are delivered at offset 0 of the first process after prepare), so T10 holds as written._
 
@@ -28,3 +30,5 @@ _Applied 2026-10-23 (D-025): E4 and E5 amended in SPEC §1.2 and §2.6, spec re-
 _Applied 2026-10-23 (D-026): E6 and E7 amended in SPEC §5.1, §9, §2.6 and row TM2, spec re-pinned._
 
 _Applied 2026-10-23 (D-027): E8, E9 and E10 amended in the CH1 row, §4.8, §5.1 and §2.6, spec re-pinned._
+
+_Applied 2026-10-23 (D-028): E11 and E12 amended in §4.8, spec re-pinned._

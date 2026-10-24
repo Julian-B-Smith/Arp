@@ -195,6 +195,71 @@ void testRP1() {
     };
     return trigs(true) != "0,1000,2000,3000" || trigs(false) != "0,1000,2000,3000";
   };
+  // (k) E11, D-028: C is set the moment H' becomes non-empty, so a chord tapped and released BEFORE the next step has its own cycle length.
+  //     restart free (host clock), a trigger on every step, 1 repeat. (A) the first gesture ever is C tapped at 100 and released at 500: one key,
+  //     C = 1 step. Step 0 (before the gesture) has no count; then ONE counted step (1000) and the arp is spent: triggers 0 1000, then none (without
+  //     the fix nothing ever gave C a value: triggers without end). (B) C E G held 100-1500 (C = 3, triggers 0 1000 2000 3000), then a single key
+  //     tapped 8100-8500: it uses its OWN C = 1 (as if held across a step: 9000 only), not the previous chord's 3 (9000 10000 11000).
+  auto tapTrigs = [&](const Plant& pl, bool chordFirst, int block) {
+    Session s;
+    s.total = 20000; s.plants = pl; s.base.restart = Restart::Free; s.base.pattern = Pattern::User; s.base.repeats = 1; s.base.gate = 30;
+    s.userPattern = userPat({B().trig(1)});
+    if (chordFirst) {
+      s.ins = cmajorOn(100, "k0", "k1", "k2");
+      for (const char* k : {"k0", "k1", "k2"}) s.ins.push_back(O(1500, k));
+      s.ins.push_back(K(8100, "t", 72)); s.ins.push_back(O(8500, "t"));
+    } else {
+      s.ins = {K(100, "t", 60), O(500, "t")};
+    }
+    return joinS(trigSamples(run(s, block)));
+  };
+  auto kTap = [&](const Plant& pl) {
+    for (int block : {4096, 256, 64, 1})
+      if (tapTrigs(pl, false, block) != "0,1000" || tapTrigs(pl, true, block) != "0,1000,2000,3000,9000") return true;
+    return false;
+  };
+  plant(tapTrigs({"cOnlyAtStep"}, false, 256) != "0,1000", "RP1 detects a first gesture tapped and released between two steps that never gets a C (triggers without end; read " + tapTrigs({"cOnlyAtStep"}, false, 256) + ")");
+  plant(tapTrigs({"cOnlyAtStep"}, true, 256) != "0,1000,2000,3000,9000", "RP1 detects a later tap that borrows the previous chord's C (9000 10000 11000; read " + tapTrigs({"cOnlyAtStep"}, true, 256) + ")");
+  // (l) E12, D-028: T6 and T7 clear `exhausted` only while H' is non-empty. The same session as (j2): C E G, a trigger on every step, 1 repeat.
+  //     With no keys held (released at 1500) the arp ran out after 3000; a loop wrap (a host seek back to beat 0) or a Panic at 8000 must leave it
+  //     silent. With the keys still held, the loop wrap starts a fresh round (3 counted steps: 8000 9000 10000).
+  auto e12 = [&](const Plant& pl, int what, int block) {
+    Session s;
+    s.total = 20000; s.plants = pl; s.base.restart = Restart::Free; s.base.pattern = Pattern::User; s.base.repeats = 1; s.base.gate = 30;
+    s.userPattern = userPat({B().trig(1)});
+    s.ins = cmajorOn(100, "k0", "k1", "k2");
+    if (what != 2) for (const char* k : {"k0", "k1", "k2"}) s.ins.push_back(O(1500, k));
+    if (what == 1) s.ins.push_back(Pan(8000));
+    else { auto h = std::make_shared<SimHost>(8000, 120, 0, true); h->set(8000, true, 0.0); s.host = h; }
+    return joinS(trigSamples(run(s, block)));
+  };
+  const char* e12Silent = "0,1000,2000,3000";
+  auto lWrap = [&](const Plant& pl) { for (int block : {4096, 256, 64, 1}) if (e12(pl, 0, block) != e12Silent) return true; return false; };
+  auto lPanic = [&](const Plant& pl) { for (int block : {4096, 256, 64, 1}) if (e12(pl, 1, block) != e12Silent) return true; return false; };
+  auto lHeld = [&](const Plant& pl) { for (int block : {4096, 256, 64, 1}) if (e12(pl, 2, block) != "0,1000,2000,3000,8000,9000,10000") return true; return false; };
+  // (m) E12, D-028: T6 and T7 reset `repeatSteps` only while H' is non-empty. 2 repeats over C E G = 6 counted steps. Released at 3500 (three counted steps behind, step 4000 the
+  //     fourth), a loop wrap (a host seek to beat 0) or a Panic at 4500 with no keys must leave the count alone: the round finishes and stops where the uninterrupted run does
+  //     (7 triggers: step 0 and 6 counted). With the keys still held the loop wrap is a fresh round: 6 counted steps again from the landing step.
+  auto midRound = [&](const Plant& pl, int what, int block) {
+    Session s;
+    s.total = 20000; s.plants = pl; s.base.restart = Restart::Free; s.base.pattern = Pattern::User; s.base.repeats = 2; s.base.gate = 30;
+    s.userPattern = userPat({B().trig(1)});
+    s.ins = cmajorOn(100, "k0", "k1", "k2");
+    if (what != 2) for (const char* k : {"k0", "k1", "k2"}) s.ins.push_back(O(3500, k));
+    if (what == 1) s.ins.push_back(Pan(4500));
+    else if (what != 3) { auto h = std::make_shared<SimHost>(8000, 120, 0, true); h->set(4500, true, 0.0); s.host = h; }
+    return joinS(trigSamples(run(s, block)));
+  };
+  const char* midStops = "0,1000,2000,3000,4000,5000,6000";
+  auto mBad = [&](const Plant& pl, int what, const char* want) { for (int block : {4096, 256, 64, 1}) if (midRound(pl, what, block) != want) return true; return false; };
+  auto mUninterrupted = [&](const Plant& pl) { return mBad(pl, 3, midStops); };
+  auto mWrap = [&](const Plant& pl) { return mBad(pl, 0, "0,1000,2000,3000,4000,4500,5500"); };
+  auto mPanic = [&](const Plant& pl) { return mBad(pl, 1, midStops); };
+  auto mHeld = [&](const Plant& pl) { return mBad(pl, 2, "0,1000,2000,3000,4000,4500,5500,6500,7500,8500,9500"); };
+  plant(midRound({"edgeResetsCountWhileEmpty"}, 0, 256) != "0,1000,2000,3000,4000,4500,5500", "RP1 detects a loop wrap that restarts a round in progress with no key held (read " + midRound({"edgeResetsCountWhileEmpty"}, 0, 256) + ")");
+  plant(midRound({"edgeResetsCountWhileEmpty"}, 1, 256) != midStops, "RP1 detects a Panic that restarts a round in progress with no key held (read " + midRound({"edgeResetsCountWhileEmpty"}, 1, 256) + ")");
+  plant(e12({"edgeRevivesWhileEmpty"}, 0, 256) != e12Silent, "RP1 detects a loop wrap that revives a used-up arp with no key held (read " + e12({"edgeRevivesWhileEmpty"}, 0, 256) + ")");
+  plant(e12({"edgeRevivesWhileEmpty"}, 1, 256) != e12Silent, "RP1 detects a Panic that revives a used-up arp with no key held (read " + e12({"edgeRevivesWhileEmpty"}, 1, 256) + ")");
   plant(jT({"repeatsPauseWhileEmpty"}), "RP1 detects a count that pauses while no key is held (an arp let go before its repeats are done never runs out: triggers without end)");
   plant(f({"exhaustedStopsGuard"}), "RP1 detects a spent arp that stops consuming the once-guard (a burst of overdue steps at the next gesture)");
   plant(g({"onlyGestureResets"}), "RP1 detects a key-adding press (latch append) that does not restart the count");
@@ -202,6 +267,10 @@ void testRP1() {
   plant(a({"repeatsNeverStop"}) && b({"repeatsNeverStop"}), "RP1 detects repeats that never stop");
   plant(aTrig({"repeatsNeverStop"}), "RP1 detects triggers still firing after the repeats ran out");
   plant(b({"repeatsCountPatternPasses"}) && b2({"repeatsCountPatternPasses"}) && b3({"repeatsCountPatternPasses"}), "RP1 detects step-pattern passes counted instead of full cycles (gallop + a transposition step, tied_legato)");
+  check(!mUninterrupted({}) && !mWrap({}) && !mPanic({}) && !mHeld({}),
+        "known answers (E12): 2 repeats of C E G released partway through the first round (3500): uninterrupted the triggers are 0 1000 2000 3000 4000 5000 6000; a loop wrap at 4500 with no key held gives 0 1000 2000 3000 4000 4500 5500 (the same 7 triggers, the round finishes and stops), a Panic at 4500 the uninterrupted run; with the keys held the loop wrap starts a fresh round (4500 5500 6500 7500 8500 9500); identical at block sizes 4096 / 256 / 64 / 1");
+  check(!kTap({}) && !lWrap({}) && !lPanic({}) && !lHeld({}),
+        "known answers (E11, E12): a chord tapped and released between two steps has its own C: the first gesture ever (C tapped at 100, released at 500) gives triggers 0 1000 then none, and a single key tapped at 8100-8500 after C E G ran out gives 9000 only (not the previous chord's 9000 10000 11000); with no key held a loop wrap or a Panic at 8000 leaves a used-up arp silent (0 1000 2000 3000, nothing more), with the keys held a loop wrap starts a fresh round (8000 9000 10000); identical at block sizes 4096 / 256 / 64 / 1");
   check(!a({}) && !aTrig({}) && !b({}) && !b2({}) && !b3({}) && !b4({}) && !c({}) && !d({}) && !e({}) && !f({}) && !g({}) && !h({}) && !iT({}) && !jPre({}) && !jT({}),
         "RP1: 2 repeats of up over C E G = C E G C E G then silence (and no triggers); gallop + 1 step of +12 is 8 steps per cycle (12 notes in 2 cycles); tied_legato counts only the 4 note-starting steps (24 steps, 12 notes; with a period of 8 the gcd makes it 16 steps); an explicit pick is not counted; a transport edge (T6) restarts the count; before the first gesture there is no count (triggers go on firing), and after the keys are released the count keeps running on the last non-empty C so the arp runs out exactly as if held (E9); 0 never stops; a latched chord stops and a new gesture restarts it; bar, free and chord all count from the gesture start; spent steps consume the once-guard (the next gesture lands on 20000 21000 22000, no burst); a key-adding latch press restarts the count; a repeats / steps / pattern morph never revives a spent arp");
   { // E9: C is worked out whenever keys are held, whatever `repeats` is (here 0 = forever), so a repeats morph AFTER the release reads the cycle length of the chord
@@ -1180,6 +1249,37 @@ void testSpilledRatchets() {
   for (int block : {4096, 64, 1}) all += bad({}, block) + bad({}, block, 250000, exact);
   check(all.empty() && streamOf(spill({}, 4096)) == streamOf(spill({}, 1)) && streamOf(spill({}, 4096)) == streamOf(spill({}, 64)),
         "known answer (E10): 500 ms steps with 4 ratchets, step time 200 ms at sample 800: ons at 0 1000 | 1600 2000 2400 2800 3200 3600 (step 0's sub-notes at 2000 and 3000 are dropped); with 250 ms the next step lands ON step 0's sub-note at 2000 and that one is dropped too (0 1000 | 2000 2500 3000 3500); no key retriggered at one sample, N1 holds, identical at block sizes 4096 / 64 / 1" + all);
+  // The drop may remove the LAST sub-note of a step, the one that carries the tie look-ahead (its off runs on to the end of the last tied step): then the
+  // tie is lost with it. The spec allows it (a dropped sub-note has no NoteOn, so no terminal is owed): pinned here so it is deliberate, not an accident.
+  // 500 ms steps, pattern [ratchet 2, tie], gate 100: step 0 has sub-notes at 0 and 2000, the second one's off at 8000 (to the end of the tie step 1).
+  // Step time 200 ms at 800: step 1 lands at 1600, so the sub-note at 2000 is dropped; step 0 sounds ONE note, 0 to 2000, and nothing is held through the tie.
+  auto tieSpill = [&](const Plant& pl, int block, bool change) {
+    Session s;
+    s.total = 9000; s.plants = pl; s.base.rateMode = RateMode::Time; s.base.stepTimeUs = 500000; s.base.gate = 100;
+    s.base.pattern = Pattern::User;
+    s.userPattern = userPat({B().ratchet(2), B().tie()});
+    s.ins = {K(0, "a", 60)};
+    if (change) s.cfg = {C(800, [](Settings& x) { x.stepTimeUs = 200000; })};
+    return run(s, block);
+  };
+  auto offOfOnAt = [](const Run& r, std::int64_t onAt) -> std::int64_t {   // the NoteOff sample of the note whose NoteOn is at `onAt` (-1: none)
+    for (const Rec& e : onsOf(r))
+      if (e.a == onAt)
+        for (const Rec& o : r.evs) if (o.t == EventType::NoteOff && o.ref == e.ref) return o.a;
+    return -1;
+  };
+  auto tieAnswer = [&](const Plant& pl, int block) -> std::string {
+    const Run base = tieSpill(pl, block, false), ch = tieSpill(pl, block, true);
+    if (!n1(base).empty() || !n1(ch).empty()) return "N1";
+    // unchanged: sub-notes 0 and 2000, the second held through the tie to 8000; changed: only the note at 0 (off 2000) and no step-0 note at 2000
+    const std::string a = joinS(onSamples(base, 3)) + "|" + std::to_string(offOfOnAt(base, 2000));
+    const std::string b = joinS(onSamples(ch, 3)) + "|" + std::to_string(offOfOnAt(ch, 0));
+    return a + " " + b;
+  };
+  const char* tieWant = "0,2000,8000|8000 0,3200,4000|2000";
+  plant(tieAnswer({"keepSpilledRatchets"}, 64) != tieWant, "E10 detects a dropped last sub-note staying queued (read " + tieAnswer({"keepSpilledRatchets"}, 64) + ")");
+  check(tieAnswer({}, 4096) == tieWant && tieAnswer({}, 64) == tieWant && tieAnswer({}, 1) == tieWant,
+        "known answer (E10, L4): the drop can remove the LAST sub-note of a step, the one carrying the tie look-ahead: ratchet 2 + a tie at 500 ms steps sounds 0 and 2000 (the second held to 8000); with 200 ms at sample 800 the sub-note at 2000 is dropped, step 0 is one note 0-2000 and the tie holds nothing (ons 0 3200 4000); identical at block sizes 4096 / 64 / 1");
 }
 
 void testSwingPairAnchor() {
@@ -1197,14 +1297,16 @@ void testSwingPairAnchor() {
   check(unanchored({}) == "1500,2000,3500,4000,5500", "known answer (E6, L1): an odd step right after a gesture start whose even partner ran unanchored reads the CURRENT swing: 1500 2000 3500 4000 5500");
   // (b) a SPENT step is evaluated (an anchor exists) and latches: restart free, repeats 1. Step 1000 plays (C = 1); the even step 2000 is spent and latches 500;
   //     swing becomes 750 at 2400; a second key at 2500 revives the arp (a key-adding press), so the odd step 3000 plays on the 500 its spent partner
-  //     latched (3000, not 3500); the even step 4000 reads 750. No plant: the spent-step latch has no separate detector (hand-mutated in the trace).
-  {
+  //     latched (3000, not 3500); the even step 4000 reads 750. Plant swingSpentNoLatch: the spent step latches nothing (the odd step reads 750: 3500).
+  auto spentLatch = [&](const Plant& pl) {
     Session s;
-    s.total = 6000; s.base.gate = 30; s.base.swing = 500; s.base.restart = Restart::Free; s.base.repeats = 1;
+    s.total = 6000; s.plants = pl; s.base.gate = 30; s.base.swing = 500; s.base.restart = Restart::Free; s.base.repeats = 1;
     s.ins = {K(100, "a", 60), K(2500, "b", 64)};
     s.cfg = {C(2400, [](Settings& x) { x.swing = 750; })};
-    check(joinS(onSamples(run(s, 256))) == "1000,3000,4000", "known answer (E6, L1): a spent even step (2000) latches the pair: after a key-adding press revives the arp the odd step 3000 reuses its 500 (not 3500); then 4000");
-  }
+    return joinS(onSamples(run(s, 256)));
+  };
+  plant(spentLatch({"swingSpentNoLatch"}) != "1000,3000,4000", "swing pair detects a spent step that does not latch the pair (the odd step after the revival reads the current 750: 3500; read " + spentLatch({"swingSpentNoLatch"}) + ")");
+  check(spentLatch({}) == "1000,3000,4000", "known answer (E6, L1): a spent even step (2000) latches the pair: after a key-adding press revives the arp the odd step 3000 reuses its 500 (not 3500); then 4000");
 }
 
 void testPressOrderRefresh() {

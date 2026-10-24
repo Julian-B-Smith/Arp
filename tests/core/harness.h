@@ -93,6 +93,9 @@ inline bool setPlant(Plants& p, const std::string& name) {
       {"keepSpilledRatchets", &Plants::keepSpilledRatchets},           {"swingLatchUnanchored", &Plants::swingLatchUnanchored},
       {"chordStalePressTime", &Plants::chordStalePressTime},           {"chordOnLate", &Plants::chordOnLate},
       {"chordOnTickSkew", &Plants::chordOnTickSkew},
+      // ---- M2 re-check (D-028) ----
+      {"cOnlyAtStep", &Plants::cOnlyAtStep},                           {"edgeRevivesWhileEmpty", &Plants::edgeRevivesWhileEmpty},
+      {"swingSpentNoLatch", &Plants::swingSpentNoLatch}, {"edgeResetsCountWhileEmpty", &Plants::edgeResetsCountWhileEmpty},
   };
   for (const Entry& e : table)
     if (name == e.name) { p.*(e.flag) = true; return true; }

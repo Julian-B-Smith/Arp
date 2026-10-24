@@ -281,6 +281,39 @@ function g1Diverges(plants) {
   check(seek([]) === 19200, "E6: after a seek that lands on odd step 5 (no even partner in the new numbering) the step reads the current swing (500): tick 19200, not the stale 750's 21120");
 }
 
+// ---- 6c. E6 (critic L1): only an EVALUATED step (clock running and an anchor exists, SPEC 2.5) latches the swing pair ----------------------------
+{
+  // (a) restart chord, host clock: step 0 runs with no anchor. swing 500 -> 750 at 700, the key pressed at 500 anchors at step 1 (odd): its partner never latched, so it
+  //     reads the CURRENT swing 750 (delayed 500 samples): 1500. Step 2 (even) reads 750: 2000, then 3500 4000 5500.
+  const unanchored = plants => ons(run({ core: mkCore(plants), block: 256, total: 6000, base: { gate: 30, swing: 500, restart: "chord" }, cfg: [{ at: 700, set: { swing: 750 } }], ins: [K(500, "a", 60)] })).map(e => e.a).join();
+  plant(unanchored(["swingLatchUnanchored"]) !== "1500,2000,3500,4000,5500", "E6 detects an unanchored step that latches the pair (the odd step after a gesture start reuses the stale 500: 1000; read " + unanchored(["swingLatchUnanchored"]) + ")");
+  check(unanchored([]) === "1500,2000,3500,4000,5500", "known answer (E6, L1): an odd step right after a gesture start whose even partner ran unanchored reads the CURRENT swing: 1500 2000 3500 4000 5500");
+  // (b) a SPENT step is evaluated (an anchor exists) and latches: restart free, repeats 1. Step 1000 plays (C = 1); the even step 2000 is spent and latches 500; swing becomes 750
+  //     at 2400; a second key at 2500 revives the arp (a key-adding press), so the odd step 3000 plays on the 500 its spent partner latched (3000, not 3500); the even step
+  //     4000 reads 750. Plant swingSpentNoLatch: the spent step latches nothing (the odd step reads 750: 3500).
+  const spent = plants => ons(run({ core: mkCore(plants), block: 256, total: 6000, base: { gate: 30, swing: 500, restart: "free", repeats: 1 }, cfg: [{ at: 2400, set: { swing: 750 } }], ins: [K(100, "a", 60), K(2500, "b", 64)] })).map(e => e.a).join();
+  plant(spent(["swingSpentNoLatch"]) !== "1000,3000,4000", "E6 detects a spent step that does not latch the pair (the odd step after the revival reads the current 750: 3500; read " + spent(["swingSpentNoLatch"]) + ")");
+  check(spent([]) === "1000,3000,4000", "known answer (E6, L1): a spent even step (2000) latches the pair: after a key-adding press revives the arp the odd step 3000 reuses its 500 (not 3500); then 4000");
+}
+
+// ---- 6d. Restart bar (critic M5): a return to bar, a loop wrap and a jump re-anchor at the bar start even inside the same bar ---------------------
+{
+  // a 4-step pattern with one note at its step 0, a single key, gate 30: a note's sample is a step with (kAbs - anchor) mod 4 == 0
+  const PAT = { length: 4, steps: [{}, { on: false }, { on: false }, { on: false }] };
+  const line = (plants, ins, total, o) => ons(run(Object.assign({ core: mkCore(plants), block: 256, total, userPattern: PAT, base: { restart: "bar", pattern: "user", gate: 30 }, ins }, o))).map(e => e.a).join();
+  // (a) bar -> chord (2500) -> a NEW gesture (5500, anchors at step 6) -> bar again (7500), all inside bar 0 (16000 samples). Bar anchor 0 gives 4000; the chord anchor 6 gives
+  //     6000; the return to bar must re-anchor at the bar start (step 0), so step 8 (8000) is position 0 again: 8000 and 12000. Keeping the old bar index would leave the
+  //     gesture's anchor in force: 10000 and 14000.
+  const back = plants => line(plants, [K(500, "a", 60), O(4500, "a"), K(5500, "b", 60)], 15000, { cfg: [{ at: 2500, set: { restart: "chord" } }, { at: 7500, set: { restart: "bar" } }] });
+  plant(back(["adoptKeepsLastBar"]) !== "4000,6000,8000,12000", "restart bar detects a morph back into bar that does not forget the bar index (the new gesture's anchor stays in force: 10000, 14000; read " + back(["adoptKeepsLastBar"]) + ")");
+  check(back([]) === "4000,6000,8000,12000", "known answer (Q-A2): bar -> chord -> a new gesture -> bar again inside the same bar re-anchors at the bar start: notes 4000 | 6000 | 8000 12000");
+  // (b) a jump (a loop wrap is the same T6 edge): at 6500 the song position goes from beat 1.625 back to beat 1.25 (step 5), still inside bar 0. The bar anchor is tick 0, so step 5
+  //     is position 1 (silent) and step 8 (9500 after the jump) is the next note: 4000, 9500, 13500. Keeping the old bar index would anchor at the landing step: 6500, 10500.
+  const jump = plants => { const host = X.simHost({ sr: 8000, bpm: 120, startBeats: 0, playing: true }); host.set(6500, { seekBeats: 1.25 }); return line(plants, [K(100, "a", 60)], 14000, { host }); };
+  plant(jump(["reanchorKeepsLastBar"]) !== "4000,9500,13500", "restart bar detects a jump / loop wrap into the SAME bar that keeps the old bar index (the landing step anchors: 6500, 10500; read " + jump(["reanchorKeepsLastBar"]) + ")");
+  check(jump([]) === "4000,9500,13500", "known answer (T6, 4.5): a jump back to beat 1.25 inside bar 0 re-anchors at the bar start: notes 4000 | 9500 13500, not from the landing step");
+}
+
 // ---- 7. G4: the tick of every event is identical at 44.1 / 48 / 96 / 192 kHz ----------------
 {
   const sess = (plants, sr) => run({ core: mkCore(plants), sr, block: 1024, total: sr * 3, base: { pattern: "roll_end", swing: 600, gate: 80, order: "up" },
@@ -733,6 +766,21 @@ const swingDelayUs = (U, swing, k) => (k % 2 === 1 ? Math.floor(U * (2 * swing -
   plant(badE10(["keepSpilledRatchets"], 64, 250000, EXACT) !== "", "E10 detects a sub-note landing in the SAME sample as the next step surviving it: " + badE10(["keepSpilledRatchets"], 64, 250000, EXACT));
   check([4096, 64, 1].every(b => badE10([], b) === "" && badE10([], b, 250000, EXACT) === "") && streamOf(spill([], 4096).evs) === streamOf(spill([], 1).evs) && streamOf(spill([], 4096).evs) === streamOf(spill([], 64).evs),
     "TM5 (E10): 500 ms steps with 4 ratchets, step time 200 ms at sample 800: ons at 0 1000 | 1600 2000 2400 2800 3200 3600 (step 0's sub-notes at 2000 and 3000 dropped); with 250 ms the next step lands ON step 0's sub-note at 2000 and that one is dropped too (0 1000 | 2000 2500 3000 3500); no key retriggered at one sample, N1 holds, identical at block sizes 4096/64/1");
+  // The drop may remove the LAST sub-note of a step, the one that carries the tie look-ahead (its off runs on to the end of the last tied step): then the tie is lost with it.
+  // The spec allows it (a dropped sub-note has no NoteOn, so no terminal is owed): pinned so it is deliberate. 500 ms steps, pattern [ratchet 2, tie], gate 100: step 0 has
+  // sub-notes at 0 and 2000, the second one's off at 8000. Step time 200 ms at 800: step 1 lands at 1600, the sub-note at 2000 is dropped; step 0 is ONE note, 0 to 2000.
+  const tieSpill = (plants, block, change) => run({ core: mkCore(plants), block, total: 9000, userPattern: { length: 2, steps: [{ ratchet: 2 }, { tie: true }] },
+    base: { rate_mode: "time", step_time_us: 500000, gate: 100, pattern: "user" }, cfg: change ? [{ at: 800, set: { step_time_us: 200000 } }] : [], ins: [K(0, "a", 60)] });
+  const offOfOnAt = (r, at) => { const on = ons(r).find(e => e.a === at); const off = on && r.evs.find(e => e.t === "off" && e.id === on.id); return off ? off.a : -1; };
+  const tieAnswer = (plants, block) => {
+    const base = tieSpill(plants, block, false), ch = tieSpill(plants, block, true);
+    if (n1(base.evs).length || n1(ch.evs).length) return "N1";
+    return ons(base).slice(0, 3).map(e => e.a).join() + "|" + offOfOnAt(base, 2000) + " " + ons(ch).slice(0, 3).map(e => e.a).join() + "|" + offOfOnAt(ch, 0);
+  };
+  const TIE_WANT = "0,2000,8000|8000 0,3200,4000|2000";
+  plant(tieAnswer(["keepSpilledRatchets"], 64) !== TIE_WANT, "E10 detects a dropped last sub-note staying queued (read " + tieAnswer(["keepSpilledRatchets"], 64) + ")");
+  check([4096, 64, 1].every(b => tieAnswer([], b) === TIE_WANT),
+    "TM5 (E10, L4): the drop can remove the LAST sub-note of a step, the one carrying the tie look-ahead: ratchet 2 + a tie at 500 ms steps sounds 0 and 2000 (the second held to 8000); with 200 ms at sample 800 the sub-note at 2000 is dropped, step 0 is one note 0-2000 and the tie holds nothing (ons 0 3200 4000); identical at block sizes 4096/64/1");
 }
 
 // ---- 18. ST1: the step offset is step x the pattern's step size, in the pattern's unit (SPEC 4.3, 4.7, D-016) ---------------
@@ -801,6 +849,44 @@ const swingDelayUs = (U, swing, k) => (k % 2 === 1 ? Math.floor(U * (2 * swing -
   const jBase = { repeats: 1, restart: "free", pattern: "trg" }, wantJ = "0,1000,2000,3000";
   const j = plants => trigAt(go(plants, jBase, [...keys, ...[0, 1, 2].map(i => O(1500, "k" + i))], { total: 20000 })) !== wantJ || trigAt(go(plants, jBase, keys, { total: 20000 })) !== wantJ;
   const j0 = plants => go(plants, jBase, [], { total: 20000 }).evs.filter(e => e.t === "trig").length !== 20;
+  // (k) E11, D-028: C is set the moment H' becomes non-empty, so a chord tapped and released BEFORE the next step has its own cycle length. Same session as (j): restart
+  //     free (host clock), a trigger on every step, 1 repeat. (A) the first gesture ever is a C tapped at 100 and released at 500: one key, C = 1 step, so step 0 (before
+  //     the gesture, no count) then ONE counted step (1000): triggers 0 1000, then none (without the fix nothing gave C a value: triggers without end). (B) C E G held
+  //     100-1500 (C = 3: 0 1000 2000 3000), then a single key tapped 8100-8500 uses its OWN C = 1 (as if held across a step: 9000 only), not the previous chord's 3.
+  const tapA = [K(100, "t", 60), O(500, "t")], tapB = [...keys, ...[0, 1, 2].map(i => O(1500, "k" + i)), K(8100, "t", 72), O(8500, "t")];
+  const tap = (plants, ins, block) => trigAt(go(plants, jBase, ins, { total: 20000, block }));
+  const kT = plants => [4096, 64, 7].some(b => tap(plants, tapA, b) !== "0,1000" || tap(plants, tapB, b) !== "0,1000,2000,3000,9000");
+  // (l) E12, D-028: T6 and T7 clear `exhausted` only while H' is non-empty. C E G, a trigger on every step, 1 repeat: with no key held (released at 1500) the arp ran out after
+  //     3000; a loop wrap (a host seek back to beat 0) or a Panic at 8000 must leave it silent. With the keys still held a loop wrap starts a fresh round (8000 9000 10000).
+  const e12 = (plants, what, block) => {
+    const ins = [...keys, ...(what === 2 ? [] : [0, 1, 2].map(i => O(1500, "k" + i))), ...(what === 1 ? [{ at: 8000, t: "panic" }] : [])];
+    const o = { total: 20000, block };
+    if (what !== 1) { const host = X.simHost({ sr: 8000, bpm: 120, startBeats: 0, playing: true }); host.set(8000, { seekBeats: 0 }); o.host = host; }
+    return trigAt(go(plants, jBase, ins, o));
+  };
+  const lBad = (plants, what, want) => [4096, 64, 7].some(b => e12(plants, what, b) !== want);
+  const lWrap = plants => lBad(plants, 0, wantJ), lPanic = plants => lBad(plants, 1, wantJ), lHeld = plants => lBad(plants, 2, "0,1000,2000,3000,8000,9000,10000");
+  // (m) E12, D-028: T6 and T7 reset `repeatSteps` only while H' is non-empty. 2 repeats over C E G = 6 counted steps; released at 3500 (step 4000 is the fourth counted), a loop wrap
+  //     or a Panic at 4500 with no keys leaves the count alone: the round finishes and stops where the uninterrupted run does (7 triggers). With the keys held the wrap is a fresh round.
+  const mid = (plants, what, block) => {
+    const ins = [...keys, ...(what === 2 ? [] : [0, 1, 2].map(i => O(3500, "k" + i))), ...(what === 1 ? [{ at: 4500, t: "panic" }] : [])];
+    const o = { total: 20000, block };
+    if (what === 0 || what === 2) { const host = X.simHost({ sr: 8000, bpm: 120, startBeats: 0, playing: true }); host.set(4500, { seekBeats: 0 }); o.host = host; }
+    return trigAt(go(plants, Object.assign({}, jBase, { repeats: 2 }), ins, o));
+  };
+  const MID_STOPS = "0,1000,2000,3000,4000,5000,6000";
+  const mBad = (plants, what, want) => [4096, 64, 7].some(b => mid(plants, what, b) !== want);
+  const mAll = plants => mBad(plants, 3, MID_STOPS) || mBad(plants, 0, "0,1000,2000,3000,4000,4500,5500") || mBad(plants, 1, MID_STOPS) || mBad(plants, 2, "0,1000,2000,3000,4000,4500,5500,6500,7500,8500,9500");
+  plant(mid(["edgeResetsCountWhileEmpty"], 0, 256) !== "0,1000,2000,3000,4000,4500,5500", "RP1 detects a loop wrap that restarts a round in progress with no key held (read " + mid(["edgeResetsCountWhileEmpty"], 0, 256) + ")");
+  plant(mid(["edgeResetsCountWhileEmpty"], 1, 256) !== MID_STOPS, "RP1 detects a Panic that restarts a round in progress with no key held (read " + mid(["edgeResetsCountWhileEmpty"], 1, 256) + ")");
+  plant(tap(["cOnlyAtStep"], tapA, 256) !== "0,1000", "RP1 detects a first gesture tapped and released between two steps that never gets a C (triggers without end; read " + tap(["cOnlyAtStep"], tapA, 256).slice(0, 40) + "...)");
+  plant(tap(["cOnlyAtStep"], tapB, 256) !== "0,1000,2000,3000,9000", "RP1 detects a later tap that borrows the previous chord's C (9000 10000 11000; read " + tap(["cOnlyAtStep"], tapB, 256) + ")");
+  plant(e12(["edgeRevivesWhileEmpty"], 0, 256) !== wantJ, "RP1 detects a loop wrap that revives a used-up arp with no key held (read " + e12(["edgeRevivesWhileEmpty"], 0, 256) + ")");
+  plant(e12(["edgeRevivesWhileEmpty"], 1, 256) !== wantJ, "RP1 detects a Panic that revives a used-up arp with no key held (read " + e12(["edgeRevivesWhileEmpty"], 1, 256) + ")");
+  check(!mAll([]),
+    "known answers (E12): 2 repeats of C E G released partway through the first round (3500): uninterrupted the triggers are 0 1000 2000 3000 4000 5000 6000; a loop wrap at 4500 with no key held gives 0 1000 2000 3000 4000 4500 5500 (the same 7 triggers, the round finishes and stops), a Panic at 4500 the uninterrupted run; with the keys held the loop wrap starts a fresh round (4500 5500 6500 7500 8500 9500); identical at block sizes 4096/64/7");
+  check(!kT([]) && !lWrap([]) && !lPanic([]) && !lHeld([]),
+    "known answers (E11, E12): a chord tapped and released between two steps has its own C: the first gesture ever (C tapped at 100, released at 500) gives triggers 0 1000 then none, and a single key tapped at 8100-8500 after C E G ran out gives 9000 only (not 9000 10000 11000); with no key held a loop wrap or a Panic at 8000 leaves a used-up arp silent (0 1000 2000 3000, nothing more), with the keys held a loop wrap starts a fresh round (8000 9000 10000); identical at block sizes 4096/64/7");
   plant(j(["repeatsPauseWhileEmpty"]), "RP1 detects a count that pauses while no key is held (an arp let go before its repeats are done never runs out: triggers without end)");
   plant(f(["exhaustedStopsGuard"]), "RP1 detects a spent arp that stops consuming the once-guard (a burst of overdue steps at the next gesture)");
   plant(g(["onlyGestureResets"]), "RP1 detects a key-adding press (latch append) that does not restart the count");
@@ -882,6 +968,25 @@ const swingDelayUs = (U, swing, k) => (k % 2 === 1 ? Math.floor(U * (2 * swing -
   const sT = plants => { const r = run({ core: mkCore(plants), block: 128, total: 20000, scale: NDOWN, base: { chord_enabled: true, quantize: "scale", order: "up", chord_on3: true, chord_shift3: 12, gate: 30 },
       ins: [61, 63, 66, 68, 70].map((k, i) => K(100 + 3000 * i, "k" + i, k)) });
     const o = r.evs.filter(e => e.t === "on"); return o.length < 20 || !o.some(e => e.stream === "chord") || !o.some(e => e.stream === "arp") || o.some(e => !inScale(e.key, 0, 0xAB5)); };
+  // (t) critic M1: a settings change and an input at the SAME offset 0 are ONE pass of the stage. C held with ONE slot (+4): 60 and 64 sound. At 2000 the shift becomes +7 and E is pressed
+  //     in the SAME sample: the source count of 64 goes 1 -> 0 -> 1 and SPEC 14 keeps the note (no off64 / on64 pair); the mirror (shift change plus C released at 2000): 60 and 64 end,
+  //     67 never starts.
+  const trace = (r, total) => { const ids = chordOnIds(r); return r.evs.filter(e => e.a < total && ((e.t === "on" && e.stream === "chord") || (e.t === "off" && ids.has(e.id)))).map(e => e.t + e.key + "@" + e.a).sort().join(" "); };
+  const wantTA = ["on60@100", "on64@100", "on67@2000", "on71@2000", "off60@5000", "off67@5000", "off64@7000", "off71@7000"].sort().join(" "), wantTB = ["on60@100", "on64@100", "off60@2000", "off64@2000"].sort().join(" ");
+  const tA = (plants, block) => trace(go(plants, { chord_on2: false }, [K(100, "c", 60), K(2000, "e", 64), O(5000, "c"), O(7000, "e")], { total: 9000, block, cfg: [{ at: 2000, set: { chord_shift1: 7 } }] }), 9000);
+  const tB = (plants, block) => trace(go(plants, { chord_on2: false }, [K(100, "c", 60), O(2000, "c")], { total: 6000, block, cfg: [{ at: 2000, set: { chord_shift1: 7 } }] }), 6000);
+  plant(tA(["chordSyncBlockStartFirst"], 128) !== wantTA, "CH1 detects a block-start sync that runs before an input at offset 0 (an off64 / on64 pair at 2000; read " + tA(["chordSyncBlockStartFirst"], 128) + ")");
+  plant(tB(["chordSyncBlockStartFirst"], 128) !== wantTB, "CH1 detects a block-start sync that starts a note whose source is released at the same offset 0 (a one-sample 67; read " + tB(["chordSyncBlockStartFirst"], 128) + ")");
+  const tOk = [4096, 128, 1].every(b => tA([], b) === wantTA && tB([], b) === wantTB);
+  // (u) critic L2: H' follows the earliest LIVE ref of a source key. Two refs on key 60, "a1" at 200 and "a2" at 400, keys 64 (100) and 67 (300) between; a1 is released at 500, so 60's press
+  //     time becomes 400 and `played` order is 64 67 60. With every chord slot off the stage's H' is H itself, so stage on and off agree. A record that keeps the press time it entered with
+  //     would play 64 60 67.
+  const order = (plants, stageOn) => { const r = run({ core: mkCore(plants), block: 128, total: 8000, base: { enabled: true, arp_enabled: true, order: "played", chord_enabled: stageOn, chord_on1: false, chord_on2: false, chord_on3: false, gate: 30 },
+      ins: [K(100, "x", 64), K(200, "a1", 60), K(300, "z", 67), K(400, "a2", 60), O(500, "a1")] }); return r.evs.filter(e => e.t === "on" && e.stream === "arp").slice(0, 6).map(e => e.key).join(); };
+  plant(order(["chordStalePressTime"], true) !== "64,67,60,64,67,60", "CH1 detects a stored chord record that keeps its entering press time (played order 64 60 67; read " + order(["chordStalePressTime"], true) + ")");
+  const uOk = order([], true) === "64,67,60,64,67,60" && order([], false) === "64,67,60,64,67,60";
+  check(tOk, "CH1 (M1): shift +4 -> +7 and E pressed in the SAME sample: 64 keeps sounding (no off64 / on64 pair), 67 and 71 start at 2000, 60 and 67 end with C at 5000, 64 and 71 with E at 7000; the mirror (shift change plus C released at 2000): 60 and 64 end at 2000 and 67 never starts (block sizes 4096 / 128 / 1)");
+  check(uOk, "CH1 (L2): two refs on key 60, the earliest released: `played` order is 64 67 60 with the stage on (all slots off) and with it off");
   plant(rT(["chordPlusZeroUnquantized"]), "CH1 detects the +0 slot (the played note) left unquantized while quantize is on");
   plant(sT(["chordSkipQuantize"]), "CH1/Q1 detects chord-stream notes out of the effective scale while quantize is on");
   plant(iT(["chordRecomputeAtRelease"]), "CH1 detects a mapping recomputed at release (the stranded note after an anchor change)");

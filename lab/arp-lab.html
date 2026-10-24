@@ -1255,7 +1255,8 @@ const ARP_PLANTS = ["dropRelease", "doubleRelease", "sameSampleOff", "clampOffse
   "regridAbsolute", "regridKAbs", "timeBarsCount", "offsetsPerStage", "stepOffsetReadsGlobal", "timeEntryNoStart", "inactiveReanchors", "timeStepsWhileRinging",
   "repeatsCountPatternPasses", "repeatsNeverStop", "chordNoDedupe", "chordEndsOnFirstSource", "arpIgnoresChord", "chordRestartAll",
   "chordRecomputeAtRelease", "t2AcrossStreams", "arpToggleEndsChord", "chordT6Restart", "sharedSoundingTable", "exhaustedStopsGuard", "onlyGestureResets", "morphRevives", "chordSyncPerEvent", "chordDedupeByChannelKey", "latchAtNextStep", "chordPlusZeroUnquantized", "chordSkipQuantize", "swingPerStep",
-  "repeatsPauseWhileEmpty", "keepSpilledRatchets"];
+  "repeatsPauseWhileEmpty", "keepSpilledRatchets",
+  "chordSyncBlockStartFirst", "adoptKeepsLastBar", "reanchorKeepsLastBar", "swingLatchUnanchored", "chordStalePressTime", "cOnlyAtStep", "edgeRevivesWhileEmpty", "swingSpentNoLatch", "edgeResetsCountWhileEmpty"];
 // Every discrete setting except `enabled` (which applies at offset 0, T4/T5) switches at the next
 // evaluated step (SPEC §9). Derived from params.json, so a new discrete setting cannot be forgotten.
 const DISCRETE_KEYS = ARP_PARAMS.params.filter(p => p.kind === "discrete" && p.key !== "enabled").map(p => p.key);
@@ -1540,7 +1541,10 @@ class ArpCore {
       if (S.latch === "off") this.refs = this.refs.filter(r => r.state !== "latched");
       this.active.latch = S.latch;
     }
-    this._chordSync(0);   // SPEC 14: a changed shape / scale / stage switch is applied at offset 0 of its block
+    // SPEC 14: a changed shape / scale / stage switch is applied at offset 0 of its block. But when the first input sits at offset 0 too, the sync waits for the one
+    // after that sample's last input, so the re-map and the held-set change are ONE pass: a source count going 1 -> 0 -> 1 at that sample keeps its note (no off / on
+    // pair) and a note whose only source is released at that sample never starts. Plant chordSyncBlockStartFirst syncs first.
+    if (!(ins.length && ins[0].s === 0) || P.chordSyncBlockStartFirst) this._chordSync(0);
 
     // -- the timeline: input events, due offs, pending ons/triggers, grid-step evaluations
     let ii = 0, cur = 0;
@@ -1558,8 +1562,12 @@ class ArpCore {
       if (pi >= 0) { const s = Math.max(0, this._ofs(this.pending[pi].pos)); if (s < t) { t = s; kind = 2; idx = pi; } }
       if (running) {
         const stepPos = BigInt(this._gtick(this.lastEvaluated + 1)) * D, s = Math.max(0, this._ofs(stepPos));
-        // SPEC 5.1 (E10): "at or after the step's on" includes a sub-note in the SAME sample as the step: the step is evaluated first so it can drop it (it has no NoteOn yet).
-        // Only time mode can queue a sub-note at or after the next step's tick. Plant keepSpilledRatchets: the old order (the sub-note sounds first and the step retriggers its key).
+        // SPEC 5.1 (E10): "at or after the step's on" includes a sub-note in the SAME sample as the step: the step is evaluated first so it can drop it (it has no NoteOn yet),
+        // else the sub-note sounds first and the step's own on retriggers its key at that sample. Only TIME mode drops, so only there does the tie-break apply. Swing also
+        // queues a sub-note at or after the next step's GRID tick (stepPos), in both modes: an even step's span runs to the odd step's SWUNG on, so its later sub-notes can sit
+        // past the odd step's grid tick. The tie-break is still right there: evaluating the step first reorders nothing the output shows, and the drop compares against the
+        // step's SWUNG on (on0), so a sub-note between the grid tick and the swung on survives and is emitted in its own time; only one at or after the swung on (straight
+        // swing: the grid tick itself) is dropped, which is what E10 asks. In sync mode nothing drops, so the earlier-kind-wins order stands. Plant keepSpilledRatchets: the old order.
         const dropsTie = s === t && kind === 2 && this.timeMode && !P.keepSpilledRatchets && this.pending[idx].kind === "on" && !(this.pending[idx].pos < stepPos);
         if (s < t || dropsTie) { t = s; kind = 3; }
       }
@@ -1645,16 +1653,24 @@ class ArpCore {
     if (this.lab.plant.chordT6Restart) { for (const n of this.chord.notes.values()) { this._chordOff(n, 0); n.restartMe = true; } }   // plant: the r2.10 behaviour
     this.active.rate = this.incoming.rate; this.L = this._curL(this.incoming);   // SPEC-GAP: rate adopted at an edge
     this.freeRunning = false; this.epoch = 0;
-    this.lastEvaluated = null; this._gO = 0; this._gK1 = 0; this.repeatSteps = 0; this.exhausted = false;
+    this.lastEvaluated = null; this._gO = 0; this._gK1 = 0;
+    // SPEC 4.8 (E12, D-028): T6 restarts the repeat count and clears `exhausted` only while keys are held; with none, a loop or jump neither revives a used-up arp nor starts a
+    // fresh round: a round in progress finishes and stops (H' is empty iff H is). Plants edgeRevivesWhileEmpty / edgeResetsCountWhileEmpty do each anyway.
+    if (this.refs.length || this.lab.plant.edgeResetsCountWhileEmpty || this.lab.plant.edgeRevivesWhileEmpty) this.repeatSteps = 0;   // (revive alone would re-latch at once: the count stays spent)
+    if (this.refs.length || this.lab.plant.edgeRevivesWhileEmpty) this.exhausted = false;
     this._swingPairK = null;   // the step numbering restarts: no pair partner survives an edge
     this._reanchor(0, false);
   }
   // Re-anchor at the current position (T5/T6): m := 0; chord anchors only if an anchor exists or keys are held.
   _reanchor(s, resetEvaluated) {
     if (resetEvaluated || this.lastEvaluated === null) this.lastEvaluated = this._kAtOrAfter(this._posAt(s)) - 1;
-    this.m = 0; this.lastBar = null;
+    this.m = 0;
+    // A new anchor forgets the bar bookkeeping: the next evaluated step re-derives the bar anchor even when it lands in the SAME bar index as before (a loop wrap or a jump
+    // back into the bar). Plant reanchorKeepsLastBar keeps it, so that landing keeps the reanchor's step.
+    if (!this.lab.plant.reanchorKeepsLastBar) this.lastBar = null;
     const rs = this._rs();
     if (rs === "free") this.anchorK = 0;
+    else if (rs === "bar") this.anchorK = this.lastEvaluated + 1;   // _evalStep re-derives it from the bar grid at the next evaluated step (lastBar is null); with plant reanchorKeepsLastBar this landing step stays the anchor
     else if (rs === "chord") this.anchorK = (this.anchorK !== null || this.refs.length) ? this.lastEvaluated + 1 : null;
   }
   // H7b: the free clock starts at a switch/enable sample when keys are held.
@@ -1675,7 +1691,7 @@ class ArpCore {
   }
 
   // ---------------------------------------------------------------- input (SPEC 3)
-  _input(e, s, last = true) { this._input1(e, s); if (last) this._chordSync(s); }   // the chord stage follows H sample-exactly (SPEC 14); `last` defers the sync past the other events at one sample, so a count going 1->0->1 within a sample keeps its note
+  _input(e, s, last = true) { this._input1(e, s); if (last) { this._chordSync(s); this._updateCycle(); } }   // the chord stage follows H sample-exactly (SPEC 14); `last` defers the sync past the other events at one sample, so a count going 1->0->1 within a sample keeps its note
   _input1(e, s) {
     switch (e.t) {
       case "on": this._noteOn(e, s); if (this.sounding.length) this.rows.T3++; break;
@@ -1683,7 +1699,9 @@ class ArpCore {
       case "pedal": this._pedal(!!e.down); if (this.sounding.length) this.rows.T3++; break;
       case "panic":
         if (this.sounding.length) this.rows.T7++;
-        this.refs = []; this.ignored = []; this.pedalDown = false; this.repeatSteps = 0; this.exhausted = false;
+        this.refs = []; this.ignored = []; this.pedalDown = false;   // SPEC 4.8 (E12): T7 resets the count and clears `exhausted` only while H' is non-empty; Panic empties H, so neither (plants do each anyway)
+        if (this.lab.plant.edgeResetsCountWhileEmpty || this.lab.plant.edgeRevivesWhileEmpty) this.repeatSteps = 0;
+        if (this.lab.plant.edgeRevivesWhileEmpty) this.exhausted = false;
         this._releaseAll(s);
         this._pushNon({ t: "panic", s });
         break;
@@ -1795,7 +1813,13 @@ class ArpCore {
     for (const h of H) {
       const rec = c.held.get(h.key);
       if (!rec) c.held.set(h.key, { h: { key: h.key, vel: h.vel, ch: h.ch, abs: h.abs }, keys: this._chordMap(h, H, S) });
-      else if (remap) rec.keys = this._chordMap(h, H, S);
+      else {
+        // SPEC 3 / 14: H' orders keys by the press of the EARLIEST LIVE ref of a source key, which moves when the earliest of two refs on one key is released. Refresh the
+        // record's held key (press time, velocity, channel) from H on every sync; the STORED keys are untouched (a re-map is the only thing that recomputes them).
+        // Plant chordStalePressTime keeps the entering press.
+        if (!P.chordStalePressTime) rec.h = { key: h.key, vel: h.vel, ch: h.ch, abs: h.abs };
+        if (remap) rec.keys = this._chordMap(h, H, S);
+      }
     }
     // the source counts and the earliest source of every key, from the STORED mapping
     const count = new Map(), first = new Map();
@@ -1848,13 +1872,19 @@ class ArpCore {
     if (this.timeMode) { if (P.regridAbsolute && S.step_time_us !== this.L) { this._regridAbsolute(kAbs); return; } }
     else if (S.rate !== this.active.rate) { this._switchRate(kAbs); return; }   // T15: applies at the next step of the OLD rate (SPEC 9)
     this.lastEvaluated = kAbs;
-    // SPEC 5.1 (E6): swing is latched per step PAIR. The even step 2j reads `swing` now; the odd step 2j+1 reuses that value when 2j was the last step
-    // evaluated, else reads the current one. So span(2j) and on(2j+1) always use one swing and no step's ratchets sound after the next step's on.
-    // Plant swingPerStep: swing is read at every step (the M2a behaviour).
-    { const odd = mod(kAbs, 2) === 1; this._swingUsed = (odd && this._swingPairK === kAbs - 1 && !P.swingPerStep) ? this._swingPair : S.swing; if (!odd) { this._swingPair = this._swingUsed; this._swingPairK = kAbs; } }
     this._adopt();
     this._chordSync(so);   // _adopt may have dropped latched refs (latch off), which changes H
-    if (this._rs() === "chord" && this.anchorK === null) return;             // no anchor yet (SPEC 2.5)
+    const anchored = !(this._rs() === "chord" && this.anchorK === null);   // no anchor yet (SPEC 2.5): restart `chord` before the first gesture
+    // SPEC 5.1 (E6): swing is latched per step PAIR. The even step 2j reads `swing` now; the odd step 2j+1 reuses that value when 2j was the last step
+    // EVALUATED, else reads the current one. "Evaluated" is SPEC 2.5's: the clock runs and an anchor exists. A step the once-guard consumes with no anchor is not
+    // evaluated and latches nothing, so the odd step right after a gesture start reads the current swing; a spent step (4.8, a silent rest WITH an anchor) is
+    // evaluated and does latch. Plant swingPerStep: swing is read at every step (the M2a behaviour). Plant swingLatchUnanchored latches before the anchor test.
+    if (anchored || P.swingLatchUnanchored) {
+      const odd = mod(kAbs, 2) === 1;
+      this._swingUsed = (odd && this._swingPairK === kAbs - 1 && !P.swingPerStep) ? this._swingPair : S.swing;
+      if (!odd) { this._swingPair = this._swingUsed; this._swingPairK = kAbs; }
+    }
+    if (!anchored) return;
     if (!this.lab.opts.playPreroll && this._gtick(kAbs) < 0) return;
     this._evalStep(kAbs, so);
   }
@@ -1880,12 +1910,14 @@ class ArpCore {
   }
   // Discrete settings apply from the next evaluated step (T8).
   _adopt() {
-    const a = this.active, S = this.incoming; let changed = false;
+    const a = this.active, S = this.incoming, P = this.lab.plant; let changed = false;
     for (const k of DISCRETE_KEYS) {
       if (k === "rate" || a[k] === S[k]) continue;
       changed = true;
       if (k === "latch" && S.latch === "off") this.refs = this.refs.filter(r => r.state !== "latched");
-      if (k === "restart" && !this.timeMode) { if (S.restart === "bar") { this.lastBar = null; this.m = 0; } else if (S.restart === "free") { this.m = 0; this.anchorK = 0; } }   // into chord: keep the anchor; inert in time mode
+      // Into bar or free the bar bookkeeping is forgotten, so a return to bar inside the bar it left re-anchors at that bar's start (a gesture meanwhile set the chord anchor).
+      // Plant adoptKeepsLastBar keeps the old bar index. Into chord: keep the anchor; inert in time mode.
+      if (k === "restart" && !this.timeMode) { if (S.restart !== "chord" && !P.adoptKeepsLastBar) this.lastBar = null; if (S.restart === "bar") this.m = 0; else if (S.restart === "free") { this.m = 0; this.anchorK = 0; } }
       a[k] = S[k];
     }
     if (changed && this.sounding.length) this.rows.T8++;
@@ -1923,17 +1955,17 @@ class ArpCore {
     // triggers) until the next gesture start; sounding notes end by their gates (T20). C is recomputed from the live H' at every step; while H' is EMPTY the
     // last non-empty C is kept (E9, D-027), so the count keeps running after the keys are released and an arp let go early still runs out (before the first
     // gesture there is no C, so no count). Plant repeatsPauseWhileEmpty: no check while H' is empty (the M2b behaviour).
-    // r2.11: once spent the arp is `exhausted`, a LATCHED flag (cleared by a gesture start, a key-adding NoteOn, T6/T7/T10; a morph of repeats, steps or pattern never
+    // r2.11: once spent the arp is `exhausted`, a LATCHED flag (cleared by a gesture start, a key-adding NoteOn, T6/T7 with keys held (E12), T10; a morph of repeats, steps or pattern never
     // revives it). Spent steps still consumed the once-guard in _visit, as silent rests, so a later gesture sees no burst of overdue steps. P comes from H'.
-    if (H.length) {   // worked out whenever keys are held, whatever `repeats` is, so a later repeats morph never reads an older gesture's cycle length
-      const Ls = this._plen(pat), pn = periodOf(a.order, H.length) * (a.steps + 1);
-      let plays = 0; for (let q = 0; q < Ls; q++) { const x = this._step(pat, q); if (x.on && !x.tie && normPick(x.pick) === "order") plays++; }
-      this.lastC = P.repeatsCountPatternPasses ? Ls : plays > 0 ? Ls * (pn / gcd(pn, plays)) : Ls;
-    }
+    // C is also set the moment H' becomes non-empty (_updateCycle, E11), so a chord tapped and released between two steps has its own cycle length.
+    if (H.length) this.lastC = this._cycleLength(pat, H.length);   // worked out whenever keys are held, whatever `repeats` is, so a later repeats morph never reads an older gesture's cycle length
     if (a.repeats > 0 && (H.length || (this.lastC !== null && !P.repeatsPauseWhileEmpty)) && !P.repeatsNeverStop && (!this.exhausted || P.morphRevives)) {
       this.exhausted = this.repeatSteps >= a.repeats * this.lastC;   // (plant morphRevives re-evaluates this every step, so raising `repeats` revives the arp)
     }
-    if (this.exhausted) return;
+    if (this.exhausted) {
+      if (P.swingSpentNoLatch) this._swingPairK = null;   // plant (E6 / L1): a spent step does not latch the swing pair
+      return;
+    }
     this.repeatSteps++;
     const ord = this.stepSeq++;
     const fires = P.probLE ? (this._draw(a.seed, kAbs, 2) % 100) <= st.prob : (this._draw(a.seed, kAbs, 2) % 100) < st.prob;
@@ -1953,6 +1985,20 @@ class ArpCore {
     this.lastSteps.push({ s: so, kAbs, k, j, mBefore, mAfter: this.m, fires, kind, ord, pick: this._pickOf(st) });   // ord: lets the UI tie a note to its step (accents)
   }
 
+  // SPEC 4.8: C = plays > 0 ? Ls * (P*(steps+1) / gcd(P*(steps+1), plays)) : Ls, for e >= 1 keys of H'. `plays` is a static count (prob is ignored).
+  _cycleLength(pat, e) {
+    const a = this.active, Ls = this._plen(pat), pn = periodOf(a.order, e) * (a.steps + 1);
+    let plays = 0; for (let q = 0; q < Ls; q++) { const x = this._step(pat, q); if (x.on && !x.tie && normPick(x.pick) === "order") plays++; }
+    return this.lab.plant.repeatsCountPatternPasses ? Ls : plays > 0 ? Ls * (pn / gcd(pn, plays)) : Ls;
+  }
+  // SPEC 4.8 (E11, D-028): C is also set the moment H' becomes non-empty, not only at an evaluated step with keys held. Otherwise a chord tapped and released before the
+  // next step never gets a C: the first such tap would count nothing (triggers without end) and a later one would borrow the previous chord's. Called after the post-input
+  // chord sync; uses the settings in force (this.active). Plant cOnlyAtStep: the M2b rule, C only at an evaluated step.
+  _updateCycle() {
+    if (this.lab.plant.cOnlyAtStep) return;
+    const H = this._heldArp();
+    if (H.length) this.lastC = this._cycleLength(this._pattern(this.active.pattern), H.length);
+  }
   // The step's pick as the core obeys it. Plant ignorePick: every pick is read as `order` (U1's control).
   _pickOf(st) { return this.lab.plant.ignorePick ? "order" : normPick(st.pick); }
 

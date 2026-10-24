@@ -797,3 +797,30 @@ exact check that each chord on lands on its input's sample, so no gate is
 narrowed (critic L3).
 
 `spec/MANIFEST` is re-pinned in the same change, as D-023 requires.
+
+## D-028 — M2 re-check: a tapped chord sets its own repeat length (E11); a used-up arp stays silent through loops and Panic with no keys held (E12); the lab's CORE catches up (RATIFIED by poll, 2026-10-23)
+
+A focused critic re-check of the M2 follow-ups (2b438f4) found no HIGH and
+two repeat cases nobody had chosen, both about trigger-only steps:
+- **E11:** a chord tapped and released before the next step never set the
+  cycle length `C` (it was computed only at a step with keys held), so the
+  first such tap fired trigger steps without end and later taps borrowed the
+  previous chord's length. Chosen: `C` is set the moment H′ becomes
+  non-empty, so any press, however short, has its own repeats. Rejected:
+  ignoring a quick tap (before the first real chord, triggers would fire
+  freely).
+- **E12:** after the arp ran out with no keys held, every loop wrap, jump or
+  Panic cleared `exhausted` and fired another full round. Chosen: T6 and T7
+  clear it only while H′ is non-empty; with no keys held the arp stays silent
+  until the player plays again. A loop or jump with keys held still starts a
+  fresh round. Rejected: another round on every loop pass.
+  Asked as a follow-up and chosen the same way: with no keys held, T6 and T7
+  also leave `repeatSteps` alone, so a round in progress finishes and stops
+  rather than restarting (rejected: one more full round).
+
+The re-check also noted that the lab's CORE had not taken four smaller M2b
+fixes, against §Domain ("its CORE must keep matching the spec"). The lead
+ports them rather than recording an exception: no human exception is needed
+to follow the charter.
+
+`spec/MANIFEST` is re-pinned in the same change, as D-023 requires.
