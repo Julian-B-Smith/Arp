@@ -146,7 +146,7 @@ core and the C++ core and reports any difference in the event streams. It
 is measured, never gating: the lab is a listening twin, not a parity target.
 A difference is investigated against the spec, which wins.
 
-### M3 — horde admission
+### M3 — horde admission ← current
 - The horde-facing surface: parameter table, presets, undo of every control,
   morph targets; horde's copy-in of the core at our V1, with a file list (D-015); the FOUNDATIONS
   note-vocabulary brief when the C++ first touches NoteRef/HeldStack; the
@@ -225,18 +225,36 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 - **Acceptance criteria:** the M2 gate above.
 - **Out of scope:** the cross-check (T-006), horde admission (M3), anything past the functionality freeze.
 
+### T-007 — M3: horde admission
+- **Status:** in progress (2026-10-24), on `m3/admission`. Due **2026-12-11**.
+- **The checklist** is horde's `docs/proposals/note-processor-1.0-bar.md` (D-015); the evidence matrix row by row
+  lives in `docs/horde-1.0-bar.md` (written as each row is evidenced). CPU follows horde's own convention: Release
+  on this machine, × 4 derate as the min-spec heuristic, reported and never gated (horde's two-osc measurement).
+- **M3a (Arp side, now):** a Release CPU and memory benchmark (reported); checks for the rows not yet covered —
+  several meters and tempos, no input no output, a preset load as a terminal path, the pattern-bank selection as a
+  morph target; the copy-in file list with a build-from-the-list check.
+- **With horde (filings):** our answer to their chord-stream question (the played note is in `chord`, §14); Q-H6
+  (the user pattern in a module preset, per their ADR-169: embedded by value); whether the bar's "no input, no
+  output" covers triggers that §2.5 fires with no keys under restart bar/free; who owns the face and undo; the
+  factory-content format.
+- **With the human:** the listening sign-off; goldens cut per pattern; name clearance (Phase N, B433).
+- **Scope:** `core/`, `tests/core/`, `tools/`, `docs/`, the traces. **Out of scope:** any 1.0 feature (frozen).
+- **Acceptance criteria:** the M3 gate above.
+
 ## Open questions (blocking — ask the human or horde)
 
 - **Q-H1 — which MUST rows bind Arp: ANSWERED by horde (D-015).** horde's `docs/proposals/note-processor-1.0-bar.md` (incl. CPU ≤ 2 % of a min-spec core); it is M3's checklist.
 - **Q-H2 — how horde consumes the core: ANSWERED by horde (D-015).** copied into horde's tree at our V1 by a horde PR recording our commit; keep the core self-contained, ship a file list.
 - **Q-H3 — the trigger-lane handoff: ANSWERED by horde (D-015).** `Trigger{lane 1–8, sampleOffset}` as proposed; horde shows "Arp · T1–T8" event sources.
-- **Q-H6 — How a horde preset carries Arp's user pattern** (D-011): a small
-  structured blob (up to 16 steps × 9 fields), not host parameters. **Read
-  horde ADR-169 first**: module presets "embed by value", and preset identity
-  per corner may already answer this (D-013). Then ask in the next notice.
-  Blocks the M3 preset wiring only.
-- **Q-H7 — A third stream, `chord`, in horde's per-source selector** (D-018). Filed 2026-10-22 as horde PR #1194
-  (seq 5); ball HYPERSAW, respond-by 2026-11-13.
+- **Q-H6 — How a horde preset carries Arp's user pattern** (D-011): proposed in our seq 7 (D-029), after reading
+  horde ADR-169: embedded by value in Arp's module preset as one `arp-user-pattern/1` blob; asked whether each
+  corner may carry its own. Ball HYPERSAW, respond-by 2026-11-13. Blocks the M3 preset wiring only.
+- **Q-H8 — Does the bar's "no input, no output" cover triggers?** SPEC §2.5 fires trigger-only steps with no keys
+  under restart bar/free; we read the row as notes only (seq 7). Ball HYPERSAW.
+- **Q-H9 — The face and undo** read as horde's work, from our settings table (seq 7). Ball HYPERSAW.
+- **Q-H10 — Who authors the factory presets** (init + starter bank) (seq 7). Ball HYPERSAW.
+- **Q-H7 — A third stream, `chord`: ANSWERED by horde (seq 6, their ADR-272):** three toggles per source;
+  their question back (is the played note `chord`?) answered (b) in our seq 7 (D-029).
 - **Q-H5 — Stream-scoped pedal** (D-009). We proposed that horde's VO-12
   sustain `direct` voices only. The ball is horde's, in our
   `integrations/hypersaw/response-note-stream.md`. It blocks nothing in the

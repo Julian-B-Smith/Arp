@@ -68,3 +68,22 @@ jobs:
         run: |
           chmod +x verify
           ./verify fast
+
+  # The core suite under each sanitizer (D-029): horde's note-processor bar asks for "a sanitizer run" as
+  # the real-time-safety evidence, and ASan/TSan cannot start on the dev Mac. A real gate: any check failure
+  # or sanitizer report is red. Linux only (a public repo, so no minutes budget is spent).
+  sanitize:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [asan, tsan, ubsan]
+    steps:
+      - uses: actions/checkout@v7
+      # TSan aborts with "unexpected memory mapping" under the runner kernel's high-entropy ASLR;
+      # 28 bits is the documented workaround (a runner setting, not a change to what is tested).
+      - name: ASLR entropy for TSan
+        if: matrix.kind == 'tsan'
+        run: sudo sysctl vm.mmap_rnd_bits=28
+      - name: core suite under ${{ matrix.kind }}
+        run: bash tools/core_sanitize.sh ${{ matrix.kind }}

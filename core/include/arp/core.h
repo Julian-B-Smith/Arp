@@ -138,6 +138,9 @@ struct Plants {
   bool edgeRevivesWhileEmpty = false; // SPEC 4.8 E12: T6 and T7 reset the count and clear `exhausted` even with no key held (the pre-D-028 behaviour: a loop wrap, jump or Panic revives a used-up arp)
   bool edgeResetsCountWhileEmpty = false; // SPEC 4.8 E12: T6 and T7 reset the repeat count even with no key held (a round in progress restarts after a loop wrap, jump or Panic)
   bool swingSpentNoLatch = false;   // SPEC 5.1 E6 / L1: a spent step (4.8) does not latch the swing pair, so the odd step after it reads the current swing
+  // ---- M3a (T-007, horde's note-processor 1.0 bar) ----
+  bool meterAs44 = false;           // SPEC 4.5: restart `bar` reads every time signature as 4/4 (the bar length ignores timeSigNum / timeSigDen)
+  bool emitOnEmptySet = false;      // bar row "no input, no output": a step that finds no key held plays a note anyway
 };
 #endif
 

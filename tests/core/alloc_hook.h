@@ -10,15 +10,17 @@
 namespace arp_test {
 
 std::int64_t allocCount();   // total armed calls so far
+std::int64_t allocBytes();   // total bytes requested by those calls (M3a: the memory figure)
 void armAllocCount(bool on);
 
 // Counts the allocations made while it lives.
 struct AllocScope {
-  AllocScope() : before_(allocCount()) { armAllocCount(true); }
+  AllocScope() : before_(allocCount()), beforeBytes_(allocBytes()) { armAllocCount(true); }
   ~AllocScope() { armAllocCount(false); }
   std::int64_t count() const { return allocCount() - before_; }
+  std::int64_t bytes() const { return allocBytes() - beforeBytes_; }
  private:
-  std::int64_t before_;
+  std::int64_t before_, beforeBytes_;
 };
 
 }  // namespace arp_test

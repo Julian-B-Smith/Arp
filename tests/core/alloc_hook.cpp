@@ -10,14 +10,14 @@
 namespace {
 // Plain (non-atomic) globals: the suite is single-threaded.
 bool g_armed = false;
-std::int64_t g_count = 0;
+std::int64_t g_count = 0, g_bytes = 0;
 
 void* counted(std::size_t n) noexcept {
-  if (g_armed) ++g_count;
+  if (g_armed) { ++g_count; g_bytes += static_cast<std::int64_t>(n); }
   return std::malloc(n ? n : 1);
 }
 void* countedAligned(std::size_t n, std::size_t align) noexcept {
-  if (g_armed) ++g_count;
+  if (g_armed) { ++g_count; g_bytes += static_cast<std::int64_t>(n); }
   void* p = nullptr;
   if (align < sizeof(void*)) align = sizeof(void*);
   if (::posix_memalign(&p, align, n ? n : 1) != 0) return nullptr;
@@ -27,6 +27,7 @@ void* countedAligned(std::size_t n, std::size_t align) noexcept {
 
 namespace arp_test {
 std::int64_t allocCount() { return g_count; }
+std::int64_t allocBytes() { return g_bytes; }
 void armAllocCount(bool on) { g_armed = on; }
 }  // namespace arp_test
 

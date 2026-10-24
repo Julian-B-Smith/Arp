@@ -7,7 +7,7 @@
 #   arp_shipped_smoke   links the shipped `arp_core` (NO ARP_PLANTS) and runs a short session
 # The plant-enabled binaries compile core.cpp themselves, with ARP_PLANTS, so the shipped
 # library target never contains a fault switch.
-set(ARP_TEST_SOURCES test_core.cpp test_m1b.cpp test_m2a.cpp test_m2b.cpp test_int128.cpp alloc_hook.cpp)
+set(ARP_TEST_SOURCES test_core.cpp test_m1b.cpp test_m2a.cpp test_m2b.cpp test_m3.cpp test_int128.cpp alloc_hook.cpp)
 find_package(Threads REQUIRED)   # U1 runs a real second thread against the triple buffer
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -39,8 +39,24 @@ add_executable(arp_shipped_smoke shipped_smoke.cpp)
 target_link_libraries(arp_shipped_smoke PRIVATE arp_core)
 target_compile_options(arp_shipped_smoke PRIVATE ${ARP_WARN})
 
+# The benchmark (M3a, T-007): the SHIPPED core (no ARP_PLANTS) once per int128 path. Reported, never gated, never run by ./verify;
+# tools/core_bench.sh builds these two with absolute paths in a Release tree of their own and runs them. Compiled here too, so a
+# change to the core that breaks the benchmark fails tools/core_test.sh instead of rotting.
+add_library(arp_core_soft STATIC ${ARP_CORE_SOURCES})
+target_include_directories(arp_core_soft PUBLIC ${ARP_CORE_DIR}/include)
+target_compile_features(arp_core_soft PUBLIC cxx_std_20)
+target_compile_definitions(arp_core_soft PUBLIC ARP_FORCE_INT128_FALLBACK)
+set_target_properties(arp_core_soft PROPERTIES CXX_EXTENSIONS OFF)
+target_compile_options(arp_core_soft PRIVATE ${ARP_WARN})
+add_executable(arp_bench bench.cpp alloc_hook.cpp)
+target_link_libraries(arp_bench PRIVATE arp_core)
+target_compile_options(arp_bench PRIVATE ${ARP_WARN})
+add_executable(arp_bench_soft bench.cpp alloc_hook.cpp)
+target_link_libraries(arp_bench_soft PRIVATE arp_core_soft)
+target_compile_options(arp_bench_soft PRIVATE ${ARP_WARN})
+
 # The binaries land directly in the build dir, where tools/core_test.sh and tools/core_params_check.py look.
-set_target_properties(arp_tests arp_tests_fallback arp_shipped_smoke PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set_target_properties(arp_tests arp_tests_fallback arp_shipped_smoke arp_bench arp_bench_soft PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_test(NAME arp_tests COMMAND arp_tests)
 add_test(NAME arp_tests_fallback COMMAND arp_tests_fallback)

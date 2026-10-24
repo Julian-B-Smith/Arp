@@ -27,6 +27,7 @@
 #include "test_m1b.h"
 #include "test_m2a.h"
 #include "test_m2b.h"
+#include "test_m3.h"
 
 using namespace arp_test;
 
@@ -1015,6 +1016,7 @@ int main(int argc, char** argv) {
   runM1bTests();
   runM2aTests();
   runM2bTests();
+  runM3Tests();
   testTiming();
   testUpModel();
   std::printf("%s: %d passed, %d failed\n", tally().fail ? "FAIL" : "OK", tally().pass, tally().fail);
