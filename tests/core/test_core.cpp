@@ -28,6 +28,7 @@
 #include "test_m2a.h"
 #include "test_m2b.h"
 #include "test_m3.h"
+#include "test_digest.h"
 
 using namespace arp_test;
 
@@ -1019,6 +1020,7 @@ int main(int argc, char** argv) {
   runM3Tests();
   testTiming();
   testUpModel();
+  runDigestTests();   // LAST: it compares every run() recorded above against the committed pre-optimisation digest
   std::printf("%s: %d passed, %d failed\n", tally().fail ? "FAIL" : "OK", tally().pass, tally().fail);
   return tally().fail ? 1 : 0;
 }

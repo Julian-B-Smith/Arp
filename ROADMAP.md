@@ -230,7 +230,12 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 - **The checklist** is horde's `docs/proposals/note-processor-1.0-bar.md` (D-015); the evidence matrix row by row
   lives in `docs/horde-1.0-bar.md` (written as each row is evidenced). CPU follows horde's own convention: Release
   on this machine, × 4 derate as the min-spec heuristic, reported and never gated (horde's two-osc measurement).
-- **M3a (Arp side, now):** a Release CPU and memory benchmark (reported); checks for the rows not yet covered —
+- **M3a merged (PR #22):** the bar checks, the copy-in list, the bench, sanitizers in CI (ASan, TSan, UBSan all green).
+- **M3b (D-030):** the hot paths optimised; the true worst case (112 chord notes, ratchet 4, 1/64 @999) went from
+  45-52 % to 1.2-1.5 % after x4, output byte-identical to the M3a core (digests regenerated independently by the
+  lead from 0ef0903 and matched). M3a's bench figure was wrong (its user patterns were never installed): corrected
+  in D-030 and the M3a trace.
+- **M3a (as planned):** a Release CPU and memory benchmark (reported); checks for the rows not yet covered —
   several meters and tempos, no input no output, a preset load as a terminal path, the pattern-bank selection as a
   morph target; the copy-in file list with a build-from-the-list check.
 - **With horde (filings):** our answer to their chord-stream question (the played note is in `chord`, §14); Q-H6

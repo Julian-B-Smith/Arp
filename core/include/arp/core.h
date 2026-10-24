@@ -203,15 +203,20 @@ class Core {
   };
   // `slot` orders a chord-stage key among keys of one source press (SPEC 14 `Pp`); it is 0 for every key of the plain held set.
   struct HeldKey { std::int32_t key = 0, vel = 0, ch = 0; std::int64_t abs = 0; std::int32_t slot = 0; };
+  // One slot of the sounding table. Slots do not move: a note keeps its slot from its on to its off, and the ways to find it (the per-key
+  // chain, the off schedule) hold the slot's index. See "sounding notes" below for the indexes and the invariants they keep.
+  enum : std::uint8_t { kOffNone, kOffSched, kOffQuick };   // where an entry's due off is looked up: nowhere / sched_ / quick_
   struct Sounding {
-    NoteRef ref{};
     I128 offPos{};
+    NoteRef ref{};
+    std::int64_t onAbs = 0;
+    std::int64_t quickT = 0;   // kOffQuick only: when the off is due, as an offset in the block it was filed in
+    std::int16_t keyNext = -1; // the next slot sounding on the same key (the per-key chain); in a FREE slot, the next free slot
+    std::uint8_t off = kOffNone;
+    bool used = false;
     bool hasOff = false;       // a scheduled off exists (else: dying, or never)
     bool dying = false;        // released inside its own on sample: its off waits for on + 1 (SPEC 1.1)
     bool chord = false;        // a chord-stage note (SPEC 14): no scheduled off, it ends with its last source
-    std::int64_t onAbs = 0;
-    std::int64_t ofsCache = 0; // sample offset of offPos, valid for block cacheBlk
-    std::uint64_t cacheBlk = 0;
   };
   struct Pending {
     I128 pos{}, offPos{};
@@ -228,10 +233,19 @@ class Core {
   static constexpr int kChordSlots = 7;           // the +0 slot and six shifts
   static constexpr int kMaxArpKeys = 128;         // the arp's held set H' is the chord set when the stage is on: distinct keys 0..127
   static constexpr int kIgnoredRing = 256;
+  static constexpr int kSoundingSlots = kMaxSounding + kSoundingSlack + kMaxChordSounding;   // the sounding table: 368 slots
 
   // time
   std::int64_t ofs(I128 x) const;
-  std::int64_t offTime(Sounding& s);
+  // The timeline asks ofs() about the same few positions at every pick (the front of the pending ring, the soonest off, the next grid step), and a
+  // run of ons or offs shares one position. Inside a block ofs() is a pure function of the position (start_ and inc_ do not move; freeStart shifts
+  // positions and start_ together), so asking again about the SAME position is answered from the last answer. dropMemos(): start_ / inc_ changed.
+  struct OfsMemo { I128 pos{}; std::int64_t s = 0; bool ok = false; };
+  std::int64_t ofsMemo(OfsMemo& m, const I128& pos) const {
+    if (!m.ok || !(m.pos == pos)) { m.pos = pos; m.s = ofs(pos); m.ok = true; }
+    return m.s;
+  }
+  void dropMemos() const { memoPend_.ok = memoOff_.ok = memoStep_.ok = false; }
   I128 posAt(std::int64_t sample) const { return start_ + I128::mul(sample, inc_); }
   std::int64_t tickOf(I128 pos) const { return pos.floorDiv(D_); }
   // SPEC 2.6: sync mode: the tick of step k is k * L. Time mode: a PIECEWISE grid, tick(k) = gO + (k - gK1) * L (a step-time
@@ -280,6 +294,29 @@ class Core {
   void queueTrigger(I128 pos, std::int32_t lane, std::int64_t ord);
   // emission and the ONE release path
   bool room(int extra) const { return outN_ + soundN_ + extra <= capEv_; }
+  // the sounding table, its indexes and the pending queue (see "sounding notes and the pending queue" below)
+  static int keyChain(std::int32_t key) { return static_cast<unsigned>(key) < 128u ? key : 0; }
+  void resetSounding();
+  int allocSlot(const NoteRef& ref, bool chord, std::int64_t onAbs);
+  void freeSlot(int i);
+  int findSounding(const NoteRef& ref) const;
+  int collectSounding(int* slots, bool includeChord) const;
+  int oldestSounding() const;
+  void unlinkOff(int i);
+  void schedInsert(int i);
+  void schedErase(int i);
+  void quickAdd(int i, std::int64_t t);
+  void quickErase(int i);
+  void startBlockOffs();
+  std::int64_t nextOffTime() const;
+  bool offDueBy(const I128& pos, const I128& bound, std::int64_t t) const;
+  int takeDueOffs(std::int64_t t, int* out);
+  bool releaseSlot(int i, std::int32_t s);
+  int& schedAt(int logical) { return sched_[static_cast<std::size_t>((schedHead_ + logical) & (kSchedRing - 1))]; }
+  int schedAt(int logical) const { return sched_[static_cast<std::size_t>((schedHead_ + logical) & (kSchedRing - 1))]; }
+  Pending& pendAt(int logical) { return pending_[static_cast<std::size_t>((pendHead_ + logical) & (kMaxPending - 1))]; }
+  const Pending& pendAt(int logical) const { return pending_[static_cast<std::size_t>((pendHead_ + logical) & (kMaxPending - 1))]; }
+  Pending popPending();
   bool pushEvent(const Event& e);
   void pushNonNote(const Event& e);
   void emitOn(const Pending& p, std::int32_t s);
@@ -312,7 +349,6 @@ class Core {
   bool haveActive_ = false;
   std::int32_t n_ = 0;
   std::int64_t absBase_ = 0, absSample_ = 0;
-  std::uint64_t blk_ = 0;
   std::int64_t inc_ = 0, L_ = 0;
   std::int64_t lastTempoMilli_ = 120000;
 
@@ -321,6 +357,8 @@ class Core {
   I128 start_{}, next_{};
   bool freeRunning_ = false;
   std::uint32_t epoch_ = 0;
+
+  mutable OfsMemo memoPend_, memoOff_, memoStep_;   // see ofsMemo()
 
   // time mode (SPEC 2.6)
   bool timeMode_ = false;
@@ -402,6 +440,7 @@ class Core {
   int chordSetN_ = 0;
   ChordSigData chordSig_{};
   bool chordSigValid_ = false;
+  std::uint64_t chordSyncVer_ = 0;   // refsVer_ as of the last COMPLETE pass of chordSync (only trusted while chordSigValid_ and the signature are unchanged)
 #ifdef ARP_PLANTS
   std::array<int, 128> chordDrift_{};          // chordRecomputeAtRelease
 #endif
@@ -409,21 +448,47 @@ class Core {
   // held set
   std::array<Ref, kMaxRefs> refs_{};
   int refN_ = 0;
+  std::uint64_t refsVer_ = 0;   // bumped at every write to refs_ (add, erase, state change, clear): the chord stage skips a pass when it has not moved
   std::array<NoteRef, kIgnoredRing> ignored_{};
   int ignoredN_ = 0;
   bool pedalDown_ = false;
 
   // sounding notes and the pending queue
-  // One table of entries (arp + chord, `Sounding::chord` tells them apart). The arp's own 128-entry limit (T11) counts only its
+  // One table of slots (arp + chord, `Sounding::chord` tells them apart). The arp's own 128-entry limit (T11) counts only its
   // entries; the chord stage has 224 of its own (SPEC 14), so arp eviction never reaches a chord note.
-  std::array<Sounding, kMaxSounding + kSoundingSlack + kMaxChordSounding> sounding_{};
-  int soundN_ = 0, chordSoundN_ = 0;
+  // M3b (D-030): the table used to be a dense list searched linearly by every event (and shifted on every release); now each note owns a
+  // slot for its whole life and is found through indexes, so an event costs O(1) / O(log n) however many notes sound. The invariants:
+  //   * a slot is `used` iff it holds a sounding note; free slots form a chain through keyNext from freeHead_ (soundN_ counts the used ones);
+  //   * keyHead_[k] heads the chain (keyNext) of the used slots whose ref.key is k (any other key shares chain 0: keyChain()), newest first:
+  //     a retrigger (T2) and release(ref) walk one short chain instead of the table;
+  //   * liveN_ counts used slots that are not `dying`, liveChordN_ those of them in the chord stage: T11 asks "how many live arp notes" in O(1);
+  //   * the OFF SCHEDULE finds the next off without scanning. An entry with a due off (hasOff, or dying) is in exactly one of two places:
+  //       sched_  - a ring of slot indices sorted by offPos (ties in any order), for an off that lies at or after the sample after its own on.
+  //                 Sample offsets are monotone in offPos, so the head is the soonest, and `max(0, ofs(offPos))` is its due offset.
+  //       quick_  - the few entries whose off is NOT later than their own on sample (a note shorter than a sample) or that are dying: the
+  //                 SPEC 1.1 "never at the sample of its own on" clamp makes their due offset on + 1, a number that is fixed inside a block
+  //                 (quickT) but not an order of offPos. At the next block start they move to sched_ (startBlockOffs).
+  //     off == kOffSched / kOffQuick says which; an entry with neither (a chord note, until it dies) has no due off.
+  //     Offs due at the same offset go out together, ascending output id (takeDueOffs), which is what scanning the dense table in order did.
+  std::array<Sounding, kSoundingSlots> sounding_{};
+  static constexpr int kSchedRing = 512;   // a power of two >= the slots
+  static_assert(kSchedRing >= kSoundingSlots && (kSchedRing & (kSchedRing - 1)) == 0, "sched_ is a ring indexed with a mask");
+  std::array<std::int16_t, 128> keyHead_{};
+  std::int16_t freeHead_ = -1;
+  int soundN_ = 0, chordSoundN_ = 0, liveN_ = 0, liveChordN_ = 0;
+  std::array<int, kSchedRing> sched_{};
+  int schedHead_ = 0, schedN_ = 0;
+  std::array<int, kSoundingSlots> quick_{};
+  int quickN_ = 0;
+  // The pending queue is a ring sorted by `pos`, equal positions in the order they were queued: the soonest is always at the front
+  // (popPending), and a new entry is filed from the back, where nearly every one belongs, so queueing and popping are O(1) in practice.
+  static_assert((kMaxPending & (kMaxPending - 1)) == 0, "pending_ is a ring indexed with a mask");
   std::array<Pending, kMaxPending> pending_{};
-  int pendN_ = 0;
+  int pendHead_ = 0, pendN_ = 0;
   std::int64_t idCounter_ = 0;
   // T10 across prepare(): notes still owed a NoteOff when prepare() is called. Their refs live here (sized at construction,
   // untouched by resetState) and are released at offset 0 of the next process() or reset().
-  std::array<NoteRef, kMaxSounding + kSoundingSlack + kMaxChordSounding> owed_{};
+  std::array<NoteRef, kSoundingSlots> owed_{};
   int owedN_ = 0;
 
 #ifdef ARP_PLANTS

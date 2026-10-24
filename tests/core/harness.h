@@ -16,6 +16,7 @@
 #include "alloc_hook.h"
 #include "arp/core.h"
 #include "check.h"
+#include "stream_digest.h"
 
 namespace arp_test {
 
@@ -255,6 +256,8 @@ struct Run {
   std::unique_ptr<Core> core;
   std::int64_t allocs = 0;
   int blocks = 0;
+  // The stream digest (stream_digest.h): the RAW events (every field), the step records, and the final counters, hashed as they came out of the core.
+  std::uint64_t digestStream = 0, digestCounters = 0, nEvents = 0;   // nEvents counts the events hashed (evs.size() when not lean)
 };
 
 inline Rec norm(const Event& e, std::int64_t base, int epoch) {
@@ -273,8 +276,10 @@ inline Rec norm(const Event& e, std::int64_t base, int epoch) {
   return r;
 }
 
-inline Run run(const Session& s, int block) {
+// lean: hash only (no Rec / step vectors): the wide digest replays need nothing else, and they are most of the suite's run time.
+inline Run runOnce(const Session& s, int block, bool lean = false) {
   Run out;
+  Fnv fs;   // the stream hash: raw events + step records, in emission order
   out.core = makeCore(s.caps, s.plants);
   Core& c = *out.core;
   if (s.userPattern) c.setUserPattern(*s.userPattern);
@@ -317,7 +322,7 @@ inline Run run(const Session& s, int block) {
     if (std::find(s.resets.begin(), s.resets.end(), pos) != s.resets.end()) {
       EventSpan offs;
       if (s.countAllocs) { AllocScope sc; offs = c.reset(); out.allocs += sc.count(); } else offs = c.reset();
-      for (const Event& e : offs) out.evs.push_back(norm(e, pos, epoch));
+      for (const Event& e : offs) { if (!lean) out.evs.push_back(norm(e, pos, epoch)); hashEvent(fs, pos, epoch, e); ++out.nEvents; }
       ++epoch;
     }
     if (std::find(s.prepares.begin(), s.prepares.end(), pos) != s.prepares.end() && !c.prepare(s.sr, s.maxBlock)) { std::fprintf(stderr, "harness: re-prepare refused\n"); std::abort(); }
@@ -340,16 +345,93 @@ inline Run run(const Session& s, int block) {
     EventSpan res;
     if (s.countAllocs) { AllocScope sc; res = c.process(b); out.allocs += sc.count(); } else res = c.process(b);
     if (static_cast<int>(res.size()) > c.eventCapacity()) check(false, "block exceeded the event cap");
-    for (const Event& e : res) out.evs.push_back(norm(e, pos, epoch));
-    for (const StepRecord& r : c.lastSteps()) out.steps.push_back({pos + r.offset, r});
+    for (const Event& e : res) { if (!lean) out.evs.push_back(norm(e, pos, epoch)); hashEvent(fs, pos, epoch, e); ++out.nEvents; }
+    for (const StepRecord& r : c.lastSteps()) { if (!lean) out.steps.push_back({pos + r.offset, r}); hashStep(fs, pos, r); }
     if (s.probe) s.probe(pos, n, c);
     ++out.blocks;
     pos += n;
   }
   if (s.finalReset) {
     EventSpan offs = c.reset();
-    for (const Event& e : offs) out.evs.push_back(norm(e, s.total, epoch));
+    for (const Event& e : offs) { if (!lean) out.evs.push_back(norm(e, s.total, epoch)); hashEvent(fs, s.total, epoch, e); ++out.nEvents; }
   }
+  Fnv fc;   // the counters are kept apart from the stream: some (T9, T17 ...) count blocks, so they differ with the block size where the stream must not
+  hashCounters(fc, c.counters());
+  out.digestStream = fs.h;
+  out.digestCounters = fc.h;
+  return out;
+}
+
+// ---- the stream digest log (stream_digest.h; checked by tests/core/test_digest.cpp) ----
+// Every run() of the whole suite lands here as one entry, and every DISTINCT session is replayed once more over the wide matrix below, so the
+// committed digest pins the core's output over everything the suite plays, at block sizes and sample rates the checks themselves do not all visit.
+struct DigestEntry {
+  char kind = 'P';             // P: the run the test asked for. W: a replay of it over the wide matrix.
+  int sr = 0, block = 0, total = 0;
+  std::uint64_t events = 0, stream = 0, counters = 0;
+};
+struct DigestLog {
+  bool enabled = true;
+  std::vector<DigestEntry> entries;
+  std::vector<std::uint64_t> seen;   // the keys of the sessions already replayed
+};
+inline DigestLog& digestLog() {
+  static DigestLog d;
+  return d;
+}
+// The wide matrix: block sizes 1/7/64/512/4096 at the session's own rate, and the rates 44.1/48/96/192 kHz at block 512.
+inline const std::vector<int>& digestBlocks() { static const std::vector<int> v = {1, 7, 64, 512, 4096}; return v; }
+inline constexpr int kDigestBlock1Max = 12000;
+inline const std::vector<int>& digestRates() { static const std::vector<int> v = {44100, 48000, 96000, 192000}; return v; }
+
+inline void digestNote(DigestLog& d, char kind, const Session& s, int block, const Run& r) {
+  DigestEntry e;
+  e.kind = kind;
+  e.sr = s.sr;
+  e.block = block;
+  e.total = s.total;
+  e.events = r.nEvents;
+  e.stream = r.digestStream;
+  e.counters = r.digestCounters;
+  d.entries.push_back(e);
+}
+
+// `before` is a copy of the session taken BEFORE the run: a stateful closure in it (a jitter that carries a seed) must replay from its start.
+inline void digestRecord(const Session& before, int block, const Run& r) {
+  DigestLog& d = digestLog();
+  if (!d.enabled) return;
+  // plant floatPosition accumulates the block position in float32 (fnext_), and a fused multiply-add (arm64 clang) or not (x86-64) can round that
+  // differently, so its sessions would pin a platform, not the core: they stay in the suite's checks but out of the digest.
+  for (const std::string& p : before.plants) if (p == "floatPosition") return;
+  digestNote(d, 'P', before, block, r);
+  Fnv key;   // one replay per distinct session: the same rate, length, stream, counters and plants
+  key.i64(before.sr);
+  key.i64(before.total);
+  key.u64(r.digestStream);
+  key.u64(r.digestCounters);
+  for (const std::string& p : before.plants) for (char ch : p) key.byte(static_cast<std::uint8_t>(ch));
+  if (std::find(d.seen.begin(), d.seen.end(), key.h) != d.seen.end()) return;
+  d.seen.push_back(key.h);
+  auto replay = [&](Session s, int blk) {   // runOnce, not run(): a replay does not replay
+    s.probe = nullptr;           // a probe belongs to its test (it writes the test's locals): the replay is a different run
+    s.midBlockHook = nullptr;
+    s.countAllocs = false;
+    digestNote(d, 'W', s, blk, runOnce(s, blk, true));
+  };
+  // Block size 1 costs one process() call per sample (it was 10 of the 14 s the wide matrix took), so it is replayed only for sessions up to
+  // kDigestBlock1Max samples; the longer ones still get 7, 64, 512 and 4096.
+  for (int blk : digestBlocks())
+    if (blk != block && blk <= before.maxBlock && (blk != 1 || before.total <= kDigestBlock1Max)) replay(before, blk);
+  if (!before.host)   // a custom host was built for the session's own rate and cannot be re-timed here
+    for (int sr : digestRates())
+      if (sr != before.sr && 512 <= before.maxBlock) { Session s = before; s.sr = sr; replay(s, 512); }
+}
+
+inline Run run(const Session& s, int block) {
+  DigestLog& d = digestLog();
+  const Session before = d.enabled ? s : Session{};
+  Run out = runOnce(s, block);
+  if (d.enabled) digestRecord(before, block, out);
   return out;
 }
 

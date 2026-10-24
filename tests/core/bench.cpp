@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "alloc_hook.h"
+#include "stream_digest.h"
 #include "arp/arith.h"
 #include "arp/bank_data.h"
 #include "arp/int128.h"
@@ -220,6 +221,7 @@ Result measure(const Scenario& sc, int sr, int block, const Params& p, double ov
   Result r;
   auto core = std::make_unique<Core>();
   if (!core->prepare(sr, block)) { std::fprintf(stderr, "prepare(%d, %d) refused\n", sr, block); std::exit(2); }
+  if (sc.user) core->setUserPattern(*sc.user);   // M3b: M3a built the user patterns of three scenarios (ratchet 4, 8 trigger lanes, the worst case) and never installed them
   Feeder f(sc, sr);
   const int warmBlocks = std::max(1, static_cast<int>(p.warmupSeconds * sr / block));
   const int repBlocks = std::max(1, static_cast<int>(p.secondsPerRep * sr / block));
@@ -282,6 +284,49 @@ Result measure(const Scenario& sc, int sr, int block, const Params& p, double ov
   return r;
 }
 
+// ---------------------------------------------------------------- the stream digest (D-030)
+// `arp_bench --digest` prints, for every scenario x rate x block, the hash of the SHIPPED core's whole output over kDigestSeconds of audio (every
+// event field, step record and the final counters: tests/core/stream_digest.h). tools/core_test.sh diffs it against tests/core/stream_digest_bench.txt,
+// generated from the pre-optimisation core, so the CPU work of M3b provably moved no byte. The scenarios are the benchmark's own, the heaviest
+// loads there are: the worst case (112 notes, ratchet 4, 1/64 at 999 bpm) is exactly where an index or a merge could go wrong.
+// `perturb` is the must-fail control: it changes one field of one event in what is HASHED (never in the core), and the diff must see it.
+constexpr double kDigestSeconds = 2.0;
+
+void digestAll(bool perturb) {
+  const int rates[] = {48000, 44100, 96000, 192000};
+  const int blocks[] = {32, 64, 128, 512, 4096};
+  std::printf("# arp bench stream digest: scenario <TAB> rate block events stream-hash counters-hash (%.0f s of audio each; tests/core/stream_digest.h)\n", kDigestSeconds);
+  for (const Scenario& sc : scenarios())
+    for (int sr : rates)
+      for (int block : blocks) {
+        auto core = std::make_unique<Core>();
+        if (!core->prepare(sr, block)) { std::fprintf(stderr, "prepare(%d, %d) refused\n", sr, block); std::exit(2); }
+        if (sc.user) core->setUserPattern(*sc.user);
+        Feeder f(sc, sr);
+        arp_test::Fnv fs;
+        std::int64_t nEv = 0, base = 0;
+        const int total = std::max(1, static_cast<int>(kDigestSeconds * sr / block));
+        for (int done = 0; done < total;) {
+          const int cnt = std::min(total - done, 2048);   // bound the Feeder's storage; the position carries over between fills
+          f.fill(cnt, block);
+          for (const Block& b : f.blocks) {
+            const EventSpan res = core->process(b);
+            for (Event e : res) {
+              if (perturb && nEv == 3) e.vel += 1;
+              arp_test::hashEvent(fs, base, 0, e);
+              ++nEv;
+            }
+            for (const StepRecord& r : core->lastSteps()) arp_test::hashStep(fs, base, r);
+            base += block;
+          }
+          done += cnt;
+        }
+        arp_test::Fnv fc;
+        arp_test::hashCounters(fc, core->counters());
+        std::printf("%s\t%d %d %lld %s %s\n", sc.name.c_str(), sr, block, static_cast<long long>(nEv), arp_test::hex16(fs.h).c_str(), arp_test::hex16(fc.h).c_str());
+      }
+}
+
 // ---------------------------------------------------------------- the memory figure
 #define MEM_ROW(member, label) do { \
     const std::size_t total = sizeof(Core::member); \
@@ -303,7 +348,7 @@ void memoryFigure(bool& ok) {
   MEM_ROW(sounding_, "sounding table (128 + 16 slack + 224 chord)");
   MEM_ROW(pending_, "pending queue");
   MEM_ROW(owed_, "owed-off refs (T10, survive prepare)");
-  std::printf("  %-34s %33zu B  (counters, scalars, the vectors' headers, latest user pattern)\n", "everything else", sizeof(Core) - sum);
+  std::printf("  %-34s %33zu B  (counters, scalars, the sounding table's indexes, the vectors' headers, latest user pattern)\n", "everything else", sizeof(Core) - sum);
   std::printf("capacities: held keys %d, refs per key %d, sounding %d (+%d slack, +%d chord), pending %d, off reserve %d of max(%d, 4 x maxBlock) events per block\n",
               kMaxHeldKeys, kMaxRefsPerKey, kMaxSounding, Core::kSoundingSlack, Core::kMaxChordSounding, kMaxPending, kOffReserve, kMinEventsPerBlock);
   std::printf("sizeof(Event) = %zu B, sizeof(StepRecord) = %zu B, sizeof(Block) = %zu B (the adapter owns the Blocks)\n", sizeof(Event), sizeof(StepRecord), sizeof(Block));
@@ -361,12 +406,16 @@ int main(int argc, char** argv) {
 #endif
   Params params;
   std::string only;
+  bool digest = false, perturb = false;
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], "--quick") == 0) { params.reps = 5; params.secondsPerRep = 0.15; params.warmupSeconds = 0.3; }
     else if (std::strcmp(argv[i], "--reps") == 0 && i + 1 < argc) params.reps = std::max(3, std::atoi(argv[++i]));
     else if (std::strcmp(argv[i], "--only") == 0 && i + 1 < argc) only = argv[++i];   // a substring of a scenario name: profile one scenario
-    else { std::fprintf(stderr, "usage: arp_bench [--quick] [--reps N] [--only SUBSTRING]\n"); return 2; }
+    else if (std::strcmp(argv[i], "--digest") == 0) { digest = true; }
+    else if (std::strcmp(argv[i], "--digest-perturb") == 0) { digest = true; perturb = true; }
+    else { std::fprintf(stderr, "usage: arp_bench [--quick] [--reps N] [--only SUBSTRING] [--digest | --digest-perturb]\n"); return 2; }
   }
+  if (digest) { digestAll(perturb); return 0; }   // the stream digest: no timing, so it is meaningful in any build type and on a loaded machine
   std::printf("arp core benchmark - int128 path: %s, compiler: %s\n", kInt128IsNative ? "native __int128" : "two-word fallback (ARP_FORCE_INT128_FALLBACK)", __VERSION__);
   std::printf("method: %d repetitions of %.2f s of audio per configuration after %.1f s warm-up; mean = median of batch timings; p50/p99/max per call, timer overhead subtracted\n", params.reps, params.secondsPerRep, params.warmupSeconds);
   std::printf("%%core = ns per sample x sample rate / 1e9 (one core, real time); 'x4' = horde's min-spec derate heuristic (NOT min-spec verified) against the %.0f %% budget\n", kBudgetPct);

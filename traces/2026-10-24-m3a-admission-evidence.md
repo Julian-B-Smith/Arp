@@ -160,3 +160,11 @@ ASan / TSan not run (they cannot start on this machine, M1b trace; the lead's CI
 - **`bench.cpp` uses `#define private public`** (measurement only, above) and is untested on g++ (this machine has Apple clang only); the CI Linux build compiles it with `-Werror`. If g++ objects, the fix is
   local to `tests/core/bench.cpp`.
 - **Pinned commit in `docs/horde-copy-in.md`** is described, not stated: it cannot name its own commit. The lead records it (or amends the line) when committing; the sha256 column is what is checked.
+
+
+## Correction (2026-10-24, lead, appended; found in M3b)
+
+`tests/core/bench.cpp` built a `UserPattern` for three scenarios (ratchet 4, 8 trigger lanes, the worst case) but
+`measure()` never called `setUserPattern`, so those rows above ran the default pattern. The "worst case" figures here
+(about 2.7-3.2 % raw, 11-12 % after x4) are therefore for ratchet 1. With the pattern installed the same core cost
+11.3-13.1 % raw (45-52 % after x4). Fixed in M3b, whose trace carries the corrected before/after table.
