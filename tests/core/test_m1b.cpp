@@ -947,7 +947,12 @@ Session fuzzSession(std::uint32_t seed, bool keyRefs) {
   s.base.steps = rnd(3);
   s.base.stepSize = rnd(25) - 12;
   s.base.stepTimeUs = 10000 + rnd(300000);
-  auto h = std::make_shared<SimHost>(8000, 60 + rnd(200), (rnd(8)) * 0.25 - 1.0, rnd(2) == 1);
+  // Each draw is its own statement, in the order the session was first drawn: a draw inside a call's argument list is evaluated left to right by clang and right
+  // to left by g++, which made this "same everywhere" session two different sessions (and the stream digest differ between macOS and the Linux CI).
+  const int hostBpm = 60 + rnd(200);
+  const double hostBeats = (rnd(8)) * 0.25 - 1.0;
+  const bool hostPlaying = rnd(2) == 1;
+  auto h = std::make_shared<SimHost>(8000, hostBpm, hostBeats, hostPlaying);
   for (int i = rnd(4); i > 0; --i) { const int at = 1 + rnd(s.total - 1); const int kind = rnd(3); if (kind == 0) h->set(at, !h->segAt(at).playing); else if (kind == 1) h->set(at, std::nullopt, rnd(60) / 4.0 - 2); else h->set(at, std::nullopt, std::nullopt, 20.0 + rnd(900)); }
   s.host = h;
   for (int i = rnd(7); i > 0; --i) {
@@ -979,12 +984,15 @@ Session fuzzSession(std::uint32_t seed, bool keyRefs) {
     return userPat(v, rnd(25) - 12);
   };
   s.userPattern = randomUser();
-  for (int i = rnd(3); i > 0; --i) s.userEdits.emplace_back(1 + rnd(s.total - 1), randomUser());
+  for (int i = rnd(3); i > 0; --i) {
+    const int at = 1 + rnd(s.total - 1);
+    s.userEdits.emplace_back(at, randomUser());
+  }
   static const std::vector<std::string> labels = [] { std::vector<std::string> l; for (int i = 0; i < 64; ++i) l.push_back("f" + std::to_string(i)); return l; }();
   int li = 0;
   for (int i = rnd(14); i > 0; --i) {
     const int at = rnd(s.total), r = rnd(10);
-    if (r < 6) { const char* L = labels[static_cast<std::size_t>(li++ % 64)].c_str(); s.ins.push_back(K(at, L, 48 + rnd(14), 1 + rnd(127), rnd(2))); if (rnd(3)) { const int ch = s.ins.back().ev.ref.channel; s.ins.push_back(O(std::min(s.total - 1, at + rnd(6000)), L, ch)); } }
+    if (r < 6) { const char* L = labels[static_cast<std::size_t>(li++ % 64)].c_str(); const int key = 48 + rnd(14), vel = 1 + rnd(127), chan = rnd(2); s.ins.push_back(K(at, L, key, vel, chan)); if (rnd(3)) { const int ch = s.ins.back().ev.ref.channel; s.ins.push_back(O(std::min(s.total - 1, at + rnd(6000)), L, ch)); } }
     else if (r < 8) s.ins.push_back(Ped(at, rnd(2) == 1));
     else if (r < 9) s.ins.push_back(Pan(at));
     else s.ins.push_back(Other(at, rnd(1000)));

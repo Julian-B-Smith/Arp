@@ -863,3 +863,30 @@ output proven byte-identical (the invariant suite plus a before/after
 event-stream comparison). Rejected: reporting it to horde as-is (it leaves
 a known overrun in a module about to ship); capping events per block (a
 behaviour change needing an erratum).
+
+**Correction to D-030 (2026-10-24, lead, from the M3b trace).** The M3a
+benchmark built user patterns for three scenarios but never installed them,
+so its "worst case, ratchet 4" ran at ratchet 1 (about 60k events a second).
+With the pattern installed (about 239k events a second) the pre-optimisation
+core cost **45-52 % after x4**, not "about 11-12 %". The choice stands and is
+met: after M3b the true worst case is **1.2-1.5 % after x4** on both int128
+paths, output byte-identical to the M3a core (`traces/2026-10-24-m3b-cpu-optimisation.md`).
+
+## D-031 — The multi-channel eviction load joins the CPU budget; optimise further (RATIFIED by poll, 2026-10-24)
+
+The independent critic review of M3b (PR #23) found no flaw in the
+byte-identical claim (35,000 differential sessions against the M3a core, no
+difference) but found loads heavier than the benchmark's "worst case": 32 keys
+over 16 MIDI channels (MPE-style) with the chord stage on at 1/64 @999 bpm
+overfills the note table, so every new note evicts the oldest (about 4 %
+after x4); the same on one channel retriggers every step (2-2.25 % after
+x4). Chosen: add both loads to the benchmark and optimise until every
+scenario, these included, is within 2 % after x4, output byte-identical
+again. Rejected: recording the benchmark's scenario as the worst case and
+reporting the eviction load to horde as a known extreme. M3b's "true worst
+case" wording in D-030's correction is superseded: it was the benchmark's
+heaviest scenario, not the true worst case.
+
+CI on PR #23 was also red: the digest records 6 fewer runs on Linux g++ than
+on macOS clang, so it is not yet platform-independent; the rework fixes the
+cause without weakening the check.

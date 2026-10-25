@@ -13,6 +13,7 @@
 // mathematical floor or ceiling for either sign of the dividend (never C's truncating `/`).
 #pragma once
 
+#include <cassert>
 #include <cstdint>
 #include <cmath>
 
@@ -74,8 +75,8 @@ class I128Soft {
 
   // floor(this / d) and ceil(this / d) for d > 0. The quotient saturates at the int64 range
   // (the core's divisors keep it far inside; saturating beats undefined behaviour).
-  std::int64_t floorDiv(std::int64_t d) const { return divide(d, false); }
-  std::int64_t ceilDiv(std::int64_t d) const { return divide(d, true); }
+  std::int64_t floorDiv(std::int64_t d) const { assert(d > 0); return divide(d, false); }
+  std::int64_t ceilDiv(std::int64_t d) const { assert(d > 0); return divide(d, true); }
 
   // Via the magnitude: hi*2^64 + lo on a two's-complement NEGATIVE value subtracts two huge doubles and loses a small result.
   double toDouble() const {
@@ -145,12 +146,27 @@ class I128Native {
   constexpr std::int64_t hi() const { return static_cast<std::int64_t>(v_ >> 64); }
   constexpr std::uint64_t lo() const { return static_cast<std::uint64_t>(v_); }
 
+  // A 128-bit division is a library call (tens of ns); nearly every dividend the core has fits in 64 bits (a position difference, an absolute tick
+  // times D for hours of music), where the hardware does it in a few cycles. Same result, same rounding: the quotient of an int64 by a positive
+  // int64 cannot overflow, and the saturation below only ever applied to the wide case.
   std::int64_t floorDiv(std::int64_t d) const {
+    assert(d > 0);   // the int64 fast path below is floor / ceil only for a positive divisor (and d == -1 would overflow INT64_MIN / d)
+    if (fitsInt64()) {
+      const auto n = static_cast<std::int64_t>(v_);
+      const std::int64_t q = n / d;
+      return (n % d != 0 && n < 0) ? q - 1 : q;
+    }
     Raw q = v_ / d;
     if (v_ % d != 0 && v_ < 0) --q;
     return saturate(q);
   }
   std::int64_t ceilDiv(std::int64_t d) const {
+    assert(d > 0);
+    if (fitsInt64()) {
+      const auto n = static_cast<std::int64_t>(v_);
+      const std::int64_t q = n / d;
+      return (n % d != 0 && n > 0) ? q + 1 : q;
+    }
     Raw q = v_ / d;
     if (v_ % d != 0 && v_ > 0) ++q;
     return saturate(q);
@@ -159,6 +175,7 @@ class I128Native {
 
  private:
   constexpr explicit I128Native(Raw v) : v_(v) {}
+  constexpr bool fitsInt64() const { return v_ >= static_cast<Raw>(INT64_MIN) && v_ <= static_cast<Raw>(INT64_MAX); }
   static constexpr std::int64_t saturate(Raw q) {
     return q > INT64_MAX ? INT64_MAX : q < INT64_MIN ? INT64_MIN : static_cast<std::int64_t>(q);
   }

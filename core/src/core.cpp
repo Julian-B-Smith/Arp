@@ -9,6 +9,10 @@
 // 7 (terminals), 8 (triggers), 9 (the timing of a changed setting: horde resolves the morph, Arp applies the integer snapshot at the
 // next evaluated step or, for the settings SPEC 9 / 14 name, at offset 0), 10, 14 (the chord stage).
 //
+// M3b (D-030) changed no behaviour, only the cost: the sounding table and the pending queue are indexed (core.h, "sounding notes and the pending
+// queue") so an event no longer scans or shifts them, and a chord-stage pass that has nothing new to do is skipped. The output is byte-identical to
+// M3a's: tests/core/stream_digest*.txt pin it, hashed from the M3a core.
+//
 // Everything is fixed-capacity: the only allocations are in prepare().
 // (__FINITE_MATH_ONLY__ is predefined as 0 normally and 1 under -ffinite-math-only, so test its VALUE.)
 #if defined(__FAST_MATH__) || (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__)
@@ -18,10 +22,12 @@
 #include "arp/core.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstring>
 #include <iterator>
 #include <numeric>
+#include <tuple>
 
 #include "arp/bank_data.h"
 #include "arp/draw.h"
@@ -163,6 +169,7 @@ Core::Core(const Caps& caps) : caps_(caps) {
   caps_.sounding = static_cast<int>(clampi(caps_.sounding, 1, kMaxSounding));
   caps_.pending = static_cast<int>(clampi(caps_.pending, 1, kMaxPending));
   if (caps_.events < 0) caps_.events = 0;
+  resetSounding();
 }
 
 bool Core::prepare(int sampleRate, int maxBlock) {
@@ -170,8 +177,11 @@ bool Core::prepare(int sampleRate, int maxBlock) {
   if (sampleRate < kMinSampleRate || sampleRate > kMaxSampleRate || maxBlock < 1 || maxBlock > kMaxBlock) return false;
   // T10: a note still owed a NoteOff is not forgotten: its ref moves to storage that survives prepare()
   // and is released at offset 0 of the next process() / reset().
-  if (!ARP_PLANT(prepareForgetsNotes))
-    for (int i = 0; i < soundN_ && owedN_ < static_cast<int>(owed_.size()); ++i) owed_[static_cast<std::size_t>(owedN_++)] = sounding_[static_cast<std::size_t>(i)].ref;
+  if (!ARP_PLANT(prepareForgetsNotes)) {
+    int slots[kSoundingSlots];
+    const int n = collectSounding(slots, true);   // in output-id order, as the dense table listed them
+    for (int i = 0; i < n && owedN_ < static_cast<int>(owed_.size()); ++i) owed_[static_cast<std::size_t>(owedN_++)] = sounding_[static_cast<std::size_t>(slots[i])].ref;
+  }
   sr_ = sampleRate;
   maxBlock_ = maxBlock;
   D_ = static_cast<std::int64_t>(60) * sr_ * 1000;
@@ -198,14 +208,15 @@ bool Core::prepare(int sampleRate, int maxBlock) {
 }
 
 void Core::resetState() {
-  refN_ = 0;
+  refN_ = 0;   // (chordSigValid_ is cleared below, so the chord stage cannot skip its next pass: no refsVer_ bump needed)
   ignoredN_ = 0;
   pedalDown_ = false;
   moduleOn_ = false;
   enabled_ = false;
   idCounter_ = 0;
-  soundN_ = 0;
+  resetSounding();
   pendN_ = 0;
+  pendHead_ = 0;
   absSample_ = 0;
   clock_ = Clock::None;
   start_ = I128{};
@@ -231,7 +242,6 @@ void Core::resetState() {
   exhausted_ = false;
   lastC_ = 0;
   hasLastC_ = false;
-  chordSoundN_ = 0;
   chordRecN_ = 0;
   for (ChordNote& n : chordNote_) n = ChordNote{};
   chordSetN_ = 0;
@@ -349,22 +359,6 @@ std::int64_t Core::ofs(I128 x) const {
   return (x - start_).ceilDiv(inc_);
 }
 
-// When a sounding note's off is due, as a block offset: its scheduled off, but never earlier than
-// the sample after its own on (SPEC 1.1). kNever for a note with nothing scheduled.
-std::int64_t Core::offTime(Sounding& s) {
-  if (!s.hasOff && !s.dying) return kNever;
-  const std::int64_t earliest = s.onAbs + 1 - absBase_;
-  std::int64_t base = 0;
-  if (s.hasOff) {
-    if (s.cacheBlk != blk_) {   // the offset is invariant within a block (a free-clock re-base shifts offPos and start together)
-      s.ofsCache = std::max<std::int64_t>(0, ofs(s.offPos));
-      s.cacheBlk = blk_;
-    }
-    base = s.ofsCache;
-  }
-  return ARP_PLANT(sameSampleOff) ? base : std::max(base, earliest);
-}
-
 std::int64_t Core::tempoMilli(const Transport& tr) {
   if (tr.hasTempo && finiteBits(tr.tempo)) {   // NaN / inf: as if no tempo were reported (the last valid one stays)
     double bpm = tr.tempo;
@@ -458,11 +452,12 @@ void Core::freeStart(std::int32_t s) {
   const I128 shift = posAt(s);
   if (freeRunning_ && (soundN_ > 0 || pendN_ > 0)) ++counters_.rows[14];
   start_ -= shift;
-  for (int i = 0; i < soundN_; ++i)
-    if (sounding_[i].hasOff) sounding_[i].offPos -= shift;
+  dropMemos();
+  for (Sounding& x : sounding_)   // every key moves by the same amount, so the order of sched_ and of the pending ring is kept
+    if (x.used && x.hasOff) x.offPos -= shift;
   for (int i = 0; i < pendN_; ++i) {
-    pending_[i].pos -= shift;
-    pending_[i].offPos -= shift;
+    pendAt(i).pos -= shift;
+    pendAt(i).offPos -= shift;
   }
   epoch_ += 1;   // uint32: wraps mod 2^32
   freeRunning_ = true;
@@ -486,13 +481,13 @@ EventSpan Core::process(const Block& b) {
     ++counters_.badInput;
     return {};
   }
-  ++blk_;
   if (ARP_PLANT(allocInProcess)) plantAlloc();
   flushOwed();
   n_ = b.n;
   S_ = b.settings;
   scale_ = b.scale;   // SPEC 6: horde's scale is read, never owned; steps evaluated in this block quantize to it
   absBase_ = absSample_;
+  startBlockOffs();
   const Transport& tr = b.transport;
   // SPEC 4.6: a published user pattern is taken ONCE per process(): it applies from the first step evaluated in this block
   // and never mid-block (T17). The audio thread never touches the writer's slot.
@@ -622,6 +617,7 @@ EventSpan Core::process(const Block& b) {
   if (!firstInputAtZero || ARP_PLANT(chordSyncBlockStartFirst)) chordSync(0);
 
   // -- the timeline: input events, due offs, pending ons, grid-step evaluations, in time order
+  dropMemos();   // start_ and inc_ are final for this block (freeStart drops them again when it moves start_)
   std::size_t ii = 0;
   std::int64_t cur = 0;
   for (;;) {
@@ -643,22 +639,17 @@ EventSpan Core::process(const Block& b) {
     }
     // The next thing to happen. On a tie the earlier kind wins: input, then offs, then pending ons, then the grid step.
     std::int64_t t = kNever;
-    int kind = -1, idx = -1;
+    int kind = -1;
     if (ii < b.in.size()) { t = b.in[ii].offset; kind = 0; }
-    for (int q = 0; q < soundN_; ++q) {
-      const std::int64_t s = offTime(sounding_[q]);
-      if (s < t) { t = s; kind = 1; idx = q; }
-    }
-    int pi = -1;
-    for (int q = 0; q < pendN_; ++q)
-      if (pi < 0 || pending_[q].pos < pending_[pi].pos) pi = q;
-    if (pi >= 0) {
-      const std::int64_t s = std::max<std::int64_t>(0, ofs(pending_[pi].pos));
-      if (s < t) { t = s; kind = 2; idx = pi; }
+    const std::int64_t offT = nextOffTime();   // kNever when no off is due
+    if (offT < t) { t = offT; kind = 1; }
+    if (pendN_ > 0) {   // the front of the ring is the soonest, the earliest queued among equals
+      const std::int64_t s = std::max<std::int64_t>(0, ofsMemo(memoPend_, pendAt(0).pos));
+      if (s < t) { t = s; kind = 2; }
     }
     if (running) {
       const I128 stepPos = I128::mul(gtick(lastEvaluated_ + 1), D_);
-      const std::int64_t s = std::max<std::int64_t>(0, ofs(stepPos));
+      const std::int64_t s = std::max<std::int64_t>(0, ofsMemo(memoStep_, stepPos));
       // SPEC 5.1 (E10): "at or after the step's on" includes a sub-note landing in the SAME sample as the step: the step is evaluated first so it can
       // drop that sub-note (it has no NoteOn yet), else the sub-note sounds first and the step's own on retriggers its key at that sample. Only TIME
       // mode drops, so only there does the tie-break apply. Swing also queues a sub-note at or after the next step's GRID tick (stepPos), in both
@@ -666,7 +657,7 @@ EventSpan Core::process(const Block& b) {
       // still right there: evaluating the step first reorders nothing the output shows, and the drop compares against the step's SWUNG on (on0), so a
       // sub-note between the grid tick and the swung on survives and is emitted in its own time; only one at or after the swung on (straight swing:
       // the grid tick itself) is dropped, which is what E10 asks. In sync mode nothing drops, so the earlier-kind-wins order stands.
-      const bool dropsTie = s == t && kind == 2 && timeMode_ && !ARP_PLANT(keepSpilledRatchets) && pending_[idx].lane == 0 && !(pending_[idx].pos < stepPos);
+      const bool dropsTie = s == t && kind == 2 && timeMode_ && !ARP_PLANT(keepSpilledRatchets) && pendAt(0).lane == 0 && !(pendAt(0).pos < stepPos);
       if (s < t || dropsTie) { t = s; kind = 3; }
     }
     const bool inWindow = ARP_PLANT(clampOffset) ? t <= n_ : t < n_;   // half-open window; the plant lets an event at n through
@@ -683,13 +674,16 @@ EventSpan Core::process(const Block& b) {
         updateCycle();   // SPEC 4.8 (E11): H' may have just become non-empty
       }
     } else if (kind == 1) {
-      const NoteRef ref = sounding_[idx].ref;
-      if (sounding_[idx].hasOff) ++counters_.rows[1];
-      release(ref, so);
+      // Every off due at this offset goes out now, in ascending output id. Nothing can come between them: at a tie an input goes first (so none is left
+      // at this offset), and a pending on or a grid step only goes after the offs, so what the old one-off-per-iteration loop did is exactly this.
+      int due[kSoundingSlots];
+      const int nd = takeDueOffs(offT, due);
+      for (int q = 0; q < nd; ++q) {
+        if (sounding_[static_cast<std::size_t>(due[q])].hasOff) ++counters_.rows[1];
+        releaseSlot(due[q], so);
+      }
     } else if (kind == 2) {
-      const Pending p = pending_[idx];
-      for (int q = idx + 1; q < pendN_; ++q) pending_[q - 1] = pending_[q];
-      --pendN_;
+      const Pending p = popPending();
       if (p.lane > 0) {   // a TRIGGER (SPEC 8): a performance event with no state and no terminal
         Event ev;
         ev.type = EventType::Trigger;
@@ -749,12 +743,32 @@ void Core::flushOwed() {
 }
 
 void Core::sortEvents() {
-  // Events are produced in time order, so this only has to fix same-offset order; insertion sort
-  // is stable (pass-through keeps input order) and near-linear on nearly-sorted data.
-  for (int i = 1; i < outN_; ++i) {
+  // The events come out of the timeline in nondecreasing offset order (only a plant breaks that), so what is left to fix is the order WITHIN one offset:
+  // offs by id, then Panic, ons by (step, key), triggers by lane, pass-through last, and equal keys in emission order (stable; pass-through keeps input order).
+  // The usual disorder is a retrigger or an eviction putting its NoteOff right before the NoteOn that caused it: [off on off on ...] at one offset, which a
+  // plain insertion sort fixes by moving every off past all the ons before it, quadratic in the size of a chord step (1.4 of the 2.9 us a step cost under load).
+  // One pass: find each run of equal offsets, note whether it is out of order, sort it when it is. An offset that goes DOWN (a plant) sends the whole buffer
+  // to the insertion sort, which does not mind (segments already sorted stay sorted).
+  int segStart = 0;
+  bool bad = false;
+  for (int i = 1; i <= outN_; ++i) {
+    if (i < outN_ && out_[static_cast<std::size_t>(i)].offset == out_[static_cast<std::size_t>(segStart)].offset) {
+      if (sortsBefore(out_[static_cast<std::size_t>(i)], out_[static_cast<std::size_t>(i - 1)])) bad = true;
+      continue;
+    }
+    if (i < outN_ && out_[static_cast<std::size_t>(i)].offset < out_[static_cast<std::size_t>(segStart)].offset) { insertionSort(0, outN_); return; }
+    if (bad) sortSegment(segStart, i);
+    segStart = i;
+    bad = false;
+  }
+}
+
+void Core::insertionSort(int from, int to) {   // stable, near-linear on nearly sorted data
+  for (int i = from + 1; i < to; ++i) {
+    if (!sortsBefore(out_[static_cast<std::size_t>(i)], out_[static_cast<std::size_t>(i - 1)])) continue;   // already in place (the usual case): no copy
     const Event e = out_[static_cast<std::size_t>(i)];
     int j = i;
-    while (j > 0 && sortsBefore(e, out_[static_cast<std::size_t>(j - 1)])) {
+    while (j > from && sortsBefore(e, out_[static_cast<std::size_t>(j - 1)])) {
       out_[static_cast<std::size_t>(j)] = out_[static_cast<std::size_t>(j - 1)];
       --j;
     }
@@ -762,10 +776,51 @@ void Core::sortEvents() {
   }
 }
 
+// Sorts the events [from, to), all at one offset and out of order (sortEvents found that). A short one is insertion-sorted. A long, disordered
+// one (up to kSortScratch events: a step's worth) is sorted through a compact key per event: sortsBefore's keys (kind, then id / step and key / lane) and the
+// event's position as the last key, so equal keys keep emission order, on 24 bytes instead of an 80-byte event behind an index. The events are then moved
+// into place by following the permutation's cycles (one spare Event, no allocation). A longer run than that, which no capacity of the core can produce at
+// one offset except pass-through events (the host's own count), falls back to the insertion sort: slower, equally right.
+void Core::sortSegment(int from, int to) {   // the caller has seen that [from, to) is out of order
+  const int n = to - from;
+  if (n <= 24 || n > kSortScratch) { insertionSort(from, to); return; }
+  struct Key { std::int64_t a; std::int32_t b, idx; std::int32_t rank; };
+  Key keys[kSortScratch];
+  for (int i = 0; i < n; ++i) {
+    const Event& e = out_[static_cast<std::size_t>(from + i)];
+    Key& k = keys[i];
+    k.rank = rankOf(e.type);
+    k.idx = i;
+    k.a = 0;
+    k.b = 0;
+    switch (e.type) {   // the tie-break columns of sortsBefore, per kind
+      case EventType::NoteOff: k.a = e.ref.id; break;
+      case EventType::NoteOn: k.a = e.stepSeq; k.b = e.key; break;
+      case EventType::Trigger: k.a = e.lane; break;
+      default: break;
+    }
+  }
+  std::sort(keys, keys + n, [](const Key& x, const Key& y) { return std::tie(x.rank, x.a, x.b, x.idx) < std::tie(y.rank, y.a, y.b, y.idx); });
+  Event* ev = out_.data() + from;
+  for (int i = 0; i < n; ++i) {   // keys[k].idx = which event now sorts k-th: new[k] = old[keys[k].idx]
+    if (keys[i].idx == i) continue;
+    const Event first = ev[i];
+    int j = i;
+    for (;;) {
+      const int src = keys[j].idx;
+      keys[j].idx = j;
+      if (src == i) { ev[j] = first; break; }
+      ev[j] = ev[src];
+      j = src;
+    }
+  }
+}
+
 // ------------------------------------------------------------------------------------------ input (SPEC 3)
 
 template <class Pred>
 void Core::eraseRefs(Pred pred) {
+  ++refsVer_;   // (every removal goes through here or clears refN_ directly, Panic below)
   int w = 0;
   for (int i = 0; i < refN_; ++i)
     if (!pred(refs_[static_cast<std::size_t>(i)])) refs_[static_cast<std::size_t>(w++)] = refs_[static_cast<std::size_t>(i)];
@@ -821,6 +876,7 @@ void Core::input(const Event& e, std::int32_t s) {
       if (ARP_PLANT(edgeResetsCountWhileEmpty) || ARP_PLANT(edgeRevivesWhileEmpty)) repeatSteps_ = 0;
       if (ARP_PLANT(edgeRevivesWhileEmpty)) exhausted_ = false;
       refN_ = 0;
+      ++refsVer_;   // H lost every key
       ignoredN_ = 0;
       pedalDown_ = false;
       releaseAll(s);
@@ -898,6 +954,7 @@ void Core::noteOn(const Event& e, std::int32_t s) {
   r.state = RefState::Down;
   r.abs = absBase_ + s;
   refs_[static_cast<std::size_t>(refN_++)] = r;
+  ++refsVer_;   // a ref joined H
   // A gesture start (SPEC 3): no ref was DOWN or PEDAL. Under append, a press that joins a latched set is not one (4.5).
   const bool gestureStart = noActive && !(latch == Latch::Append && hadLatched);
   // SPEC 4.8 (r4): ANY NoteOn that adds a key to H (a gesture start, latch append, the pedal) restarts the repeat count and clears
@@ -1361,10 +1418,11 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
     struct Out { std::int32_t key, vel, ch; bool setsLastQ; };
     Out outs[kMaxArpKeys];
     int no = 0;
+    std::int8_t outAt[128];   // key -> its index in outs (-1: none yet); a chord step has up to 112 keys, a linear search per key was quadratic
+    std::memset(outAt, -1, sizeof outAt);
     for (int i = 0; i < nn; ++i) {
       if (fin[i] < 0) continue;
-      int dup = -1;
-      for (int q = 0; q < no; ++q) if (outs[q].key == fin[i]) dup = q;
+      const int dup = outAt[fin[i]];   // fin[i] is 0..127 here (stage 5 dropped the rest)
       // SPEC 4.4: round-half-up in integers
       const std::int64_t base = a.velMode == VelMode::Fixed ? clampi(S_.velFixed, 1, 127) : nl[i].vel;
       const auto vel = static_cast<std::int32_t>(clampi(fdiv(base * st.vel + 50, 100), 1, 127));
@@ -1372,6 +1430,7 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
         if (ARP_PLANT(collisionKeepsLast)) { outs[dup].vel = vel; outs[dup].ch = nl[i].ch; }
         continue;
       }
+      outAt[fin[i]] = static_cast<std::int8_t>(no);
       outs[no++] = Out{static_cast<std::int32_t>(fin[i]), vel, nl[i].ch, finSetsLastQ[i]};
     }
     // -- SPEC 5.2: ties by look-ahead: the consecutive tie steps after this one, cyclic, at most length - 1, ignoring prob
@@ -1432,9 +1491,10 @@ void Core::dropSpilledSubnotes(std::int64_t on0) {
   const I128 from = I128::mul(on0, D_);
   int w = 0;
   for (int i = 0; i < pendN_; ++i) {
-    const Pending& p = pending_[static_cast<std::size_t>(i)];
+    const Pending& p = pendAt(i);
     if (p.lane == 0 && p.pos >= from) continue;
-    pending_[static_cast<std::size_t>(w++)] = p;
+    if (w != i) pendAt(w) = p;
+    ++w;
   }
   pendN_ = w;
 }
@@ -1486,7 +1546,20 @@ void Core::queueTrigger(I128 pos, std::int32_t lane, std::int64_t ord) {
 
 void Core::queueOn(const Pending& p) {
   if (pendN_ >= caps_.pending) { ++counters_.pendingOverflow; return; }   // SPEC 1.3: the step's remaining ons are refused (counted)
-  pending_[static_cast<std::size_t>(pendN_++)] = p;
+  // File it by position, behind every entry at the same position (strictly later ones are passed): the front of the ring is then what the old
+  // linear "first of the smallest pos" scan found. A step queues its ons in position order and the next step's lie after them, so j is usually pendN_.
+  int j = pendN_;
+  while (j > 0 && p.pos < pendAt(j - 1).pos) --j;
+  for (int k = pendN_; k > j; --k) pendAt(k) = pendAt(k - 1);
+  pendAt(j) = p;
+  ++pendN_;
+}
+
+Core::Pending Core::popPending() {
+  const Pending p = pendAt(0);
+  pendHead_ = (pendHead_ + 1) & (kMaxPending - 1);
+  --pendN_;
+  return p;
 }
 
 // ------------------------------------------------------------------------------------------ emission and the ONE release path
@@ -1502,49 +1575,287 @@ void Core::pushNonNote(const Event& e) {
   if (!room(1) || !pushEvent(e)) ++counters_.eventOverflow;
 }
 
+// ---- the sounding table (invariants: core.h, "sounding notes and the pending queue") ----
+
+void Core::resetSounding() {
+  for (std::size_t i = 0; i < sounding_.size(); ++i) {
+    Sounding& x = sounding_[i];
+    x = Sounding{};
+    x.keyNext = i + 1 < sounding_.size() ? static_cast<std::int16_t>(i + 1) : static_cast<std::int16_t>(-1);
+  }
+  freeHead_ = 0;
+  keyHead_.fill(-1);
+  liveHead_ = liveTail_ = -1;
+  soundN_ = chordSoundN_ = liveN_ = liveChordN_ = 0;
+  schedHead_ = schedN_ = quickN_ = 0;
+}
+
+// The caller has checked the capacity (emitOn: the arp's 144, chordStart: the table), so a free slot exists.
+int Core::allocSlot(const NoteRef& ref, bool chord, std::int64_t onAbs) {
+  const int i = freeHead_;
+  Sounding& x = sounding_[static_cast<std::size_t>(i)];
+  freeHead_ = x.keyNext;
+  x = Sounding{};
+  x.used = true;
+  x.ref = ref;
+  x.chord = chord;
+  x.onAbs = onAbs;
+  std::int16_t& head = keyHead_[static_cast<std::size_t>(keyChain(ref.key))];
+  x.keyNext = head;
+  head = static_cast<std::int16_t>(i);
+  ++soundN_;
+  ++liveN_;
+  if (chord) { ++chordSoundN_; ++liveChordN_; } else liveLink(i);
+  return i;
+}
+
+// The live-arp list is appended to in allocation order, which is ascending output id (ids come from one counter, see allocSlot's callers).
+void Core::liveLink(int i) {
+  Sounding& x = sounding_[static_cast<std::size_t>(i)];
+  x.livePrev = liveTail_;
+  x.liveNext = -1;
+  if (liveTail_ >= 0) sounding_[static_cast<std::size_t>(liveTail_)].liveNext = static_cast<std::int16_t>(i); else liveHead_ = static_cast<std::int16_t>(i);
+  liveTail_ = static_cast<std::int16_t>(i);
+}
+
+void Core::liveUnlink(int i) {
+  Sounding& x = sounding_[static_cast<std::size_t>(i)];
+  if (x.livePrev >= 0) sounding_[static_cast<std::size_t>(x.livePrev)].liveNext = x.liveNext; else liveHead_ = x.liveNext;
+  if (x.liveNext >= 0) sounding_[static_cast<std::size_t>(x.liveNext)].livePrev = x.livePrev; else liveTail_ = x.livePrev;
+  x.liveNext = x.livePrev = -1;
+}
+
+void Core::freeSlot(int i) {
+  Sounding& x = sounding_[static_cast<std::size_t>(i)];
+  std::int16_t* link = &keyHead_[static_cast<std::size_t>(keyChain(x.ref.key))];
+  while (*link != i) link = &sounding_[static_cast<std::size_t>(*link)].keyNext;
+  *link = x.keyNext;
+  if (!x.dying) { --liveN_; if (x.chord) --liveChordN_; else liveUnlink(i); }
+  if (x.chord) --chordSoundN_;
+  --soundN_;
+  x = Sounding{};
+  x.keyNext = freeHead_;
+  freeHead_ = static_cast<std::int16_t>(i);
+}
+
+// A note is found by its key's chain: ids are unique, so the id decides.
+int Core::findSounding(const NoteRef& ref) const {
+  for (int i = keyHead_[static_cast<std::size_t>(keyChain(ref.key))]; i >= 0; i = sounding_[static_cast<std::size_t>(i)].keyNext)
+    if (sounding_[static_cast<std::size_t>(i)].ref.id == ref.id) return i;
+  return -1;
+}
+
+// The used slots (the chord stage's too, or only the arp's) in ascending output id, which is the order the old dense table listed them in:
+// release-all walks them in it, so the first-release plants (dropRelease, doubleRelease) hit the same note as before.
+int Core::collectSounding(int* slots, bool includeChord) const {
+  int n = 0;
+  for (int i = 0; i < kSoundingSlots; ++i) {
+    const Sounding& x = sounding_[static_cast<std::size_t>(i)];
+    if (x.used && (includeChord || !x.chord)) slots[n++] = i;
+  }
+  std::sort(slots, slots + n, [this](int a, int b) { return sounding_[static_cast<std::size_t>(a)].ref.id < sounding_[static_cast<std::size_t>(b)].ref.id; });
+  return n;
+}
+
+int Core::oldestSounding() const {
+  int best = -1;
+  for (int i = 0; i < kSoundingSlots; ++i)
+    if (sounding_[static_cast<std::size_t>(i)].used && (best < 0 || sounding_[static_cast<std::size_t>(i)].ref.id < sounding_[static_cast<std::size_t>(best)].ref.id)) best = i;
+  return best;
+}
+
+// ---- the off schedule ----
+
+void Core::schedInsert(int i) {
+  Sounding& x = sounding_[static_cast<std::size_t>(i)];
+  int j = schedN_;
+  while (j > 0 && x.offPos < sounding_[static_cast<std::size_t>(schedAt(j - 1))].offPos) --j;   // a new off is usually the latest: j stays at the back
+  for (int k = schedN_; k > j; --k) schedAt(k) = schedAt(k - 1);
+  schedAt(j) = i;
+  ++schedN_;
+  x.off = kOffSched;
+}
+
+void Core::schedErase(int i) {
+  if (schedN_ > 0 && schedAt(0) == i) {   // the usual one: an off that has just come due, or the oldest note retriggered or evicted
+    schedHead_ = (schedHead_ + 1) & (kSchedRing - 1);
+    --schedN_;
+    sounding_[static_cast<std::size_t>(i)].off = kOffNone;
+    return;
+  }
+  const I128 key = sounding_[static_cast<std::size_t>(i)].offPos;
+  int lo = 0, hi = schedN_;   // the first entry whose key is not less than ours, then along the equal keys to the slot itself
+  while (lo < hi) {
+    const int mid = (lo + hi) / 2;
+    if (sounding_[static_cast<std::size_t>(schedAt(mid))].offPos < key) lo = mid + 1; else hi = mid;
+  }
+  while (lo < schedN_ && schedAt(lo) != i) ++lo;
+  sounding_[static_cast<std::size_t>(i)].off = kOffNone;
+  if (lo == schedN_) return;   // not filed (cannot happen: off == kOffSched says it is)
+  if (lo < schedN_ - 1 - lo) {   // close the gap from the nearer end: an eviction or a retrigger ends the OLDEST note, whose off is near the front
+    for (int k = lo; k > 0; --k) schedAt(k) = schedAt(k - 1);
+    schedHead_ = (schedHead_ + 1) & (kSchedRing - 1);
+  } else {
+    for (int k = lo; k + 1 < schedN_; ++k) schedAt(k) = schedAt(k + 1);
+  }
+  --schedN_;
+}
+
+void Core::quickAdd(int i, std::int64_t t) {
+  Sounding& x = sounding_[static_cast<std::size_t>(i)];
+  x.quickT = static_cast<std::int32_t>(t);   // a block offset: at most the block length
+  if (x.off == kOffQuick) return;
+  quick_[static_cast<std::size_t>(quickN_++)] = i;
+  x.off = kOffQuick;
+}
+
+void Core::quickErase(int i) {
+  for (int k = 0; k < quickN_; ++k)
+    if (quick_[static_cast<std::size_t>(k)] == i) { quick_[static_cast<std::size_t>(k)] = quick_[static_cast<std::size_t>(--quickN_)]; break; }
+  sounding_[static_cast<std::size_t>(i)].off = kOffNone;
+}
+
+void Core::unlinkOff(int i) {
+  const std::uint8_t where = sounding_[static_cast<std::size_t>(i)].off;
+  if (where == kOffSched) schedErase(i);
+  else if (where == kOffQuick) quickErase(i);
+}
+
+// A quick entry was filed against the block it was born in (its off cannot come before the sample after its on). In the next block that sample
+// is already past, so the clamp is moot: a note with a scheduled off joins sched_ by its position, a dying one is due at once (offset 0).
+void Core::startBlockOffs() {
+  for (int k = quickN_ - 1; k >= 0; --k) {
+    const int i = quick_[static_cast<std::size_t>(k)];
+    Sounding& x = sounding_[static_cast<std::size_t>(i)];
+    if (x.dying) {
+      x.quickT = static_cast<std::int32_t>(std::max<std::int64_t>(0, x.onAbs + 1 - absBase_));
+    } else {
+      quick_[static_cast<std::size_t>(k)] = quick_[static_cast<std::size_t>(--quickN_)];
+      schedInsert(i);
+    }
+  }
+}
+
+// When the soonest off is due, as a block offset (kNever: none is). Late offs read 0 (SPEC 13.1); an off never comes before the sample after
+// its own on (SPEC 1.1): sched_ holds only offs that already satisfy that, quick_ the others at their clamped offset.
+std::int64_t Core::nextOffTime() const {
+  std::int64_t best = kNever;
+  if (schedN_ > 0) best = std::max<std::int64_t>(0, ofsMemo(memoOff_, sounding_[static_cast<std::size_t>(schedAt(0))].offPos));
+  for (int k = 0; k < quickN_; ++k) best = std::min<std::int64_t>(best, sounding_[static_cast<std::size_t>(quick_[static_cast<std::size_t>(k)])].quickT);
+  return best;
+}
+
+// Is an off at `pos` due by offset `t`, i.e. max(0, ofs(pos)) <= t? Without a division: ofs(pos) = ceil((pos - start) / inc) <= t exactly when
+// pos <= start + t * inc (`bound`). The plants that change ofs() itself (floatPosition, roundNotCeil) are asked the long way round.
+bool Core::offDueBy(const I128& pos, const I128& bound, std::int64_t t) const {
+  assert(inc_ > 0);   // "ofs(pos) <= t  iff  pos <= start + t * inc" is the ceiling of a division by a POSITIVE increment (tempo * TPQ, or 10^6 in time mode)
+#ifdef ARP_PLANTS
+  if (plants.floatPosition || plants.roundNotCeil) return std::max<std::int64_t>(0, ofs(pos)) <= t;
+#else
+  (void)t;
+#endif
+  return pos <= bound;
+}
+
+// Removes from the schedule every off due at offset `t` (the value nextOffTime() returned) and returns their slots in ascending output id.
+// In sched_ they are a prefix: the offsets are monotone in the position and `ofs(pos) <= t` is `pos <= start + t * inc` (no division).
+int Core::takeDueOffs(std::int64_t t, int* out) {
+  int n = 0;
+  for (int k = quickN_ - 1; k >= 0; --k) {
+    const int i = quick_[static_cast<std::size_t>(k)];
+    if (sounding_[static_cast<std::size_t>(i)].quickT != t) continue;
+    out[n++] = i;
+    quick_[static_cast<std::size_t>(k)] = quick_[static_cast<std::size_t>(--quickN_)];
+    sounding_[static_cast<std::size_t>(i)].off = kOffNone;
+  }
+  if (schedN_ > 0) {
+    const I128 bound = start_ + I128::mul(t, inc_);
+    int taken = 0;
+    while (taken < schedN_ && offDueBy(sounding_[static_cast<std::size_t>(schedAt(taken))].offPos, bound, t)) {
+      const int i = schedAt(taken++);
+      out[n++] = i;
+      sounding_[static_cast<std::size_t>(i)].off = kOffNone;
+    }
+    if (n == 0) {   // only a plant's float ofs() can disagree with the exact bound; the soonest is due by definition, so progress is guaranteed
+      const int i = schedAt(taken++);
+      out[n++] = i;
+      sounding_[static_cast<std::size_t>(i)].off = kOffNone;
+    }
+    schedHead_ = (schedHead_ + taken) & (kSchedRing - 1);
+    schedN_ -= taken;
+  }
+  for (int a = 1; a < n; ++a) {   // ascending id; the sched_ part is nearly in order already
+    const int i = out[a];
+    int j = a;
+    while (j > 0 && sounding_[static_cast<std::size_t>(out[j - 1])].ref.id > sounding_[static_cast<std::size_t>(i)].ref.id) { out[j] = out[j - 1]; --j; }
+    out[j] = i;
+  }
+  return n;
+}
+
+// ---- emission ----
+
 void Core::emitOn(const Pending& p, std::int32_t s) {
   // T13: refuse an on whose own off would not be guaranteed room (the off-reserve): events + sounding + 2 <= cap.
   const bool admit = ARP_PLANT(noOffReserve) ? outN_ < capEv_ : room(2);
   if (!admit) { ++counters_.rows[13]; ++counters_.refused; return; }
   // T2: the same (channel, key) still sounding WITHIN THIS STREAM -> its off goes out first, at this sample. An arp note and a chord
   // note may sound on one key at once (SPEC 5.2, r4 H2). Plant t2AcrossStreams lets the arp retrigger end the chord note too.
-  NoteRef victims[kMaxSounding + kSoundingSlack];
+  // The key's chain lists newest first; the victims are released oldest first (ascending id), as the table order gave them.
+  int victims[kMaxSounding + kSoundingSlack];
   int nv = 0;
-  for (int i = 0; i < soundN_; ++i) {
+  for (int i = keyHead_[static_cast<std::size_t>(keyChain(p.key))]; i >= 0; i = sounding_[static_cast<std::size_t>(i)].keyNext) {
     const Sounding& x = sounding_[static_cast<std::size_t>(i)];
     if (x.chord && !ARP_PLANT(t2AcrossStreams)) continue;
-    if (nv < static_cast<int>(std::size(victims)) && !x.dying && x.ref.key == p.key && x.ref.channel == p.ch) victims[nv++] = x.ref;
+    if (nv < static_cast<int>(std::size(victims)) && !x.dying && x.ref.key == p.key && x.ref.channel == p.ch) victims[nv++] = i;
   }
-  for (int i = 0; i < nv; ++i) { ++counters_.rows[2]; release(victims[i], s); }
+  // Kept for exactness, not for the shipped build: the chain lists newest first and the old table order was oldest first, and the order of releases is
+  // observable through the dropRelease / doubleRelease plants (they hit "the first release"). nv > 1 needs two live notes on one (channel, key), which
+  // only the t2AcrossStreams plant allows (a chord note and an arp note); otherwise nv <= 1 and this is a no-op.
+  std::reverse(victims, victims + nv);
+  for (int i = 0; i < nv; ++i) { ++counters_.rows[2]; releaseSlot(victims[i], s); }
   // T11: the sounding table is full -> the oldest note is released at this offset, before the new on. Notes already
   // released and waiting out their 1-sample minimum (dying) do not count as sounding, and a note whose own on is at THIS
   // sample cannot be released yet (SPEC 1.1): the victim is the oldest note that can. If there is none, the new on is
   // refused (counted) rather than let two notes sound against a one-note table.
   if (ARP_PLANT(t11EvictsFirst)) {   // plant: the first-version rule
-    if (soundN_ - chordSoundN_ >= caps_.sounding) { ++counters_.rows[11]; ++counters_.soundingOverflow; release(sounding_[0].ref, s); }
+    if (soundN_ - chordSoundN_ >= caps_.sounding) { ++counters_.rows[11]; ++counters_.soundingOverflow; releaseSlot(oldestSounding(), s); }
   } else for (;;) {
-    int live = 0, victim = -1;
-    for (int i = 0; i < soundN_; ++i) {
-      const Sounding& x = sounding_[static_cast<std::size_t>(i)];
-      if (x.dying || (x.chord && !ARP_PLANT(sharedSoundingTable))) continue;   // the chord stage has its own table (SPEC 14); the plant shares the arp's
-      ++live;
-      if (victim < 0 && x.onAbs + 1 <= absBase_ + s) victim = i;
-    }
+    // "live" = not dying, and (the chord stage has its own table, SPEC 14) not a chord note; the plant shares the arp's. Counted, not scanned.
+    const int live = ARP_PLANT(sharedSoundingTable) ? liveN_ : liveN_ - liveChordN_;
     if (live < caps_.sounding) break;
+    // The victim is the oldest live note whose own on is in an earlier sample (a note born in THIS sample cannot be released yet, SPEC 1.1). The live-arp list
+    // is in id order, so it is the first one that qualifies: the head, unless the oldest were all born this sample. The plant that lets chord notes count
+    // (sharedSoundingTable) has to look at them too, which the list does not hold: it scans the table.
+    int victim = -1;
+    const std::int64_t bornAfter = absBase_ + s - (ARP_PLANT(evictBornPrevSample) ? 1 : 0);   // evictable: onAbs + 1 <= bornAfter
+    if (ARP_PLANT(sharedSoundingTable)) {
+      for (int i = 0; i < kSoundingSlots; ++i) {
+        const Sounding& x = sounding_[static_cast<std::size_t>(i)];
+        if (!x.used || x.dying || x.onAbs + 1 > bornAfter) continue;
+        if (victim < 0 || x.ref.id < sounding_[static_cast<std::size_t>(victim)].ref.id) victim = i;
+      }
+    } else {
+      for (int i = liveHead_; i >= 0; i = sounding_[static_cast<std::size_t>(i)].liveNext)
+        if (sounding_[static_cast<std::size_t>(i)].onAbs + 1 <= bornAfter) { victim = i; break; }
+    }
     if (victim < 0) { ++counters_.refused; return; }
     ++counters_.rows[11];
     ++counters_.soundingOverflow;
-    release(sounding_[static_cast<std::size_t>(victim)].ref, s);
+    releaseSlot(victim, s);
   }
   // Only reachable if > kSoundingSlack notes die inside this one sample: refuse rather than overrun the table.
   if (soundN_ - chordSoundN_ >= kMaxSounding + kSoundingSlack) { ++counters_.refused; return; }
   const NoteRef ref{0, p.ch, p.key, idCounter_++};
-  Sounding& x = sounding_[static_cast<std::size_t>(soundN_++)];
-  x = Sounding{};
-  x.ref = ref;
+  const int slot = allocSlot(ref, false, absBase_ + s);
+  Sounding& x = sounding_[static_cast<std::size_t>(slot)];
   x.offPos = p.offPos;
   x.hasOff = true;
-  x.onAbs = absBase_ + s;
+  // The off is due at max(0, ofs(offPos)), but never before the sample after the on (SPEC 1.1). Only a note shorter than a sample is held back
+  // by that: it is filed with its clamped offset (quick_), every other one by its position (sched_).
+  const std::int64_t due = std::max<std::int64_t>(0, ofs(p.offPos));
+  if (!ARP_PLANT(sameSampleOff) && due < static_cast<std::int64_t>(s) + 1) quickAdd(slot, static_cast<std::int64_t>(s) + 1);
+  else schedInsert(slot);
 #ifdef ARP_PLANTS
   if (p.setsLastQ) { lastQ_ = p.key; hasLastQ_ = true; }   // lastQAtEmission
 #endif
@@ -1562,16 +1873,19 @@ void Core::emitOn(const Pending& p, std::int32_t s) {
 
 // release(ref): the ONLY path that emits a NoteOff. Idempotent: a ref no longer in the table is a no-op.
 bool Core::release(const NoteRef& ref, std::int32_t s) {
-  int i = -1;
-  for (int q = 0; q < soundN_; ++q)
-    if (sounding_[static_cast<std::size_t>(q)].ref.id == ref.id) { i = q; break; }
-  if (i < 0) return false;
+  const int i = findSounding(ref);
+  return i >= 0 && releaseSlot(i, s);
+}
+
+bool Core::releaseSlot(int i, std::int32_t s) {
   Sounding& x = sounding_[static_cast<std::size_t>(i)];
   // SPEC 1.1: never at the same sample as its own on -> keep it "dying"; the timeline emits it at on + 1.
   const bool defer = !ARP_PLANT(sameSampleOff);
   if (defer && x.onAbs + 1 > absBase_ + s) {
+    if (!x.dying) { --liveN_; if (x.chord) --liveChordN_; else liveUnlink(i); }
     x.dying = true;
-    x.hasOff = false;
+    if (x.hasOff) { unlinkOff(i); x.hasOff = false; }   // its scheduled off is void; it is due at the sample after its on, whatever offPos said
+    quickAdd(i, x.onAbs + 1 - absBase_);
     return true;
   }
   Event ev;
@@ -1580,9 +1894,8 @@ bool Core::release(const NoteRef& ref, std::int32_t s) {
   ev.ref = x.ref;
   ev.vel = kReleaseVel;
   ev.tick = x.hasOff ? tickOf(x.offPos) : kNoTick;
-  if (x.chord) --chordSoundN_;
-  for (int q = i + 1; q < soundN_; ++q) sounding_[static_cast<std::size_t>(q - 1)] = sounding_[static_cast<std::size_t>(q)];
-  --soundN_;
+  if (x.off != kOffNone) unlinkOff(i);   // a scheduled off that just came due was taken off the schedule already (takeDueOffs)
+  freeSlot(i);
 #ifdef ARP_PLANTS
   if (plants.dropRelease && !dropped_) { dropped_ = true; return true; }
 #endif
@@ -1599,11 +1912,9 @@ void Core::releaseAll(std::int32_t s, bool includeChord) {
   if (!ARP_PLANT(releaseKeepsPending)) pendN_ = 0;
   if (!ARP_PLANT(lastQNoReset)) hasLastQ_ = false;   // SPEC 6 (r2 H2): every release-all forgets lastQ, so each play-from-here sounds the same
   if (includeChord) chordEndAll(s);
-  NoteRef snapshot[kMaxSounding + kSoundingSlack + kMaxChordSounding];
-  int n = 0;
-  for (int i = 0; i < soundN_; ++i)
-    if (includeChord || !sounding_[static_cast<std::size_t>(i)].chord) snapshot[n++] = sounding_[static_cast<std::size_t>(i)].ref;
-  for (int i = 0; i < n; ++i) release(snapshot[i], s);
+  int slots[kSoundingSlots];
+  const int n = collectSounding(slots, includeChord);
+  for (int i = 0; i < n; ++i) releaseSlot(slots[i], s);
 }
 
 
@@ -1620,14 +1931,9 @@ bool Core::chordStart(std::int32_t key, std::int32_t vel, std::int32_t ch, std::
   if (ARP_PLANT(chordOnLate) && sr_ >= 96000 && s + 1 < n_) ++s;   // plant (G4 / CH1): the on lands a sample after its cause, at 96 kHz and up
   // T13 (SPEC 14): refused at the event cap, a chord note stays silent and is counted; no sounding entry, so no off is owed.
   if (!room(2)) { ++counters_.rows[13]; ++counters_.refused; return false; }
-  if (chordSoundN_ >= kMaxChordSounding || soundN_ >= static_cast<int>(sounding_.size())) { ++counters_.refused; return false; }
+  if (chordSoundN_ >= kMaxChordSounding || soundN_ >= kSoundingSlots) { ++counters_.refused; return false; }
   const NoteRef ref{0, ch, key, idCounter_++};
-  Sounding& x = sounding_[static_cast<std::size_t>(soundN_++)];
-  x = Sounding{};
-  x.ref = ref;
-  x.chord = true;
-  x.onAbs = absBase_ + s;
-  ++chordSoundN_;
+  allocSlot(ref, true, absBase_ + s);   // a chord note has no scheduled off: it ends with its last source (chordStop)
   Event ev;
   ev.type = EventType::NoteOn;
   ev.offset = s;
@@ -1680,6 +1986,13 @@ void Core::chordSync(std::int32_t s) {
   if (S_.scaleSource == ScaleSource::Global) { sig.globalRoot = scale_.root; sig.globalMask = static_cast<std::uint16_t>(scale_.mask & 0xFFFu); }
   for (int i = 0; i < 6; ++i) { sig.on[i] = S_.chordOn[i]; sig.shift[i] = S_.chordShift[i]; }
   const bool remap = !chordSigValid_ || !(sig == chordSig_);
+  // Nothing the stage reads has changed since its last pass (same settings and scale; the same keys in H: refsVer_ moves when a ref joins or leaves,
+  // and a ref's Down / Pedal / Latched state is not part of H), so the pass would store, start and stop nothing and rebuild the same chord set:
+  // skip it. The block-start and per-step syncs of a held chord are nearly all of this kind.
+  // The skip RELIES ON A PASS BEING IDEMPOTENT: run twice on the same inputs it does nothing the second time. That holds because a chord note whose
+  // chordStart was refused (no event room, T13) keeps `used` with no sounding and is never retried, in this version of the rules; a stage that retried
+  // a refused start at every pass would have to run every time. The dedupe plants do exactly that (a refused second on), so they always run the pass.
+  if (!remap && chordSyncVer_ == refsVer_ && !ARP_PLANT(chordNoDedupe) && !ARP_PLANT(chordDedupeByChannelKey)) return;
   chordSig_ = sig;
   chordSigValid_ = true;
 
@@ -1776,8 +2089,8 @@ void Core::chordSync(std::int32_t s) {
   // -- the source counts, and the earliest source of every key (press sample, then slot, then the source key): its channel and
   //    velocity are fixed at the note's NoteOn
   int cnt[128] = {};
-  std::int64_t firstAbs[128];
-  std::int32_t firstSlot[128], firstSrc[128];
+  std::int64_t firstAbs[128] = {};   // zeroed, not left to firstRec[k] != nullptr: plant chordRecomputeAtRelease can count a key no record maps to
+  std::int32_t firstSlot[128] = {}, firstSrc[128] = {};
   const ChordRec* firstRec[128] = {};
 #ifdef ARP_PLANTS
   std::int32_t chA[128], chB[128];   // chordDedupeByChannelKey: the first two channels seen on a key
@@ -1840,6 +2153,7 @@ void Core::chordSync(std::int32_t s) {
     // H' for the arp: this key with the chord note's velocity and channel, ordered by its first source's press, then slot
     chordSet_[static_cast<std::size_t>(chordSetN_++)] = HeldKey{k, n.vel, n.ch, firstAbs[k], firstSlot[k]};
   }
+  chordSyncVer_ = refsVer_;
 }
 
 }  // namespace arp
