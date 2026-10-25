@@ -237,11 +237,22 @@ void recordDigestCorpus() {
           case 4: { const EventSpan offs = core->reset(); for (const Event& e : offs) { hashEvent(fs, pos, epoch, e); ++nEv; } ++epoch; break; }
           case 5: core->prepare(sr, 4096); break;
           case 6: {
-            if (changeMask & 1) st.order = changed.order; if (changeMask & 2) st.pattern = changed.pattern; if (changeMask & 4) st.rate = changed.rate;
-            if (changeMask & 8) st.gate = changed.gate; if (changeMask & 16) st.latch = changed.latch; if (changeMask & 32) st.enabled = changed.enabled;
-            if (changeMask & 64) { st.chordEnabled = changed.chordEnabled; for (int k = 0; k < 6; ++k) { st.chordOn[k] = changed.chordOn[k]; st.chordShift[k] = changed.chordShift[k]; } }
-            if (changeMask & 128) st.rateMode = changed.rateMode; if (changeMask & 256) st.restart = changed.restart; if (changeMask & 512) st.arpEnabled = changed.arpEnabled;
-            if (changeMask & 1024) { st.quantize = changed.quantize; st.scaleSource = changed.scaleSource; } if (changeMask & 2048) st.repeats = changed.repeats;
+            // One statement per line: g++'s -Wmisleading-indentation (an error under -Werror) rejects several on one line.
+            if (changeMask & 1) st.order = changed.order;
+            if (changeMask & 2) st.pattern = changed.pattern;
+            if (changeMask & 4) st.rate = changed.rate;
+            if (changeMask & 8) st.gate = changed.gate;
+            if (changeMask & 16) st.latch = changed.latch;
+            if (changeMask & 32) st.enabled = changed.enabled;
+            if (changeMask & 64) {
+              st.chordEnabled = changed.chordEnabled;
+              for (int k = 0; k < 6; ++k) { st.chordOn[k] = changed.chordOn[k]; st.chordShift[k] = changed.chordShift[k]; }
+            }
+            if (changeMask & 128) st.rateMode = changed.rateMode;
+            if (changeMask & 256) st.restart = changed.restart;
+            if (changeMask & 512) st.arpEnabled = changed.arpEnabled;
+            if (changeMask & 1024) { st.quantize = changed.quantize; st.scaleSource = changed.scaleSource; }
+            if (changeMask & 2048) st.repeats = changed.repeats;
             break;
           }
           default: tsNum = o.arg % 9 + 1; tsDen = (o.arg % 2) ? 8 : 4; break;
