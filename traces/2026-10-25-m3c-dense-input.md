@@ -125,3 +125,39 @@ Also built with `-Wall -Wextra -Wshadow -Wmisleading-indentation -Werror` (clang
 - Remaining cost of dense input is the chord notes' own start / stop (about 50 ns each) and the same-offset event sort; both are M3b territory. `ignoreRef` shifts 256 entries when the ignored ring is full (a host that never releases refused
   presses); not measured, not changed.
 - README / CODEMAP list the tests; `test_input.{h,cpp}` are new (out of scope here).
+
+## Follow-up (2026-10-25, same queue item; base `b5a7804`, branch `m3/input-rate`; the critic's review of b5a7804: no HIGH, byte-identity confirmed)
+
+Brief: M-1 (the envelope understates the heaviest settings-only load), L-1 (the per-event cost table depends on the shape), L-2 (the fingerprint check only compared equal block sizes), L-3 (a deterministic known answer for `chordIncSkipsRefresh`). Nothing is committed; no git operation was made.
+
+- **M-1.** The critic was right: my B+ kept the default own scale (C major, 7 of 12 degrees), which snaps the 128 chord keys onto about 75 distinct keys. `WORST CASE B+` is now the critic's load (32 keys, one channel, 1/64 at 999 bpm, order chord, gate 200, no transposition, chord stage +1/+2/+3 in degrees,
+  ratchet 4, trigger lane 1, step offset 0, quantize scale, own scale with ALL 12 degrees on, step unit semitones); `B+6` adds six shifts; `B++` adds 4 transposition steps of 2 semitones. New input families on B+ and on B++ (re-struck chord, 4 keys, flood). The bench digest was regenerated from
+  `0ef0903` only (`bash tools/core_digest.sh regen 0ef0903`): 837 configurations; the suite digest did not change (no diff).
+  **New numbers** (x4, 192 kHz, block 16, native / two-word, the least disturbed of nine passes of 15 repetitions): B+ 1.54 / 1.68 %, B+6 1.53 / 1.68 %, **B++ 1.53 / 1.69 % (the heaviest settings-only load; was reported as 1.46 / 1.59 %)**; 720 configurations per path, none over the slice.
+  (The critic's single passes: 1.63 / 1.73 %; single passes read higher.) The input column on the heaviest load, the largest rate inside the slice (worst of 4 rates x 5 blocks x 2 paths): whole 32-key chord re-struck 16,500 events/s (measured to 17,000); 4 keys re-struck over and over **3,600 events/s**
+  (B+, two-word, 192 kHz, block 16; B++ 3,700); refused flood with the chord stage on 9,300; off ~44,000 (extrapolated from 17,000).
+  **The quoted limit: 2,500 incoming note events/s over the heaviest load, kept** (the lead's figure). Margin: it is 31 % below the measured edge in rate; at 2,500 the worst combination reads about 1.90 % after x4 (points at 192 kHz / 16, two-word: 0 -> 1.676, 2,131 -> 1.847, 4,262 -> 2.065 %), so the
+  margin in cost is 5 % of the slice (0.1 % of the 2 %), and the figure moves by 0.05-0.1 % with the state of the machine. That is under 10 % of the slice in cost terms. If a 10 % margin in cost is wanted (x4 <= 1.8 %) the quote is about 1,300 events/s; I kept 2,500 and say so in the doc.
+  `docs/horde-copy-in.md` "CPU envelope" states the measured edge, the quote, the margin and the x4 caveat.
+- **L-1.** The cost table is labelled "for the shapes measured" and widened: whole chord 46-65 ns, a few keys re-struck 150-360 ns (was 150-250), refused flood 58-100 ns; new bench family "1 of 4 refs re-struck, six shifts" (`restrikeRefs`): 200-225 ns per event
+  (the critic's 290 is inside the widened range of the 4-key shape; I did not reproduce 290 for this one), 4,300 events/s on A at ratchet 4.
+- **L-2.** The digest log keeps the first session under each fingerprint; every later session with the same fingerprint is replayed beside it at one common block size (min(64, maxBlock)) and the two outputs must be identical (`harness.h` `digestRecord`, `replayLean`; `d.conflicts`). Check: **1,247 repeats compared, 0 differ**.
+  Control: the band-edge sessions the blind fingerprint merges give different replays at block 64 and a session replays equal to itself (fires); the earlier control and the same-block check stay.
+- **L-3.** `test_input.cpp`: key 60 (ref a1, sample 0), key 64 (10), key 60 again (ref a2, 20), a1 released at 30, order `played`, chord stage on with no slots: the arp continues 60 64 60 64; with plant `chordIncSkipsRefresh` 64 60 64 60 (red); the full pass agrees with the incremental one.
+- Check counts: 455 per int128 path (451 + 4: the repeat comparison's control and check, the L-3 plant and known answer).
+- Cost of the checks: `core_test` 56 s (was 47 s); `./verify full` 2 min 20 s (was 1 min 43 s; the bench has 8 more input scenarios and the digest 78 more configurations).
+
+### Verify (follow-up; base `b5a7804`, tree uncommitted)
+```
+bash tools/core_test.sh                       exit 0   (56 s)  OK: 455 passed, 0 failed (x2); bench digest 837 configurations (x2) match; copy-in green
+python3 tools/core_params_check.py            exit 0
+python3 tools/core_params_check.py --plant    exit 1   (red, as designed)
+node tools/lab_smoke.mjs                      exit 0   lab_smoke: OK (1751 ms)
+bash tools/core_sanitize.sh ubsan             exit 0   OK: 455 passed, 0 failed (x2); PASS  core_sanitize(ubsan): every binary green, no sanitizer report   (56 s)
+./verify full                                 exit 0   (2 min 20 s)  .harness/last-verify.json: "git":"b5a7804","exit":0,"tree":"a8989788552aa5711822963411a497b9e54cbb13"
+```
+`core/` is unchanged by the follow-up (the copy-in table needs no regeneration).
+
+### Open questions (follow-up)
+- Is a margin of 5 % of the slice at the worst combination acceptable for the quote of 2,500 events/s, or should the notice say 1,300?
+- The critic's 290 ns/event for one ref of a 4-ref key was not reproduced (200-225 ns here); their exact load may differ.

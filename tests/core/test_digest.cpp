@@ -234,6 +234,10 @@ void runDigestTests() {
       blind.push_back({sessionFingerprint(s, true), 64, r.nEvents, r.digestStream, r.digestCounters});
       sharp.push_back({sessionFingerprint(s), 64, r.nEvents, r.digestStream, r.digestCounters});
     }
+    // the replay comparison has its own control: the two band-edge sessions the blind fingerprint merges, replayed at one common block size, differ
+    const Run e0 = replayLean(bandEdgeSession(960), 64), e1 = replayLean(bandEdgeSession(961), 64), e0b = replayLean(bandEdgeSession(960), 64);
+    plant(sessionFingerprint(bandEdgeSession(960), true) == sessionFingerprint(bandEdgeSession(961), true) && e0.digestStream != e1.digestStream && e0.digestStream == e0b.digestStream,
+          "the repeat comparison (replay both at one block size) tells the band-edge sessions the blind fingerprint merges apart, and a session from itself");
     d.enabled = was;
     const std::vector<std::string> blindBad = fingerprintConflicts(blind);
     plant(outputsDiffer && !blindBad.empty(), "a fingerprint that samples the jitter at a few positions merges the band-edge sessions (960 / 961 / -961 ticks at position 10240) and the conflict check names it (" + (blindBad.empty() ? std::string("NOT NAMED") : blindBad.front()) + ")");
@@ -250,6 +254,9 @@ void runDigestTests() {
     const std::vector<std::string> bad = fingerprintConflicts(all);
     for (std::size_t i = 0; i < bad.size() && i < 5; ++i) std::printf("  fingerprint: %s\n", bad[i].c_str());
     check(bad.empty(), "no two runs with the same session fingerprint and block size differ in output: " + std::to_string(all.size()) + " runs of " + std::to_string(distinct) + " distinct sessions");
+    // The same claim for repeats whose runs used DIFFERENT block sizes: every repeat of a fingerprint was replayed beside the first session under it at one common block size.
+    for (std::size_t i = 0; i < digestLog().conflicts.size() && i < 5; ++i) std::printf("  fingerprint: %s\n", digestLog().conflicts[i].c_str());
+    check(digestLog().conflicts.empty(), "every repeat of a session fingerprint replays identically to the first session under it at one common block size: " + std::to_string(digestLog().repeatsCompared) + " repeats compared");
   }
 
   // -- the comparison: a flipped hash and a missing chunk are caught, by name.

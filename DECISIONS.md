@@ -908,3 +908,15 @@ wins unclaimed); demanding any input fit (open-ended structural work for
 pathological floods). The same follow-up restores the digest coverage the
 rework's session fingerprint lost (three G5 band-edge sessions merged into
 one replay key).
+
+## D-033 — The readiness notice quotes 1,300 incoming note events a second, with 10 % headroom (RATIFIED by poll, 2026-10-25)
+
+The M3c critic found the heaviest settings-only load understated (a
+chromatic own scale keeps all 128 chord keys distinct: 1.68-1.69 % after x4,
+two-word path, 192 kHz, block 16). Over it, 2,500 incoming note events a
+second reads about 1.90 % after x4: inside horde's 2 % slice but only 5 %
+under it, and the figure moves 0.05-0.1 % with machine state. Chosen: quote
+**1,300 events/s** (x4 ≤ 1.8 %, 10 % headroom) on the heaviest load, and show
+alongside it the measured edge (3,600) and the room on ordinary loads (9,000
+on load A, far more on typical ones). Rejected: quoting 2,500 with a 5 %
+margin. Even 1,300 is far beyond human playing.

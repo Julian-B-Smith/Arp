@@ -56,35 +56,43 @@ machine), both int128 paths (native `__int128` and the two-word fallback), 44.1 
 of three interleaved passes (other work ran on the machine; a single pass read up to 1.7x higher). Reproduce: `bash tools/core_bench.sh --reps 15 --input-seconds 1` (the default run, which
 `./verify full` prints, takes fewer repetitions for the input scenarios and is noisier).
 
-**Settings alone (nothing arrives but the held keys): every load fits.** 700 configurations per int128 path, none over the slice. The heaviest anywhere is the 112-note, ratchet-4 case at
-x4 = 1.46 % (native) / 1.59 % (two-word), at 192 kHz in blocks of 16; D-031's load A (32 keys on 16 channels, 128 chord notes, 8 transposition steps): 1.20 % / 1.27 %; load B: 0.85 % / 0.91 %;
-B with ratchet 4, a trigger, quantize and degrees (with and without transposition steps): 0.92 % / 1.00 %.
+**Settings alone (nothing arrives but the held keys): every load fits.** 720 configurations per int128 path, none over the slice. **The heaviest is B with ratchet 4, a trigger, quantize in a chromatic own scale
+(all 12 degrees on) and the chord stage in degrees** (32 keys on one channel, 128 chord notes, 1/64 at 999 bpm, gate 200; `WORST CASE B+` in the bench), because a chromatic scale snaps nothing and
+the 128 chord keys stay 128 distinct keys (a major scale folds them onto about 75). Measured edge, x4 at 192 kHz in blocks of 16, native / two-word: **B+ 1.54 % / 1.68 %; with six chord shifts 1.53 % / 1.68 %; with
+4 transposition steps (B++) 1.53 % / 1.69 %** (the single passes of the critic's re-measurement read 1.63 % / 1.73 %). Then the 112-note, ratchet-4 case 1.46 % / 1.59 %; D-031's load A (32 keys on 16 channels, 128 chord notes,
+8 transposition steps) 1.20 % / 1.27 %; load B 0.85 % / 0.91 %.
 
 **Dense incoming notes (D-032).** The cost of input is linear in its rate, so the number to quote is the cost of one incoming note event (a NoteOn or a NoteOff) and the room that is left. After M3c, per
-incoming event (the bench's input scenarios; before M3c in brackets):
+incoming event, **for the shapes measured** (the bench's input scenarios; before M3c in brackets). The cost depends on the shape and the load, not on one constant: the ranges cover every load measured, and a shape not
+in the table can fall outside them.
 
 | what the host sends | cost per incoming event |
 |---|---|
-| a held 32-key chord re-struck whole (every key off, then on, in one sample) | 50-60 ns on the heaviest load, about 0 on load A  (was 93-105 / 29-41 ns) |
-| a few keys re-struck over and over (the off and the on in different samples: two held-set changes) | 150-250 ns  (was 530-700 ns) |
-| presses on keys that are not held, all refused (32 keys x 4 refs held), chord stage off | 58-68 ns  (was 2,480-2,690 ns) |
-| the same, chord stage on | 60-80 ns  (was 2,730-2,850 ns) |
+| a held 32-key chord re-struck whole (every key off, then on, in one sample) | 46-65 ns on the heavy loads, about 0 on load A  (was 93-105 / 29-41 ns) |
+| a few keys re-struck over and over (the off and the on in different samples: two held-set changes) | 150-360 ns  (was 530-700 ns) |
+| one ref of a key held by four refs re-struck over and over, six chord shifts | 200-225 ns |
+| presses on keys that are not held, all refused (32 keys x 4 refs held), chord stage off | 58-80 ns  (was 2,480-2,690 ns) |
+| the same, chord stage on | 60-100 ns  (was 2,730-2,850 ns) |
 
 The largest incoming rate that keeps the whole module inside the slice (x4 <= 2 %), as the worst over the four sample rates, five block sizes and both int128 paths. It depends on what the rest of
-Arp costs, so it is given for two loads: **A** (D-031's, x4 about 1.1-1.3 % alone) and **A at ratchet 4** (the heaviest load measured, x4 about 1.5-1.8 % alone, so only 0.2-0.5 % is left for input).
-`~` marks a rate beyond the highest one measured (read off the measured slope); the others lie between measured rates.
+Arp costs, so it is given for three loads: **A** (D-031's, x4 about 1.1-1.3 % alone), **A at ratchet 4** (x4 about 1.5-1.8 % alone) and **B+ / B++**, the heaviest settings-only loads above (x4 1.45-1.69 % alone, so
+0.3-0.5 % is left for input). `~` marks a rate beyond the highest one measured (read off the measured slope); the others lie between measured rates.
 
-| host input | on load A | on A at ratchet 4 (heaviest) |
-|---|---|---|
-| a whole 32-key chord re-struck (the realistic shape) | no limit found (the cost is below the noise up to 17,000 events/s measured) | 11,600 events/s (measured to 34,000) |
-| a few keys re-struck over and over | ~9,700 events/s (measured to 8,500) | 3,100 events/s |
-| a flood of refused presses on new keys, chord stage off | ~66,000 events/s (measured to 8,000) | ~53,000 events/s (measured to 17,000) |
-| the same, chord stage on | ~24,000 events/s (measured to 8,000) | 9,000 events/s (measured to 17,000) |
+| host input | on load A | on A at ratchet 4 | on B+ / B++ (heaviest) |
+|---|---|---|---|
+| a whole 32-key chord re-struck (the realistic shape) | no limit found (the cost is below the noise up to 17,000 events/s measured) | 11,600 events/s (measured to 34,000) | 16,500 events/s (measured to 17,000) |
+| a few keys re-struck over and over | ~9,700 events/s (measured to 8,500) | 3,100 events/s | 3,600 events/s |
+| one ref of a 4-ref key re-struck over and over, six shifts | | 4,300 events/s | |
+| a flood of refused presses on new keys, chord stage off | ~66,000 events/s (measured to 8,000) | ~53,000 events/s (measured to 17,000) | ~44,000 events/s (measured to 17,000) |
+| the same, chord stage on | ~24,000 events/s (measured to 8,000) | 9,000 events/s (measured to 17,000) | 9,300 events/s |
 
-The reading for the notice: **over the heaviest load measured (A at ratchet 4), any of these shapes stays inside the 2 % slice up to 3,000 incoming note events per second (x4, not min-spec verified); over load A up
-to 9,000; over a lighter load the room grows**: for a load that costs `L` % after x4 alone, the rate is about `(2 - L) / (c * 4e-7)` events per second, with `c` the cost per event in ns from the first
-table. A typical 16-key chord load costs well under 0.5 % after x4 (the bench's "heavy but playable" load: 0.13 %), which leaves 1.5 %: about 60,000 events/s at 60 ns an event, 15,000 at 250 ns.
-These are stress rates, not playing rates (a chord re-struck at every 1/64 step at 999 bpm is about 17,000 events/s). The core stays correct at any rate; only the CPU grows.
+The reading for the notice (the human's choice, D-033): **over the heaviest load measured (B+ / B++), any of these shapes stays inside the 2 % slice with 10 % headroom (x4 ≤ 1.8 %) up to 1,300
+incoming note events per second (x4, not min-spec verified).** That is the quoted limit. The measured edge of the slice itself is 3,600 events/s (4 keys re-struck, two-word path, 192 kHz, block 16); at
+2,500 that worst combination reads about 1.90 % after x4 (the load alone is 1.68 %), only 5 % of the slice below the limit, and the figure moves by 0.05-0.1 % with the state of the machine, which is why
+the quote keeps 10 % headroom instead. Over load A the same shapes hold to 9,000. Over a lighter load the room grows: for a load that costs `L` % after x4 alone, the rate is about
+`(2 - L) / (c * 4e-7)` events per second, with `c` the cost per event in ns from the first table. A typical 16-key chord load costs well under 0.5 % after x4 (the bench's "heavy but playable" load: 0.13 %), which leaves
+1.5 %: about 60,000 events/s at 60 ns an event, 15,000 at 250 ns. These are stress rates, not playing rates (a chord re-struck at every 1/64 step at 999 bpm is about 17,000 events/s). The core stays correct at any rate;
+only the CPU grows.
 
 ## How this list is kept honest
 

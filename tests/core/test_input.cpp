@@ -245,6 +245,32 @@ void runInputTestsFor() {
       check(clean, "the held-key counters equal a recount of the ref table after every block (a small chord, a doubled key)");
     }
 
+    // -- a known answer for the record refresh (L-3): H' is ordered by the press of the EARLIEST LIVE ref of a key, which MOVES when the earliest of two refs on one key is
+    //    released (SPEC 3 / 14). Key 60 is pressed (ref a1, sample 0), key 64 (sample 10), key 60 again (ref a2, sample 20); a1 is released at sample 30. Until then 60 is
+    //    first in press order; after, its earliest live ref is a2 (sample 20), so the order is 64, 60. The arp's first step (sample 0) played 60 alone; from the next step
+    //    on `played` alternates over the two keys, and the position in the alternation (m = 1) makes the order visible: 60 64 60 64 with the order refreshed, 64 60 64 60
+    //    when the stage keeps the stale press time of key 60 (sample 0) and so the order 60, 64 (plant chordIncSkipsRefresh).
+    {
+      auto notesAfterFirstStep = [](const std::string& plantName) {
+        Session s;
+        s.sr = 8000;
+        s.total = 4500;
+        s.base.order = Order::Played;
+        s.base.chordEnabled = true;
+        for (bool& on : s.base.chordOn) on = false;
+        s.ins = {K(0, "a1", 60), K(10, "b", 64), K(20, "a2", 60), O(30, "a1")};
+        if (!plantName.empty()) s.plants = {plantName};
+        const Run r = runOnce(s, 64);
+        std::string keys;
+        for (const Rec& e : r.evs)
+          if (e.t == EventType::NoteOn && e.stream == Stream::Arp && e.a >= 500) keys += std::to_string(e.key) + " ";
+        return keys;
+      };
+      const std::string clean = notesAfterFirstStep(""), reference = notesAfterFirstStep("chordFullPass"), faulty = notesAfterFirstStep("chordIncSkipsRefresh");
+      plant(faulty != clean, "a stale record (plant chordIncSkipsRefresh) keeps key 60 first after its earliest ref is released: the arp plays \"" + faulty + "\" instead of \"" + clean + "\"");
+      check(clean == "60 64 60 64 " && reference == clean, "known answer (SPEC 3 / 14): two refs on key 60 at samples 0 and 20, key 64 at 10, the earliest ref of 60 released at 30: `played` continues 60 64 60 64 (incremental pass \"" + clean + "\", full pass \"" + reference + "\")");
+    }
+
     // -- the drawn sessions
     constexpr int kSessions = 600;
     int differ = 0, aggBad = 0;

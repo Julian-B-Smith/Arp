@@ -67,6 +67,7 @@ struct Scenario {
   int restrikeKeys = 0;           // re-strike the first N held keys (every ref: an off, then an on with a fresh id) ...
   double restrikePerStep = 0;     // ... this many times per 1/64 step at the scenario's tempo (0.25 = every fourth step) ...
   int restrikeGap = 0;            // ... with the on this many samples after the off (0: the same sample, the 1 -> 0 -> 1 case)
+  int restrikeRefs = 0;           // ... re-striking this many refs of each such key (0: all of them; 1: one ref of a key held by several)
   double floodEventsPerSec = 0;   // presses on keys that are NOT held, as note events per second (a press and its release half a period later)
   std::string family;             // scenarios of one family differ only in the input rate: the summary derives the largest rate inside the slice from them
   bool lightDigest = false;       // the stream digest covers a few rates / block sizes for 1 s, not the whole matrix (heavy loads, added with D-032: the digest's cost grows with them)
@@ -140,22 +141,28 @@ std::vector<Scenario> scenarios() {
   add("WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)", [loadAB](Scenario& s) {
     loadAB(s);
   });
-  // D-032: the heaviest load built from settings alone that the critic found (B with ratchet 4, a trigger, quantize and degrees), without and with transposition steps.
+  // D-032 / M-1: the heaviest load built from settings alone that the critic found: B with ratchet 4, a trigger, quantize (own scale, ALL 12 degrees on: chromatic) and
+  // the chord stage in degrees. A chromatic scale snaps nothing, so the 128 chord keys stay 128 distinct keys; a major scale (7 of 12) folds them onto ~75 and measured
+  // 0.9-1.0 % where this measures 1.6-1.7 %. B+ has the +1/+2/+3 chord stage of A and B; B+6 has six shifts; B++ adds 4 transposition steps of 2 semitones.
   auto loadBHeavy = [loadAB](Scenario& s) {
     loadAB(s);
-    s.user->steps[0].ratchet = 4; s.user->steps[0].trig = 1; s.user->steps[0].step = 2;
-    s.st.quantize = Quantize::Scale; s.st.scaleSource = ScaleSource::Own; s.st.stepUnit = StepUnit::Degrees; s.st.chordUnit = StepUnit::Degrees;
+    s.user->steps[0].ratchet = 4; s.user->steps[0].trig = 1;
+    s.st.quantize = Quantize::Scale; s.st.scaleSource = ScaleSource::Own; s.st.chordUnit = StepUnit::Degrees;
+    for (bool& d : s.st.scaleDeg) d = true;
   };
-  add("WORST CASE B+: B with ratchet 4, a trigger, a step offset of 2 degrees, quantize (own scale), degrees, 1/64 @999", [loadBHeavy](Scenario& s) { loadBHeavy(s); s.lightDigest = true; });
-  add("WORST CASE B++: B+ with 4 transposition steps of 2 degrees", [loadBHeavy](Scenario& s) { loadBHeavy(s); s.st.steps = 4; s.st.stepSize = 2; s.lightDigest = true; });
+  add("WORST CASE B+: B with ratchet 4, a trigger, quantize (own scale, all 12 degrees: chromatic), chord stage in degrees, 1/64 @999", [loadBHeavy](Scenario& s) { loadBHeavy(s); s.lightDigest = true; });
+  add("WORST CASE B+6: B+ with six chord shifts +1..+6", [loadBHeavy](Scenario& s) {
+    loadBHeavy(s); s.lightDigest = true;
+    for (int i = 0; i < 6; ++i) { s.st.chordOn[i] = true; s.st.chordShift[i] = i + 1; }
+  });
+  add("WORST CASE B++: B+ with 4 transposition steps of 2 semitones", [loadBHeavy](Scenario& s) { loadBHeavy(s); s.st.steps = 4; s.st.stepSize = 2; s.lightDigest = true; });
 
   // D-032: dense incoming notes. Each family holds one load and varies only the input rate (rate 0 is the load alone); the bench summary derives from
   // a family the largest rate that stays inside the slice. The loads are A at ratchet 4 (the critic's: the heaviest table, every step ratcheted, so the load
   // alone is 1.7-1.9 % after x4 and leaves little room) and A at ratchet 1 (D-031's A: about 1.1 %), which shows how the room grows when the rest is lighter.
   auto rateName = [](double r) { char b[32]; std::snprintf(b, sizeof b, "%g", r); return std::string(b); };
-  auto families = [&](int ratchet, const std::vector<double>& restrike32, const std::vector<double>& restrike4, const std::vector<double>& flood) {
-    const std::string load = "A at ratchet " + std::to_string(ratchet);
-    auto loadA_r = [loadA, ratchet](Scenario& s) { loadA(s); s.user->steps[0].ratchet = ratchet; };
+  auto families = [&](const std::string& load, const std::function<void(Scenario&)>& loadFn, const std::vector<double>& restrike32, const std::vector<double>& restrike4, const std::vector<double>& flood) {
+    auto loadA_r = loadFn;
     // the realistic shape: a held chord that the host keeps re-striking (all 32 keys on the same sample as the off: the 1 -> 0 -> 1 case)
     for (double per : restrike32) {
       Scenario sc; sc.st = baseSettings(); sc.family = "INPUT re-struck chord (32 keys, off and on in one sample), " + load;
@@ -179,8 +186,22 @@ std::vector<Scenario> scenarios() {
         v.push_back(std::move(sc));
       }
   };
-  families(4, {0.0, 0.125, 0.25, 0.5, 1.0, 2.0}, {0.0, 1.0, 2.0, 4.0, 8.0}, {0.0, 1000.0, 2000.0, 4000.0, 8000.0, 17000.0});
-  families(1, {0.0, 1.0}, {0.0, 4.0}, {0.0, 8000.0});
+  auto loadAr = [loadA](int ratchet) { return [loadA, ratchet](Scenario& s) { loadA(s); s.user->steps[0].ratchet = ratchet; }; };
+  families("A at ratchet 4", loadAr(4), {0.0, 0.125, 0.25, 0.5, 1.0, 2.0}, {0.0, 1.0, 2.0, 4.0, 8.0}, {0.0, 1000.0, 2000.0, 4000.0, 8000.0, 17000.0});
+  families("A at ratchet 1", loadAr(1), {0.0, 1.0}, {0.0, 4.0}, {0.0, 8000.0});
+  // L-1: one ref of a key held by four refs, with six chord shifts: the key stays held, so every re-strike is a held-set change that is no join or leave
+  for (double per : {0.0, 1.0, 4.0, 8.0}) {
+    Scenario sc; sc.st = baseSettings(); sc.family = "INPUT 1 of 4 refs of 4 keys re-struck, six chord shifts, A at ratchet 4";
+    sc.name = "INPUT 1 of 4 refs re-struck: A at ratchet 4 with six chord shifts +1..+6, 32 keys x 4 refs, one ref of 4 keys re-struck " + rateName(per) + "x per 1/64 step (on one sample after the off)";
+    loadAr(4)(sc);
+    for (int i = 0; i < 6; ++i) { sc.st.chordOn[i] = true; sc.st.chordShift[i] = i + 1; }
+    sc.refsPerKey = 4; sc.restrikeKeys = 4; sc.restrikeRefs = 1; sc.restrikePerStep = per; sc.restrikeGap = 1; sc.lightDigest = true;
+    v.push_back(std::move(sc));
+  }
+  // M-1: the room on the heaviest settings-only load (B+, chromatic)
+  families("B+ chromatic", loadBHeavy, {0.0, 1.0}, {0.0, 1.0, 2.0, 4.0}, {0.0, 4000.0, 17000.0});
+  // ... and on B++, the heaviest of all (B+ with 4 transposition steps): the load the quoted limit has to hold over
+  families("B++ chromatic transposed", [loadBHeavy](Scenario& s) { loadBHeavy(s); s.st.steps = 4; s.st.stepSize = 2; }, {0.0, 1.0}, {0.0, 1.0, 2.0}, {0.0, 17000.0});
   return v;
 }
 
@@ -242,7 +263,7 @@ struct Feeder {
       }
       if (sc.restrikeKeys > 0 && sc.restrikePerStep > 0) {   // a 1/64 step is 60 ticks = 3.75 / bpm seconds
         const double restrikePeriod = sr * 3.75 / sc.bpm / sc.restrikePerStep;
-        const int nKeys = std::min(sc.restrikeKeys, sc.keys), refs = std::max(1, sc.refsPerKey);
+        const int nKeys = std::min(sc.restrikeKeys, sc.keys), refs = std::max(1, sc.restrikeRefs > 0 ? std::min(sc.restrikeRefs, sc.refsPerKey) : sc.refsPerKey);
         // the id of the press of (key i, ref r) made by re-strike k is a pure function of the three, so a block boundary between an off and its on changes nothing
         auto pressId = [&](std::int64_t k, int i, int r) { return k == 0 ? idOf[slotOf(i, r)] : 2000000000 + (k * 64 + i) * 4 + r; };
         for (std::int64_t k = std::max<std::int64_t>(1, static_cast<std::int64_t>(static_cast<double>(abs) / restrikePeriod) - 2);; ++k) {
