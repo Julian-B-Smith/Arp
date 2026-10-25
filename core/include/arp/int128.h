@@ -13,6 +13,7 @@
 // mathematical floor or ceiling for either sign of the dividend (never C's truncating `/`).
 #pragma once
 
+#include <cassert>
 #include <cstdint>
 #include <cmath>
 
@@ -74,8 +75,8 @@ class I128Soft {
 
   // floor(this / d) and ceil(this / d) for d > 0. The quotient saturates at the int64 range
   // (the core's divisors keep it far inside; saturating beats undefined behaviour).
-  std::int64_t floorDiv(std::int64_t d) const { return divide(d, false); }
-  std::int64_t ceilDiv(std::int64_t d) const { return divide(d, true); }
+  std::int64_t floorDiv(std::int64_t d) const { assert(d > 0); return divide(d, false); }
+  std::int64_t ceilDiv(std::int64_t d) const { assert(d > 0); return divide(d, true); }
 
   // Via the magnitude: hi*2^64 + lo on a two's-complement NEGATIVE value subtracts two huge doubles and loses a small result.
   double toDouble() const {
@@ -149,6 +150,7 @@ class I128Native {
   // times D for hours of music), where the hardware does it in a few cycles. Same result, same rounding: the quotient of an int64 by a positive
   // int64 cannot overflow, and the saturation below only ever applied to the wide case.
   std::int64_t floorDiv(std::int64_t d) const {
+    assert(d > 0);   // the int64 fast path below is floor / ceil only for a positive divisor (and d == -1 would overflow INT64_MIN / d)
     if (fitsInt64()) {
       const auto n = static_cast<std::int64_t>(v_);
       const std::int64_t q = n / d;
@@ -159,6 +161,7 @@ class I128Native {
     return saturate(q);
   }
   std::int64_t ceilDiv(std::int64_t d) const {
+    assert(d > 0);
     if (fitsInt64()) {
       const auto n = static_cast<std::int64_t>(v_);
       const std::int64_t q = n / d;

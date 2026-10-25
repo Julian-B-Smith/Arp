@@ -620,3 +620,43 @@ WORST CASE for events per block: order chord over 112 distinct keys (16 keys x 6
 WORST CASE for events per block: order chord over 112 distinct keys (16 keys x 6 chord shifts), ratchet 4, gate 200, 1/64 @999	192000 128 477568 166ba12abaac1583 f181ddd927e4b862
 WORST CASE for events per block: order chord over 112 distinct keys (16 keys x 6 chord shifts), ratchet 4, gate 200, 1/64 @999	192000 512 477568 70466467bc6f934b f181ddd927e4b862
 WORST CASE for events per block: order chord over 112 distinct keys (16 keys x 6 chord shifts), ratchet 4, gate 200, 1/64 @999	192000 4096 473760 8288cbf245c0e204 ce3be3c0e4ca85ca
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	48000 32 132198 acb18bb978686f68 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	48000 64 132198 acb18bb978686f68 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	48000 128 132198 acb18bb978686f68 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	48000 512 131944 592dfbf810bd5832 bbac8f06fc001290
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	48000 4096 129712 853dfbf12293cab8 bb06674d5d5a2f7d
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	44100 32 132198 efe90c26c0a42ec0 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	44100 64 132198 efe90c26c0a42ec0 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	44100 128 132198 efe90c26c0a42ec0 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	44100 512 131944 47c11ce33a8c3274 bbac8f06fc001290
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	44100 4096 128974 648c9b1b4ea136c8 9683077ee371853b
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	96000 32 132198 0fe3378026125f85 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	96000 64 132198 0fe3378026125f85 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	96000 128 132198 0fe3378026125f85 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	96000 512 132198 10a9afe30022400d 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	96000 4096 129712 7a0d755ed5e033b8 bb06674d5d5a2f7d
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	192000 32 132198 54a4253a755966a1 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	192000 64 132198 54a4253a755966a1 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	192000 128 132198 54a4253a755966a1 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	192000 512 132198 54a4253a755966a1 256f1a28ee1bed78
+WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)	192000 4096 131206 8e4cc2b72bada488 ebe909a3be33c534
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	48000 32 136448 66805226cf9e52dc 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	48000 64 136448 66805226cf9e52dc 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	48000 128 136448 66805226cf9e52dc 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	48000 512 136192 da942eb2c3a9a60f 995b1ee8838e1beb
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	48000 4096 133888 42c671294e4fadd1 9942df3c413d8057
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	44100 32 136448 52e527ad173be4e0 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	44100 64 136448 52e527ad173be4e0 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	44100 128 136448 52e527ad173be4e0 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	44100 512 136192 6fa741443b268549 995b1ee8838e1beb
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	44100 4096 133120 a303b20316ed5b0a df0333ef32c351cd
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	96000 32 136448 d1082332bf562cf5 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	96000 64 136448 d1082332bf562cf5 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	96000 128 136448 d1082332bf562cf5 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	96000 512 136448 37da7060963cb225 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	96000 4096 133888 8a4580cacc0893dd 9942df3c413d8057
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	192000 32 136448 947d60e91f2f0315 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	192000 64 136448 947d60e91f2f0315 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	192000 128 136448 947d60e91f2f0315 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	192000 512 136448 947d60e91f2f0315 68ae78e3ef94e73e
+WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)	192000 4096 135424 7c34b2f3abb0e174 7fe67fe629fbf934

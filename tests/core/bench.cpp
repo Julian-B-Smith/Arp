@@ -61,6 +61,7 @@ struct Scenario {
   int keys = 16;           // held from the first block
   int keyBase = 36, keyStride = 3;
   bool churn = false;      // every quarter second: release 4 keys and press 4 new ones
+  int channels = 1;        // held key i is pressed on MIDI channel i % channels (MPE-style when 16)
   std::optional<UserPattern> user;
   Scale scale{0, 0xAB5};   // horde's global scale: C major
 };
@@ -115,6 +116,23 @@ std::vector<Scenario> scenarios() {
     for (int i = 0; i < 6; ++i) { s.st.chordOn[i] = true; s.st.chordShift[i] = i + 1; }
     UserPattern u; u.length = 1; u.steps[0].ratchet = 4; s.user = u;
   });
+  // M3b rework: two loads the critic found heavier than the "worst case" above, for different reasons (the table, not the event rate).
+  // A: 32 held keys on 16 channels (MPE-style) through a 3-shift chord stage = 128 distinct keys, 8 transposition steps: more notes than the 128-entry
+  //    arp table holds, so every new on evicts the oldest (T11), about 16,500 evictions a second.
+  // B: the same on one channel without transposition: nothing is evicted, every on retriggers a still-sounding note (T2).
+  auto loadAB = [](Scenario& s) {
+    s.bpm = 999; s.keys = 32; s.keyBase = 0; s.keyStride = 4;
+    s.st.order = Order::Chord; s.st.pattern = Pattern::User; s.st.gate = 200;
+    s.st.chordEnabled = true;
+    for (int i = 0; i < 6; ++i) { s.st.chordOn[i] = i < 3; s.st.chordShift[i] = i < 3 ? i + 1 : 0; }
+    UserPattern u; u.length = 1; u.steps[0].ratchet = 1; u.steps[0].gate = 200; s.user = u;
+  };
+  add("WORST CASE A: 32 keys on 16 channels, chord stage +1/+2/+3 (128 notes), 8 transposition steps, order chord, gate 200, 1/64 @999 (every on evicts, T11)", [loadAB](Scenario& s) {
+    loadAB(s); s.channels = 16; s.st.steps = 8; s.st.stepSize = 1;
+  });
+  add("WORST CASE B: 32 keys on one channel, chord stage +1/+2/+3 (128 notes), order chord, gate 200, 1/64 @999 (every on retriggers, T2)", [loadAB](Scenario& s) {
+    loadAB(s);
+  });
   return v;
 }
 
@@ -130,12 +148,13 @@ struct Feeder {
   std::vector<std::pair<std::size_t, std::size_t>> slice;
   Feeder(const Scenario& s, int rate) : sc(s), sr(rate), idOfKey(static_cast<std::size_t>(std::max(0, s.keys)), 0) {}
 
-  static Event on(int key, std::int64_t id, int offset) {
-    Event e; e.type = EventType::NoteOn; e.key = key; e.vel = 90 + (key % 30); e.ref.id = id; e.offset = offset; return e;
+  static Event on(int key, int channel, std::int64_t id, int offset) {
+    Event e; e.type = EventType::NoteOn; e.key = key; e.vel = 90 + (key % 30); e.ref.id = id; e.ref.channel = channel; e.offset = offset; return e;
   }
-  static Event off(int /*key*/, std::int64_t id, int offset) {
-    Event e; e.type = EventType::NoteOff; e.ref.id = id; e.offset = offset; return e;   // the same ref as its NoteOn: only the id identifies an input note here
+  static Event off(int channel, std::int64_t id, int offset) {
+    Event e; e.type = EventType::NoteOff; e.ref.id = id; e.ref.channel = channel; e.offset = offset; return e;   // the same ref as its NoteOn (id and channel; the key stays 0 in both)
   }
+  int channelOf(int i) const { return i % sc.channels; }
   int keyOf(int i) const { return sc.keyBase + sc.keyStride * i; }
 
   // Fill `count` consecutive blocks of `n` samples starting at the current position. Pointers into `evs` are taken only after it stops growing.
@@ -148,19 +167,19 @@ struct Feeder {
     for (int b = 0; b < count; ++b) {
       const std::size_t first = evs.size();
       if (abs == 0)
-        for (int i = 0; i < sc.keys; ++i) { idOfKey[static_cast<std::size_t>(i)] = nextId; evs.push_back(on(keyOf(i), nextId++, 0)); }
+        for (int i = 0; i < sc.keys; ++i) { idOfKey[static_cast<std::size_t>(i)] = nextId; evs.push_back(on(keyOf(i), channelOf(i), nextId++, 0)); }
       if (sc.churn && sc.keys >= 4) {
         for (std::int64_t t = (abs / period + (abs % period ? 1 : 0)) * period; t < abs + n; t += period) {
           if (t == 0) continue;
           const std::int64_t j = t / period;
           for (int q = 0; q < 4; ++q) {
             const int i = static_cast<int>((4 * j + q) % sc.keys);
-            evs.push_back(off(keyOf(i), idOfKey[static_cast<std::size_t>(i)], static_cast<int>(t - abs)));
+            evs.push_back(off(channelOf(i), idOfKey[static_cast<std::size_t>(i)], static_cast<int>(t - abs)));
           }
           for (int q = 0; q < 4; ++q) {
             const int i = static_cast<int>((4 * j + q) % sc.keys);
             idOfKey[static_cast<std::size_t>(i)] = nextId;
-            evs.push_back(on(keyOf(i), nextId++, static_cast<int>(t - abs)));
+            evs.push_back(on(keyOf(i), channelOf(i), nextId++, static_cast<int>(t - abs)));
           }
         }
       }
@@ -428,7 +447,7 @@ int main(int argc, char** argv) {
   std::vector<Scenario> list = scenarios();
   if (!only.empty()) list.erase(std::remove_if(list.begin(), list.end(), [&](const Scenario& s) { return s.name.find(only) == std::string::npos; }), list.end());
   if (list.empty()) { std::fprintf(stderr, "no scenario matches '%s'\n", only.c_str()); return 2; }
-  const int rates[] = {48000, 44100, 96000};
+  const int rates[] = {48000, 44100, 96000, 192000};
   const int blocks[] = {32, 64, 128, 512};
   struct Row { std::string name; int sr, block; Result r; };
   std::vector<Row> rows;
@@ -458,11 +477,14 @@ int main(int argc, char** argv) {
       if (r.name.rfind("WORST CASE", 0) != 0 && (!worstTypical || r.r.pctCore > worstTypical->r.pctCore)) worstTypical = &r;
     }
     std::printf("  %6d Hz  heaviest scenario overall: %.4f %% of a core, x4 = %.4f %%  [%s, block %d]  -> %s the %.0f %% slice\n", sr, worst->r.pctCore, worst->r.derated, worst->name.c_str(), worst->block, worst->r.derated <= kBudgetPct ? "WITHIN" : "OVER", kBudgetPct);
-    std::printf("            heaviest excluding the deliberate worst case: %.4f %%, x4 = %.4f %%  [%s, block %d]  -> %s\n", worstTypical->r.pctCore, worstTypical->r.derated, worstTypical->name.c_str(), worstTypical->block, worstTypical->r.derated <= kBudgetPct ? "WITHIN" : "OVER");
+    int over = 0, total = 0;
+    for (const Row& r : rows) if (r.sr == sr) { ++total; over += r.r.derated > kBudgetPct; }
+    std::printf("            configurations over the %.0f %% slice after x4: %d of %d (every scenario x every block size)\n", kBudgetPct, over, total);
+    std::printf("            heaviest excluding the deliberate worst cases: %.4f %%, x4 = %.4f %%  [%s, block %d]  -> %s\n", worstTypical->r.pctCore, worstTypical->r.derated, worstTypical->name.c_str(), worstTypical->block, worstTypical->r.derated <= kBudgetPct ? "WITHIN" : "OVER");
   }
   {   // what the slice buys in events: the budget is 2 % of the min-spec core, i.e. 2 / 4 = 0.5 % of THIS machine's core under the x4 heuristic
     const Row* w = nullptr;
-    for (const Row& r : rows) if (r.sr == 48000 && r.block == 128 && r.name.rfind("WORST CASE", 0) == 0) w = &r;
+    for (const Row& r : rows) if (r.sr == 48000 && r.block == 128 && r.name.rfind("WORST CASE for events", 0) == 0) w = &r;
     if (w && w->r.nsPerEvent > 0)
       std::printf("  events: the deliberate worst case costs %.0f ns per output event at 48 kHz / 128; the %.0f %% slice at x%.0f is %.2f %% of this core = about %.0f output events per second at that cost\n", w->r.nsPerEvent, kBudgetPct, kDerate, kBudgetPct / kDerate, kBudgetPct / kDerate / 100 * 1e9 / w->r.nsPerEvent);
   }

@@ -836,7 +836,10 @@ void applyM2aDraws(Session& s, std::uint32_t seed) {
       }
     }));
   }
-  for (int i = rnd(3); i > 0; --i) s.scaleAt.emplace_back(1 + rnd(s.total - 1), Scale{rnd(12), static_cast<std::uint16_t>(g() & 0xFFF)});
+  for (int i = rnd(3); i > 0; --i) {   // the draws are statements: inside emplace_back's arguments their order is the compiler's (clang left to right, g++ right to left)
+    const int at = 1 + rnd(s.total - 1);
+    s.scaleAt.emplace_back(at, Scale{rnd(12), static_cast<std::uint16_t>(g() & 0xFFF)});
+  }
 }
 
 namespace {

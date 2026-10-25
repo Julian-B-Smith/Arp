@@ -12,9 +12,11 @@
 #include <cstring>
 #include <fstream>
 #include <sstream>
+#include <tuple>
 #include <string>
 #include <vector>
 
+#include "digest_corpus.h"
 #include "harness.h"
 
 #ifndef ARP_DIGEST_FILE
@@ -39,6 +41,17 @@ std::string lineOf(const DigestEntry& e) {
 // review. The chunk hash covers every column of every run in it. For the exact run that moved, ARP_DIGEST_DUMP=<path> writes the full per-run
 // list (kept out of the tree) and two dumps - the pre- and post-change core - diff.
 constexpr std::size_t kChunk = 32;
+
+// The runs are compared as a SET: sorted by every column before they are chunked. The order a suite runs its sessions in is not the core's
+// behaviour, and the language leaves some of it to the compiler (`f(a()) != f(b())` calls a() and b() in an order clang and g++ choose
+// differently), so an ordered list made the same suite hash differently on macOS and on the Linux CI. Which runs exist, and what each produced, is
+// what is pinned.
+std::vector<DigestEntry> canonical(std::vector<DigestEntry> v) {
+  std::sort(v.begin(), v.end(), [](const DigestEntry& a, const DigestEntry& b) {
+    return std::tie(a.kind, a.sr, a.block, a.total, a.events, a.stream, a.counters) < std::tie(b.kind, b.sr, b.block, b.total, b.events, b.stream, b.counters);
+  });
+  return v;
+}
 
 std::uint64_t chunkHash(const std::vector<DigestEntry>& v, std::size_t from, std::size_t to) {
   Fnv f;
@@ -78,7 +91,8 @@ std::vector<Chunk> readFile(const std::string& path, std::string& err) {
 }
 
 // The comparison: chunk by chunk (the order of the suite's runs is fixed), so a mismatch names the runs. Returns one line per problem.
-std::vector<std::string> compare(const std::vector<DigestEntry>& got, const std::vector<Chunk>& want) {
+std::vector<std::string> compare(const std::vector<DigestEntry>& gotInRunOrder, const std::vector<Chunk>& want) {
+  const std::vector<DigestEntry> got = canonical(gotInRunOrder);
   const std::vector<Chunk> have = chunksOf(got);
   std::vector<std::string> bad;
   if (have.size() != want.size()) bad.push_back("the suite made " + std::to_string(got.size()) + " recorded runs in " + std::to_string(have.size()) + " chunks, the digest has " + std::to_string(want.size()) + " chunks");
@@ -175,20 +189,23 @@ void runDigestTests() {
     check(clean.digestStream == again.digestStream && clean.digestCounters != 0, "known answer: the same session at block 64 and block 7 hashes identically (the stream digest is block-partition independent)");
   }
 
+  recordDigestCorpus();   // the seeded random sessions (kind F), after everything the suite itself recorded
+
   // -- the comparison: a flipped hash and a missing chunk are caught, by name.
   std::string err;
   const std::vector<Chunk> want = readFile(ARP_DIGEST_FILE, err);
   const std::vector<DigestEntry>& got = digestLog().entries;
   if (const char* dump = std::getenv("ARP_DIGEST_DUMP")) {   // the full per-run list, for diffing two cores: a debugging aid, not part of the check
     std::ofstream out(dump, std::ios::trunc);
-    for (std::size_t i = 0; i < got.size(); ++i) out << i << ' ' << lineOf(got[i]) << "\n";
+    const std::vector<DigestEntry> sorted = canonical(got);
+    for (std::size_t i = 0; i < sorted.size(); ++i) out << i << ' ' << lineOf(sorted[i]) << "\n";
   }
   if (std::getenv("ARP_DIGEST_WRITE") != nullptr) {   // regeneration: ONLY from the core the digest is meant to describe (tools/core_digest.sh regen); the check then fails on purpose so it cannot stay switched on
     std::ofstream out(ARP_DIGEST_FILE, std::ios::trunc);
-    out << "# arp stream digest v1 (tests/core/test_digest.cpp): one hash per " << kChunk << " consecutive recorded runs of the invariant suite (kind P) and wide replays of its\n";
+    out << "# arp stream digest v1 (tests/core/test_digest.cpp): one hash per " << kChunk << " consecutive runs (sorted by every column) of the invariant suite (kind P) and wide replays of its\n";
     out << "# distinct sessions (kind W). Each run is hashed over every event field, step record and counter (tests/core/stream_digest.h). Columns: runs-in-chunk chunk-hash.\n";
     if (const char* note = std::getenv("ARP_DIGEST_NOTE")) out << "# " << note << "\n";
-    for (const Chunk& c : chunksOf(got)) out << c.runs << ' ' << hex16(c.hash) << "\n";
+    for (const Chunk& c : chunksOf(canonical(got))) out << c.runs << ' ' << hex16(c.hash) << "\n";
     check(false, "ARP_DIGEST_WRITE is set: wrote " + std::to_string(got.size()) + " runs to the digest file; rerun without it to check");
     return;
   }
@@ -209,9 +226,9 @@ void runDigestTests() {
   int shown = 0;
   for (const std::string& b : bad) if (shown++ < 5) std::printf("  digest: %s\n", b.c_str());
   if (bad.size() > 5) std::printf("  digest: ... and %zu more chunks\n", bad.size() - 5);
-  std::size_t wide = 0;
-  for (const DigestEntry& e : got) wide += e.kind == 'W';
-  check(bad.empty(), "stream digest: all " + std::to_string(got.size()) + " recorded runs (" + std::to_string(got.size() - wide) + " the suite's own, " + std::to_string(wide) + " wide replays at block sizes 1/7/64/512/4096 and 44.1/48/96/192 kHz) hash to the committed pre-optimisation digest - every event field, step record and counter");
+  std::size_t wide = 0, seeded = 0;
+  for (const DigestEntry& e : got) { wide += e.kind == 'W'; seeded += e.kind == 'F'; }
+  check(bad.empty(), "stream digest: all " + std::to_string(got.size()) + " recorded runs (" + std::to_string(got.size() - wide - seeded) + " the suite's own, " + std::to_string(wide) + " wide replays at block sizes 1/7/64/512/4096 and 44.1/48/96/192 kHz, " + std::to_string(seeded) + " seeded random sessions with tiny capacities) hash to the committed pre-optimisation digest - every event field, step record and counter");
 }
 
 }  // namespace arp_test

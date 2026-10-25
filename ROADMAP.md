@@ -235,6 +235,11 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   45-52 % to 1.2-1.5 % after x4, output byte-identical to the M3a core (digests regenerated independently by the
   lead from 0ef0903 and matched). M3a's bench figure was wrong (its user patterns were never installed): corrected
   in D-030 and the M3a trace.
+- **M3b rework (D-031):** the critic found heavier loads (32 keys over 16 channels, every note evicting; the same
+  on one channel, every note retriggering). Optimised again: every one of 33 scenarios x 4 rates x 4 block sizes is
+  within 2 % after x4 (heaviest 1.3-1.4 %); output byte-identical to the M3a core over 42,210 suite runs (incl. 2,000
+  seeded random sessions) and 660 bench configurations, digests reproduced by the lead from 0ef0903. The digest's
+  run set was compiler-dependent (argument evaluation order in the tests); fixed, pending Linux CI.
 - **M3a (as planned):** a Release CPU and memory benchmark (reported); checks for the rows not yet covered —
   several meters and tempos, no input no output, a preset load as a terminal path, the pattern-bank selection as a
   morph target; the copy-in file list with a build-from-the-list check.

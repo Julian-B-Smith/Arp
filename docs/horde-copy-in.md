@@ -13,12 +13,12 @@ Keep the relative layout: `core/include` is the include root (`#include "arp/cor
 |---|---|
 | `core/include/arp/arith.h` | 702d89b13848b554a6e32392f5f48a22bbdd157e8a531270f194e0a103f37162 |
 | `core/include/arp/bank_data.h` | 87876a9f7681733500c17e65463f043b1be4f5bda8a77aff5949347c3a4b3723 |
-| `core/include/arp/core.h` | d53ba4bf9ab812e25cb9594d46a20ea9a9b92142e4d35928149dbcd82be4fa9b |
+| `core/include/arp/core.h` | 4c8b1fd3b8f00d3e62da91e8772fcc24819027d82dffd12ba9965c4c8198293b |
 | `core/include/arp/draw.h` | 8ea2c17c6eb55baa621fd37659c7f19bcb6c46b0304d59870d371eca0ca8dc92 |
-| `core/include/arp/int128.h` | 860e141c61015b1eb471385d1e97d1c084301ab040945480208f7cf97d256727 |
+| `core/include/arp/int128.h` | bb2c26a4cea9e04015c18957bf81a0d76b10f332ba72c86416fa41065112b433 |
 | `core/include/arp/pattern.h` | 1ad8f47861d91587aa6df2b6180d85cfc7d611fc8001769d42547cf1714e3899 |
 | `core/include/arp/types.h` | 509619c7b671701d0c16b88c88d3d14e3e3dfef41b019c57b317d929153d7952 |
-| `core/src/core.cpp` | 27b9a8efb646002fcdfd155a3dd5eb119fcab070fabcfb776636ddf64638ccca |
+| `core/src/core.cpp` | 2acf9c0e095e03287ab427b1dd30865a4dfb3a33c6aef13cab60a69766937e31 |
 
 - **Pinned at commit:** the commit that contains this file. horde records `git log -1 --format=%h -- core/ docs/horde-copy-in.md`
   in its copy-in PR; the sha256 column above is the authority (it is what `tools/core_test.sh` checks), the commit is the label.
@@ -29,7 +29,7 @@ Keep the relative layout: `core/include` is the include root (`#include "arp/cor
 
 ## Build notes
 
-- **C++20**, standard library only: `<algorithm> <array> <atomic> <cmath> <cstdint> <cstring> <functional> <iterator> <numeric> <span> <vector>`.
+- **C++20**, standard library only: `<algorithm> <array> <atomic> <cassert> <cmath> <cstdint> <cstring> <functional> <iterator> <numeric> <span> <tuple> <vector>` (`<cassert>` only for debug asserts; `NDEBUG` removes them).
   No third-party dependency, no thread library (the user-pattern hand-over is a lock-free `std::atomic<int>`, asserted at compile time).
 - **No defines.** In particular **`ARP_PLANTS` must NOT be defined** in horde's build: it compiles in the test-only fault switches of the suite
   (`arp::Plants`) and the shipped library must not contain them. `arp::plantsCompiledIntoLibrary()` returns `false` in a correct build.

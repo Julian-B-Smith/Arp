@@ -141,6 +141,8 @@ struct Plants {
   // ---- M3a (T-007, horde's note-processor 1.0 bar) ----
   bool meterAs44 = false;           // SPEC 4.5: restart `bar` reads every time signature as 4/4 (the bar length ignores timeSigNum / timeSigDen)
   bool emitOnEmptySet = false;      // bar row "no input, no output": a step that finds no key held plays a note anyway
+  // ---- M3b rework (D-030) ----
+  bool evictBornPrevSample = false; // T11: a note born in the PREVIOUS sample cannot be evicted either (the victim must be two samples old): the off-by-one a mutant of the eviction test made
 };
 #endif
 
@@ -210,8 +212,9 @@ class Core {
     I128 offPos{};
     NoteRef ref{};
     std::int64_t onAbs = 0;
-    std::int64_t quickT = 0;   // kOffQuick only: when the off is due, as an offset in the block it was filed in
+    std::int32_t quickT = 0;   // kOffQuick only: when the off is due, as an offset in the block it was filed in (at most the block length)
     std::int16_t keyNext = -1; // the next slot sounding on the same key (the per-key chain); in a FREE slot, the next free slot
+    std::int16_t liveNext = -1, livePrev = -1;   // the live-arp list (liveHead_): ascending output id, only notes that are arp, used and not dying
     std::uint8_t off = kOffNone;
     bool used = false;
     bool hasOff = false;       // a scheduled off exists (else: dying, or never)
@@ -302,6 +305,8 @@ class Core {
   int findSounding(const NoteRef& ref) const;
   int collectSounding(int* slots, bool includeChord) const;
   int oldestSounding() const;
+  void liveLink(int i);
+  void liveUnlink(int i);
   void unlinkOff(int i);
   void schedInsert(int i);
   void schedErase(int i);
@@ -324,6 +329,9 @@ class Core {
   void releaseAll(std::int32_t s, bool includeChord = true);
   void releaseArp(std::int32_t s) { releaseAll(s, false); }   // T6 and the arp's own switch-off: chord notes behave like held keys (SPEC 14)
   void sortEvents();
+  void insertionSort(int from, int to);
+  void sortSegment(int from, int to);
+  static constexpr int kSortScratch = 512;    // the largest same-offset run sortSegment sorts by key
   void flushOwed();
   void resetState();
   void plantAlloc();
@@ -448,7 +456,7 @@ class Core {
   // held set
   std::array<Ref, kMaxRefs> refs_{};
   int refN_ = 0;
-  std::uint64_t refsVer_ = 0;   // bumped at every write to refs_ (add, erase, state change, clear): the chord stage skips a pass when it has not moved
+  std::uint64_t refsVer_ = 0;   // bumped when a ref joins or leaves refs_ (what H is made of; a state change Down / Pedal / Latched leaves H alone): the chord stage skips a pass while it holds still
   std::array<NoteRef, kIgnoredRing> ignored_{};
   int ignoredN_ = 0;
   bool pedalDown_ = false;
@@ -462,6 +470,8 @@ class Core {
   //   * keyHead_[k] heads the chain (keyNext) of the used slots whose ref.key is k (any other key shares chain 0: keyChain()), newest first:
   //     a retrigger (T2) and release(ref) walk one short chain instead of the table;
   //   * liveN_ counts used slots that are not `dying`, liveChordN_ those of them in the chord stage: T11 asks "how many live arp notes" in O(1);
+  //     liveHead_ / liveTail_ chain exactly the live ARP notes in ascending output id (liveNext / livePrev), so T11's victim, the oldest live arp note
+  //     that was not born this very sample, is found from the head instead of by scanning the table (every on of an overfull table evicts);
   //   * the OFF SCHEDULE finds the next off without scanning. An entry with a due off (hasOff, or dying) is in exactly one of two places:
   //       sched_  - a ring of slot indices sorted by offPos (ties in any order), for an off that lies at or after the sample after its own on.
   //                 Sample offsets are monotone in offPos, so the head is the soonest, and `max(0, ofs(offPos))` is its due offset.
@@ -476,6 +486,7 @@ class Core {
   std::array<std::int16_t, 128> keyHead_{};
   std::int16_t freeHead_ = -1;
   int soundN_ = 0, chordSoundN_ = 0, liveN_ = 0, liveChordN_ = 0;
+  std::int16_t liveHead_ = -1, liveTail_ = -1;
   std::array<int, kSchedRing> sched_{};
   int schedHead_ = 0, schedN_ = 0;
   std::array<int, kSoundingSlots> quick_{};

@@ -38,7 +38,7 @@ note="generated from $origin: core/src/core.cpp sha256 $(sha "$core/src/core.cpp
 
 tests="$repo/tests/core"
 digest="$tests/stream_digest.txt"
-suite=("$tests"/test_core.cpp "$tests"/test_m1b.cpp "$tests"/test_m2a.cpp "$tests"/test_m2b.cpp "$tests"/test_m3.cpp "$tests"/test_digest.cpp "$tests"/test_int128.cpp "$tests"/alloc_hook.cpp)
+suite=("$tests"/test_core.cpp "$tests"/test_m1b.cpp "$tests"/test_m2a.cpp "$tests"/test_m2b.cpp "$tests"/test_m3.cpp "$tests"/test_evict.cpp "$tests"/digest_corpus.cpp "$tests"/test_digest.cpp "$tests"/test_int128.cpp "$tests"/alloc_hook.cpp)
 "$cxx" -std=c++20 -O1 -DARP_PLANTS -DARP_DIGEST_FILE="\"$digest\"" -I"$core/include" -I"$tests" "${suite[@]}" "$core/src/core.cpp" -o "$work/arp_tests" -pthread || { echo "FAIL  core_digest: the suite does not build against $origin"; exit 1; }
 "$cxx" -std=c++20 -O2 -DNDEBUG -I"$core/include" -I"$tests" "$tests/bench.cpp" "$tests/alloc_hook.cpp" "$core/src/core.cpp" -o "$work/arp_bench" || { echo "FAIL  core_digest: the benchmark does not build against $origin"; exit 1; }
 
