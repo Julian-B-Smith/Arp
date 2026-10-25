@@ -143,6 +143,10 @@ struct Plants {
   bool emitOnEmptySet = false;      // bar row "no input, no output": a step that finds no key held plays a note anyway
   // ---- M3b rework (D-030) ----
   bool evictBornPrevSample = false; // T11: a note born in the PREVIOUS sample cannot be evicted either (the victim must be two samples old): the off-by-one a mutant of the eviction test made
+  // ---- M3c (D-032) ----
+  bool chordFullPass = false;       // NOT a fault: the REFERENCE mode of the chord stage. Every pass rebuilds the whole stage (the M3a algorithm) instead of updating it for the keys that changed; the output must not differ
+  bool chordIncSkipsRefresh = false;  // the incremental chord pass does not refresh a stored record whose held entry changed (a stale press time, velocity or channel)
+  bool chordIncDescending = false;  // the incremental chord pass starts and stops notes in DESCENDING key order (output ids and event order differ from the full pass)
 };
 #endif
 
@@ -277,6 +281,11 @@ class Core {
   void ignoreRef(const NoteRef& r);
   bool unignoreRef(const NoteRef& r);   // true if it was in the ignored list (and removes it)
   template <class Pred> void eraseRefs(Pred pred);   // compacts refs_ in place, keeping order
+  void addRef(const Ref& r);                          // the ONE way a ref joins refs_ (and the one place the per-key aggregates see it)
+  void refGone(const Ref& r);                         // a ref that eraseRefs removed
+  void clearRefs();                                   // every ref gone (Panic, reset)
+  int refCountOf(std::int32_t key) const;             // refs_ entries on this key
+  int distinctHeld() const;                           // distinct keys over refs_ (what collectHeld would return), without building H
   // the grid walk
   void visit(std::int32_t so);
   void switchRate(std::int64_t kAbs, std::int32_t so);
@@ -288,6 +297,7 @@ class Core {
   std::int64_t cycleLength(const PatternStep* steps, std::int64_t plen, int e) const;
   void updateCycle();
   int heldForArp(HeldKey* out) const;
+  int heldCountForArp() const;   // what heldForArp would return, without building the set
   std::int32_t lowestHeldKey() const;
   struct Note { std::int32_t key = 0, vel = 0, ch = 0; };
   int notesFor(const HeldKey* E, int e, std::int64_t kAbs, std::int32_t pick, Note* out) const;
@@ -444,11 +454,33 @@ class Core {
   std::array<ChordRec, kMaxHeldKeys> chordRec_{};
   int chordRecN_ = 0;
   std::array<ChordNote, 128> chordNote_{};     // indexed by key 0..127
+  // The chord set H' is chordNote_ restricted to the used notes, in ascending key order; chordSet_[k] holds the entry of key k (valid iff chordNote_[k].used):
+  // the note's velocity and channel, and the press sample and slot of its earliest source. chordSetN_ is the number of used notes (a complete pass and
+  // chordEndAll leave it exact). The stage keeps it by key so that a pass for a few changed keys touches a few entries (M3c); heldForArp() lists them in order.
   std::array<HeldKey, kMaxArpKeys> chordSet_{};
   int chordSetN_ = 0;
   ChordSigData chordSig_{};
   bool chordSigValid_ = false;
   std::uint64_t chordSyncVer_ = 0;   // refsVer_ as of the last COMPLETE pass of chordSync (only trusted while chordSigValid_ and the signature are unchanged)
+  // The keys whose refs came or went since the last complete pass (bit k of keysDirty_, k in 0..127; a key outside 0..127, a Panic or a reset sets dirtyAll_
+  // instead). With the signature unchanged, H can only differ in these keys, so the next pass updates the stage for them alone (chordIncremental) and any
+  // other pass rebuilds it whole (the M3a algorithm, which stays the reference). Set by addRef / refGone / clearRefs; cleared by every complete pass.
+  std::array<std::uint64_t, 2> keysDirty_{};
+  bool dirtyAll_ = true;
+  struct ChordQuant { std::int32_t root = 0; std::uint32_t mask = 0; bool on = false; bool degrees = false; };   // the stage's effective scale (SPEC 14 note 13)
+  ChordQuant chordQuant(const ChordSigData& sig, bool haveLowest, std::int32_t lowest) const;
+  std::int64_t chordSnap(const ChordQuant& q, std::int64_t k);
+  void chordMapRec(ChordRec& r, const ChordQuant& q);
+  bool chordFullPassForced() const;
+  bool chordIncremental(std::int32_t s);
+  void chordRebuild(std::int32_t s, const ChordSigData& sig, bool remap);
+  void markDirty(std::int32_t key) {
+    if (static_cast<std::uint32_t>(key) < 128u) keysDirty_[static_cast<std::size_t>(key >> 6)] |= std::uint64_t{1} << (key & 63);
+    else dirtyAll_ = true;
+  }
+  bool isDirty(std::int32_t key) const {
+    return static_cast<std::uint32_t>(key) < 128u && ((keysDirty_[static_cast<std::size_t>(key >> 6)] >> (key & 63)) & 1u) != 0;
+  }
 #ifdef ARP_PLANTS
   std::array<int, 128> chordDrift_{};          // chordRecomputeAtRelease
 #endif
@@ -456,6 +488,14 @@ class Core {
   // held set
   std::array<Ref, kMaxRefs> refs_{};
   int refN_ = 0;
+  // Per-key aggregates of refs_ (M3c, D-032). noteOn asks "how many refs on this key" and "how many distinct keys" at every press; both were scans
+  // of refs_ (the second quadratic: ~4 us per press on a full table). Invariants, kept by addRef / refGone / clearRefs and by nothing else:
+  //   keyRefCnt_[k] = the entries of refs_[0, refN_) whose key is k, for k in 0..127 (at most kMaxRefs = 128, so a byte holds it);
+  //   refsOutOfRange_ = the entries whose key is outside 0..127 (a host bug: the core drops such a key at output, T16, but H still counts it);
+  //   keysHeld_ = the number of k in 0..127 with keyRefCnt_[k] > 0.
+  // A press with a key outside 0..127 takes the slow path of distinctHeld(), which is exact.
+  std::array<std::uint8_t, 128> keyRefCnt_{};
+  int keysHeld_ = 0, refsOutOfRange_ = 0;
   std::uint64_t refsVer_ = 0;   // bumped when a ref joins or leaves refs_ (what H is made of; a state change Down / Pedal / Latched leaves H alone): the chord stage skips a pass while it holds still
   std::array<NoteRef, kIgnoredRing> ignored_{};
   int ignoredN_ = 0;

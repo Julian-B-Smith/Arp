@@ -141,6 +141,33 @@ std::string unhashedEventField(EventHasher hash) {
   return missed;
 }
 
+// A session fingerprint decides which sessions share a wide replay (harness.h digestRecord), so two sessions that DIFFER but share one lose a replay, silently.
+// The check: runs with the same fingerprint at the same block size are the same run, so their output must be identical. A collision of differing sessions
+// shows up as differing output under one fingerprint.
+struct FpRun { std::uint64_t fp = 0; int block = 0; std::uint64_t events = 0, stream = 0, counters = 0; };
+
+std::vector<std::string> fingerprintConflicts(std::vector<FpRun> runs) {
+  std::sort(runs.begin(), runs.end(), [](const FpRun& a, const FpRun& b) { return std::tie(a.fp, a.block, a.events, a.stream, a.counters) < std::tie(b.fp, b.block, b.events, b.stream, b.counters); });
+  std::vector<std::string> bad;
+  for (std::size_t i = 1; i < runs.size(); ++i) {
+    const FpRun& a = runs[i - 1];
+    const FpRun& b = runs[i];
+    if (a.fp == b.fp && a.block == b.block && (a.events != b.events || a.stream != b.stream || a.counters != b.counters))
+      bad.push_back("fingerprint " + hex16(a.fp) + " at block " + std::to_string(a.block) + " gives two different outputs (" + hex16(a.stream) + " and " + hex16(b.stream) + ")");
+  }
+  return bad;
+}
+
+// The G5 band-edge sessions (test_core.cpp testG5): one jittered block mid-run, by 960, 961 and -961 ticks. They differ ONLY in that one value at position 10240.
+Session bandEdgeSession(int ticks) {
+  Session s;
+  s.total = 20000;
+  s.base.gate = 200;
+  s.ins = {K(0, "a", 60)};
+  s.jitter = [ticks](int pos) { return pos == 10240 ? ticks : 0; };
+  return s;
+}
+
 }  // namespace
 
 void runDigestTests() {
@@ -190,6 +217,40 @@ void runDigestTests() {
   }
 
   recordDigestCorpus();   // the seeded random sessions (kind F), after everything the suite itself recorded
+
+  // -- the session fingerprint tells differing sessions apart (D-032, critic MEDIUM-2). Plant first: the OLD fingerprint (the closures sampled at 7 positions) cannot
+  //    tell the three band-edge sessions apart, and the conflict check reads red on it; the real one (every position) can, and is clean.
+  {
+    DigestLog& d = digestLog();
+    const bool was = d.enabled;
+    d.enabled = false;   // the check's own sessions are not part of the committed corpus
+    std::vector<FpRun> blind, sharp;
+    std::uint64_t firstStream = 0;
+    bool outputsDiffer = false;
+    for (int ticks : {960, 961, -961}) {
+      const Session s = bandEdgeSession(ticks);
+      const Run r = runOnce(s, 64, true);
+      if (blind.empty()) firstStream = r.digestStream; else outputsDiffer = outputsDiffer || r.digestStream != firstStream;
+      blind.push_back({sessionFingerprint(s, true), 64, r.nEvents, r.digestStream, r.digestCounters});
+      sharp.push_back({sessionFingerprint(s), 64, r.nEvents, r.digestStream, r.digestCounters});
+    }
+    d.enabled = was;
+    const std::vector<std::string> blindBad = fingerprintConflicts(blind);
+    plant(outputsDiffer && !blindBad.empty(), "a fingerprint that samples the jitter at a few positions merges the band-edge sessions (960 / 961 / -961 ticks at position 10240) and the conflict check names it (" + (blindBad.empty() ? std::string("NOT NAMED") : blindBad.front()) + ")");
+    check(sharp[0].fp != sharp[1].fp && sharp[1].fp != sharp[2].fp && sharp[0].fp != sharp[2].fp && fingerprintConflicts(sharp).empty(),
+          "the session fingerprint calls the jitter at every position, so the three band-edge sessions are three sessions");
+    std::vector<FpRun> all;
+    std::size_t distinct = 0;
+    std::vector<std::uint64_t> seen;
+    for (const DigestEntry& e : digestLog().entries)
+      if (e.kind == 'P' && e.fp != 0) {
+        all.push_back({e.fp, e.block, e.events, e.stream, e.counters});
+        if (std::find(seen.begin(), seen.end(), e.fp) == seen.end()) { seen.push_back(e.fp); ++distinct; }
+      }
+    const std::vector<std::string> bad = fingerprintConflicts(all);
+    for (std::size_t i = 0; i < bad.size() && i < 5; ++i) std::printf("  fingerprint: %s\n", bad[i].c_str());
+    check(bad.empty(), "no two runs with the same session fingerprint and block size differ in output: " + std::to_string(all.size()) + " runs of " + std::to_string(distinct) + " distinct sessions");
+  }
 
   // -- the comparison: a flipped hash and a missing chunk are caught, by name.
   std::string err;

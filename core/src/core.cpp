@@ -13,6 +13,10 @@
 // queue") so an event no longer scans or shifts them, and a chord-stage pass that has nothing new to do is skipped. The output is byte-identical to
 // M3a's: tests/core/stream_digest*.txt pin it, hashed from the M3a core.
 //
+// M3c (D-032) changed no behaviour either, and again for a host that keeps sending notes: the held-key counts are kept per key instead of scanned
+// (core.h, keyRefCnt_), and the chord stage updates itself for the keys that changed instead of rebuilding (chordIncremental; chordRebuild is the
+// definition it must agree with, plant chordFullPass runs it every time). Same digests, same bytes.
+//
 // Everything is fixed-capacity: the only allocations are in prepare().
 // (__FINITE_MATH_ONLY__ is predefined as 0 normally and 1 under -ffinite-math-only, so test its VALUE.)
 #if defined(__FAST_MATH__) || (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__)
@@ -22,6 +26,7 @@
 #include "arp/core.h"
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <cmath>
 #include <cstring>
@@ -208,7 +213,7 @@ bool Core::prepare(int sampleRate, int maxBlock) {
 }
 
 void Core::resetState() {
-  refN_ = 0;   // (chordSigValid_ is cleared below, so the chord stage cannot skip its next pass: no refsVer_ bump needed)
+  clearRefs();   // (chordSigValid_ is cleared below, so the chord stage cannot skip its next pass: no refsVer_ bump needed)
   ignoredN_ = 0;
   pedalDown_ = false;
   moduleOn_ = false;
@@ -820,11 +825,60 @@ void Core::sortSegment(int from, int to) {   // the caller has seen that [from, 
 
 template <class Pred>
 void Core::eraseRefs(Pred pred) {
-  ++refsVer_;   // (every removal goes through here or clears refN_ directly, Panic below)
-  int w = 0;
-  for (int i = 0; i < refN_; ++i)
-    if (!pred(refs_[static_cast<std::size_t>(i)])) refs_[static_cast<std::size_t>(w++)] = refs_[static_cast<std::size_t>(i)];
+  int i = 0;
+  while (i < refN_ && !pred(refs_[static_cast<std::size_t>(i)])) ++i;
+  if (i == refN_) return;   // nothing to remove: H is unchanged, so refsVer_ (and the chord stage's skip) must not move
+  ++refsVer_;
+  int w = i;
+  for (; i < refN_; ++i) {
+    const Ref& r = refs_[static_cast<std::size_t>(i)];
+    if (pred(r)) refGone(r);
+    else refs_[static_cast<std::size_t>(w++)] = r;
+  }
   refN_ = w;
+}
+
+void Core::addRef(const Ref& r) {
+  refs_[static_cast<std::size_t>(refN_++)] = r;
+  ++refsVer_;   // a ref joined H
+  markDirty(r.key);
+  if (static_cast<std::uint32_t>(r.key) < 128u) { if (keyRefCnt_[static_cast<std::size_t>(r.key)]++ == 0) ++keysHeld_; }
+  else ++refsOutOfRange_;
+}
+
+void Core::refGone(const Ref& r) {
+  markDirty(r.key);
+  if (static_cast<std::uint32_t>(r.key) < 128u) { if (--keyRefCnt_[static_cast<std::size_t>(r.key)] == 0) --keysHeld_; }
+  else --refsOutOfRange_;
+}
+
+void Core::clearRefs() {
+  refN_ = 0;
+  dirtyAll_ = true;   // every key's refs went at once: the chord stage rebuilds
+  keyRefCnt_.fill(0);
+  keysHeld_ = 0;
+  refsOutOfRange_ = 0;
+}
+
+int Core::refCountOf(std::int32_t key) const {
+  if (static_cast<std::uint32_t>(key) < 128u) return keyRefCnt_[static_cast<std::size_t>(key)];
+  int n = 0;
+  for (int i = 0; i < refN_; ++i) n += refs_[static_cast<std::size_t>(i)].key == key;
+  return n;
+}
+
+int Core::distinctHeld() const {
+  int n = keysHeld_;
+  if (refsOutOfRange_ == 0) return n;
+  // a key outside 0..127 is held (a host bug): count the distinct ones among those entries, bounded by the table
+  for (int i = 0; i < refN_; ++i) {
+    const std::int32_t k = refs_[static_cast<std::size_t>(i)].key;
+    if (static_cast<std::uint32_t>(k) < 128u) continue;
+    bool seen = false;
+    for (int j = 0; j < i && !seen; ++j) seen = refs_[static_cast<std::size_t>(j)].key == k;
+    if (!seen) ++n;
+  }
+  return n;
 }
 
 bool Core::refIgnored(const NoteRef& r) const {
@@ -875,7 +929,7 @@ void Core::input(const Event& e, std::int32_t s) {
       // progress runs on and stops where an uninterrupted run would. Plants edgeResetsCountWhileEmpty / edgeRevivesWhileEmpty do each anyway.
       if (ARP_PLANT(edgeResetsCountWhileEmpty) || ARP_PLANT(edgeRevivesWhileEmpty)) repeatSteps_ = 0;
       if (ARP_PLANT(edgeRevivesWhileEmpty)) exhausted_ = false;
-      refN_ = 0;
+      clearRefs();
       ++refsVer_;   // H lost every key
       ignoredN_ = 0;
       pedalDown_ = false;
@@ -918,34 +972,25 @@ void Core::noteOn(const Event& e, std::int32_t s) {
   // A gesture start under latch replace drops every LATCHED ref first.
   if (noActive && latch == Latch::Replace && !ARP_PLANT(latchReplaceKeeps))
     eraseRefs([](const Ref& r) { return r.state == RefState::Latched; });
-  auto countKey = [&](int& total, int& latched) {
-    total = latched = 0;
-    for (int i = 0; i < refN_; ++i) {
-      const Ref& r = refs_[static_cast<std::size_t>(i)];
-      if (r.key == key) { ++total; if (r.state == RefState::Latched) ++latched; }
-    }
-  };
-  int sameKey = 0, sameLatched = 0;
-  countKey(sameKey, sameLatched);
+  const int sameKey = refCountOf(key);   // (M3c: the per-key count, not a scan)
   const bool addsKey = sameKey == 0;   // SPEC 4.8: this press adds a key to H (counted before a toggle or a same-ref press gives way)
   // Under latch append a press on a key held only by LATCHED refs toggles it out; its own NoteOff is then ignored.
-  if (latch == Latch::Append && sameKey > 0 && sameLatched == sameKey && !ARP_PLANT(noLatchToggle)) {
-    eraseRefs([key](const Ref& r) { return r.key == key; });
-    ignoreRef(id);
-    return;
-  }
-  eraseRefs([id](const Ref& r) { return r.id == id; });   // the previous press of this ref (PEDAL or LATCHED) gives way to the fresh one
-  countKey(sameKey, sameLatched);
-  if (sameKey == 0) {
-    int distinct = 0;
+  if (latch == Latch::Append && sameKey > 0 && !ARP_PLANT(noLatchToggle)) {
+    int sameLatched = 0;
     for (int i = 0; i < refN_; ++i) {
-      bool seen = false;
-      for (int j = 0; j < i && !seen; ++j) seen = refs_[static_cast<std::size_t>(j)].key == refs_[static_cast<std::size_t>(i)].key;
-      if (!seen) ++distinct;
+      const Ref& r = refs_[static_cast<std::size_t>(i)];
+      sameLatched += r.key == key && r.state == RefState::Latched;
     }
-    if (distinct >= caps_.held) { ++counters_.heldOverflow; ignoreRef(id); return; }
+    if (sameLatched == sameKey) {
+      eraseRefs([key](const Ref& r) { return r.key == key; });
+      ignoreRef(id);
+      return;
+    }
   }
-  if (sameKey >= caps_.refsPerKey) { ++counters_.refOverflow; ignoreRef(id); return; }
+  if (same >= 0) eraseRefs([id](const Ref& r) { return r.id == id; });   // the previous press of this ref (PEDAL or LATCHED) gives way to the fresh one (none to remove when the ref was not known)
+  const int keyRefs = refCountOf(key);   // after the previous press of this ref went
+  if (keyRefs == 0 && distinctHeld() >= caps_.held) { ++counters_.heldOverflow; ignoreRef(id); return; }
+  if (keyRefs >= caps_.refsPerKey) { ++counters_.refOverflow; ignoreRef(id); return; }
   Ref r;
   r.id = id;
   r.key = key;
@@ -953,8 +998,7 @@ void Core::noteOn(const Event& e, std::int32_t s) {
   r.ch = id.channel;
   r.state = RefState::Down;
   r.abs = absBase_ + s;
-  refs_[static_cast<std::size_t>(refN_++)] = r;
-  ++refsVer_;   // a ref joined H
+  addRef(r);
   // A gesture start (SPEC 3): no ref was DOWN or PEDAL. Under append, a press that joins a latched set is not one (4.5).
   const bool gestureStart = noActive && !(latch == Latch::Append && hadLatched);
   // SPEC 4.8 (r4): ANY NoteOn that adds a key to H (a gesture start, latch append, the pedal) restarts the repeat count and clears
@@ -1034,10 +1078,17 @@ int Core::collectHeld(HeldKey* out) const {
 // channel, in press order by first source then slot order); with the stage off it is H. Plant arpIgnoresChord reads the raw keys.
 int Core::heldForArp(HeldKey* out) const {
   if (moduleOn_ && S_.chordEnabled && !ARP_PLANT(arpIgnoresChord)) {
-    for (int i = 0; i < chordSetN_; ++i) out[i] = chordSet_[static_cast<std::size_t>(i)];
-    return chordSetN_;
+    int n = 0;
+    for (int k = 0; k < 128; ++k)
+      if (chordNote_[static_cast<std::size_t>(k)].used) out[n++] = chordSet_[static_cast<std::size_t>(k)];
+    return n;
   }
   return collectHeld(out);
+}
+
+int Core::heldCountForArp() const {
+  if (moduleOn_ && S_.chordEnabled && !ARP_PLANT(arpIgnoresChord)) return chordSetN_;
+  return distinctHeld();
 }
 
 // The lowest PLAYED key (over every live ref): chord_root's anchor, whatever the chord stage feeds the arp.
@@ -1524,8 +1575,7 @@ std::int64_t Core::cycleLength(const PatternStep* steps, std::int64_t plen, int 
 // force (active_), like the step that would have read it. Plant cOnlyAtStep: the M2b rule, C only at an evaluated step.
 void Core::updateCycle() {
   if (ARP_PLANT(cOnlyAtStep)) return;
-  HeldKey E[kMaxArpKeys];
-  const int e = heldForArp(E);
+  const int e = heldCountForArp();   // (only the count is read: building H' for it copied up to 128 keys at every input sample)
   if (e == 0) return;
   const PatternStep* steps;
   std::int64_t plen, pSize;
@@ -1956,19 +2006,85 @@ void Core::chordStop(NoteRef& ref, bool& sounding, std::int32_t s) {
 }
 
 void Core::chordEndAll(std::int32_t s) {
-  for (ChordNote& n : chordNote_) {
-    if (!n.used) continue;
-    chordStop(n.ref, n.sounding, s);
+  // chordSetN_ is the number of used notes after every complete pass, and 0 once the stage has forgotten them, so with 0 the walk finds nothing: skip it.
+  // chordSync lands here at every input sample while the stage is OFF, where 128 entries of ~80 bytes were scanned for nothing.
+  if (chordSetN_ != 0)
+    for (ChordNote& n : chordNote_) {
+      if (!n.used) continue;
+      chordStop(n.ref, n.sounding, s);
 #ifdef ARP_PLANTS
-    chordStop(n.ref2, n.sounding2, s);
+      chordStop(n.ref2, n.sounding2, s);
 #endif
-    n = ChordNote{};
-  }
+      n = ChordNote{};
+    }
   chordRecN_ = 0;
   chordSetN_ = 0;
   chordSigValid_ = false;
 #ifdef ARP_PLANTS
   chordDrift_.fill(0);
+#endif
+}
+
+// The stage's effective scale (SPEC 14 note 13): the arp's source, root and mask, with the chord_root anchor on the lowest PLAYED key (`lowest`, when a key is held).
+Core::ChordQuant Core::chordQuant(const ChordSigData& sig, bool haveLowest, std::int32_t lowest) const {
+  ChordQuant q;
+  if (S_.quantize != Quantize::Off) {
+    if (S_.scaleSource == ScaleSource::Own) { q.root = static_cast<std::int32_t>(mod(S_.scaleRoot, 12)); q.mask = sig.ownMask; }
+    else { q.root = static_cast<std::int32_t>(mod(scale_.root, 12)); q.mask = scale_.mask & 0xFFFu; }
+    if (S_.quantize == Quantize::ChordRoot) {
+      if (haveLowest) q.root = static_cast<std::int32_t>(mod(lowest, 12));
+      if (q.mask != 0) q.mask |= 1u;   // the anchor's own pitch class is always admitted (13b.1)
+    }
+  }
+  q.on = q.mask != 0 && !ARP_PLANT(chordSkipQuantize);
+  q.degrees = S_.chordUnit == StepUnit::Degrees;
+  return q;
+}
+
+// A chord key is snapped to the nearest in-scale key; a tie ALWAYS goes to the lower key and the stage never reads or writes the
+// arp's lastQ (D-020). Plants chordReadsLastQ / chordWritesLastQ do one each.
+std::int64_t Core::chordSnap(const ChordQuant& q, std::int64_t k) {
+  const bool reads = ARP_PLANT(chordReadsLastQ);
+  const std::int64_t r = quantizeKey(k, q.root, q.mask, reads && hasLastQ_, lastQ_, !reads);
+  if (ARP_PLANT(chordWritesLastQ)) { lastQ_ = r; hasLastQ_ = true; }
+  return r;
+}
+
+// SPEC 14 "The mapping is stored": slot 0 is h snapped while quantize is on; semitones: h + shift, then snapped; degrees: from h's
+// nearest in-scale key (ties lower), move `shift` in-scale keys (a degree is one semitone with quantize off or a zero mask). Keys
+// outside 0-127 are dropped (T16). SPEC-GAP: an input key outside 0-127 is dropped before it is snapped (SPEC 6: out-of-range keys
+// are dropped first), and in degrees mode it has no scale position, so all its slots are dropped.
+void Core::chordMapRec(ChordRec& r, const ChordQuant& q) {
+  r.n = 0;
+  auto add = [&](int slot, std::int64_t k) {
+    if (k < 0 || k > 127) { ++counters_.rows[16]; ++counters_.keysDropped; return; }
+    r.key[r.n] = static_cast<std::int16_t>(k);
+    r.slot[r.n] = static_cast<std::int8_t>(slot);
+    ++r.n;
+  };
+  const std::int64_t hk = r.h.key;
+  if (q.degrees) {
+    if (hk < 0 || hk > 127) { ++counters_.rows[16]; ++counters_.keysDropped; return; }
+    const std::int64_t base = q.on ? chordSnap(q, hk) : hk;
+    add(0, (q.on && ARP_PLANT(chordPlusZeroUnquantized)) ? hk : base);
+    for (int i = 0; i < 6; ++i)
+      if (S_.chordOn[i]) add(i + 1, degreeMove(base, S_.chordShift[i], q.root, q.on ? q.mask : 0));
+    return;
+  }
+  auto semis = [&](std::int64_t k, bool snapIt) { return (snapIt && q.on && k >= 0 && k <= 127) ? chordSnap(q, k) : k; };
+  add(0, semis(hk, !ARP_PLANT(chordPlusZeroUnquantized)));
+  for (int i = 0; i < 6; ++i)
+    if (S_.chordOn[i]) add(i + 1, semis(hk + S_.chordShift[i], true));
+}
+
+// The plants that change what a pass does inside (they live in the full pass below), and the reference mode: those always rebuild the whole stage.
+bool Core::chordFullPassForced() const {
+#ifdef ARP_PLANTS
+  return plants.chordFullPass || plants.chordNoDedupe || plants.chordDedupeByChannelKey || plants.chordRecomputeAtRelease || plants.chordRestartAll ||
+         plants.chordEndsOnFirstSource || plants.chordStalePressTime || plants.chordSkipQuantize || plants.chordPlusZeroUnquantized ||
+         plants.chordReadsLastQ || plants.chordWritesLastQ;
+#else
+  return false;
 #endif
 }
 
@@ -1993,59 +2109,26 @@ void Core::chordSync(std::int32_t s) {
   // chordStart was refused (no event room, T13) keeps `used` with no sounding and is never retried, in this version of the rules; a stage that retried
   // a refused start at every pass would have to run every time. The dedupe plants do exactly that (a refused second on), so they always run the pass.
   if (!remap && chordSyncVer_ == refsVer_ && !ARP_PLANT(chordNoDedupe) && !ARP_PLANT(chordDedupeByChannelKey)) return;
+  // Same settings, a few keys changed: update the stage for those keys alone. Anything else (a re-map, many keys, a plant) rebuilds it.
+  if (!remap && chordIncremental(s)) {
+    chordSyncVer_ = refsVer_;
+    keysDirty_.fill(0);
+    dirtyAll_ = false;
+    return;
+  }
+  chordRebuild(s, sig, remap);
+}
+
+// The whole pass: the definition of what the stage does (M3a's algorithm, unchanged). A function of its own so that chordSync, which also runs the incremental
+// pass, does not hold this one's ~5 KB of stack arrays while it does.
+void Core::chordRebuild(std::int32_t s, const ChordSigData& sig, bool remap) {
   chordSig_ = sig;
   chordSigValid_ = true;
 
   HeldKey H[kMaxHeldKeys];
   const int hn = collectHeld(H);   // H, ascending: H[0] is the lowest PLAYED key
 
-  // The effective scale of the stage (SPEC 14 note 13): the arp's source, root and mask, the chord_root anchor on the played keys H.
-  std::int32_t qRoot = 0;
-  std::uint32_t qMask = 0;
-  if (S_.quantize != Quantize::Off) {
-    if (S_.scaleSource == ScaleSource::Own) { qRoot = static_cast<std::int32_t>(mod(S_.scaleRoot, 12)); qMask = sig.ownMask; }
-    else { qRoot = static_cast<std::int32_t>(mod(scale_.root, 12)); qMask = scale_.mask & 0xFFFu; }
-    if (S_.quantize == Quantize::ChordRoot) {
-      if (hn > 0) qRoot = static_cast<std::int32_t>(mod(H[0].key, 12));
-      if (qMask != 0) qMask |= 1u;   // the anchor's own pitch class is always admitted (13b.1)
-    }
-  }
-  const bool qOn = qMask != 0 && !ARP_PLANT(chordSkipQuantize);
-  const bool degrees = S_.chordUnit == StepUnit::Degrees;
-  // A chord key is snapped to the nearest in-scale key; a tie ALWAYS goes to the lower key and the stage never reads or writes the
-  // arp's lastQ (D-020). Plants chordReadsLastQ / chordWritesLastQ do one each.
-  auto snap = [&](std::int64_t k) {
-    const bool reads = ARP_PLANT(chordReadsLastQ);
-    const std::int64_t q = quantizeKey(k, qRoot, qMask, reads && hasLastQ_, lastQ_, !reads);
-    if (ARP_PLANT(chordWritesLastQ)) { lastQ_ = q; hasLastQ_ = true; }
-    return q;
-  };
-  // SPEC 14 "The mapping is stored": slot 0 is h snapped while quantize is on; semitones: h + shift, then snapped; degrees: from h's
-  // nearest in-scale key (ties lower), move `shift` in-scale keys (a degree is one semitone with quantize off or a zero mask). Keys
-  // outside 0-127 are dropped (T16). SPEC-GAP: an input key outside 0-127 is dropped before it is snapped (SPEC 6: out-of-range keys
-  // are dropped first), and in degrees mode it has no scale position, so all its slots are dropped.
-  auto mapRec = [&](ChordRec& r) {
-    r.n = 0;
-    auto add = [&](int slot, std::int64_t k) {
-      if (k < 0 || k > 127) { ++counters_.rows[16]; ++counters_.keysDropped; return; }
-      r.key[r.n] = static_cast<std::int16_t>(k);
-      r.slot[r.n] = static_cast<std::int8_t>(slot);
-      ++r.n;
-    };
-    const std::int64_t hk = r.h.key;
-    if (degrees) {
-      if (hk < 0 || hk > 127) { ++counters_.rows[16]; ++counters_.keysDropped; return; }
-      const std::int64_t base = qOn ? snap(hk) : hk;
-      add(0, (qOn && ARP_PLANT(chordPlusZeroUnquantized)) ? hk : base);
-      for (int i = 0; i < 6; ++i)
-        if (S_.chordOn[i]) add(i + 1, degreeMove(base, S_.chordShift[i], qRoot, qOn ? qMask : 0));
-      return;
-    }
-    auto semis = [&](std::int64_t k, bool snapIt) { return (snapIt && qOn && k >= 0 && k <= 127) ? snap(k) : k; };
-    add(0, semis(hk, !ARP_PLANT(chordPlusZeroUnquantized)));
-    for (int i = 0; i < 6; ++i)
-      if (S_.chordOn[i]) add(i + 1, semis(hk + S_.chordShift[i], true));
-  };
+  const ChordQuant quant = chordQuant(sig, hn > 0, hn > 0 ? H[0].key : 0);
 
   // -- the stored mappings: leavers go (their STORED keys stop counting), joiners are mapped once, a re-map recomputes every held key
   int w = 0;
@@ -2057,7 +2140,7 @@ void Core::chordSync(std::int32_t s) {
 #ifdef ARP_PLANTS
     if (plants.chordRecomputeAtRelease) {   // plant (r4 H1): the leaver's chord keys are recomputed NOW and subtracted, not its stored ones
       ChordRec fresh = r;
-      mapRec(fresh);
+      chordMapRec(fresh, quant);
       for (int t = 0; t < r.n; ++t) ++chordDrift_[static_cast<std::size_t>(r.key[t])];
       for (int t = 0; t < fresh.n; ++t) --chordDrift_[static_cast<std::size_t>(fresh.key[t])];
     }
@@ -2076,13 +2159,13 @@ void Core::chordSync(std::int32_t s) {
       rec = &chordRec_[static_cast<std::size_t>(chordRecN_++)];
       *rec = ChordRec{};
       rec->h = H[j];
-      mapRec(*rec);
+      chordMapRec(*rec, quant);
     } else {
       // SPEC 3 / 14: H' orders keys by the press of the EARLIEST LIVE ref of a source key, which moves when the earliest of two refs on
       // one key is released. Refresh the record's held key (press time, velocity, channel) from H on every sync; the STORED keys are
       // untouched (a re-map below is the only thing that recomputes them). Plant chordStalePressTime keeps the entering press.
       if (!ARP_PLANT(chordStalePressTime)) rec->h = H[j];
-      if (remap) mapRec(*rec);
+      if (remap) chordMapRec(*rec, quant);
     }
   }
 
@@ -2151,9 +2234,132 @@ void Core::chordSync(std::int32_t s) {
     n.maxCount = std::max(n.maxCount, c);
 #endif
     // H' for the arp: this key with the chord note's velocity and channel, ordered by its first source's press, then slot
-    chordSet_[static_cast<std::size_t>(chordSetN_++)] = HeldKey{k, n.vel, n.ch, firstAbs[k], firstSlot[k]};
+    chordSet_[static_cast<std::size_t>(k)] = HeldKey{k, n.vel, n.ch, firstAbs[k], firstSlot[k]};
+    ++chordSetN_;
   }
   chordSyncVer_ = refsVer_;
+  keysDirty_.fill(0);
+  dirtyAll_ = false;
+}
+
+// The pass for a small change of H (M3c, D-032), with the signature unchanged. The full pass above is the definition; this does the same work for the keys
+// that changed and leaves the rest of the stage as it is, and must leave EXACTLY the state the full pass would (tests: the digests, which come from the M3a
+// core, and plant chordFullPass, which runs every pass whole). Why the rest of the stage is untouched:
+//   * a record (a held key's stored mapping) changes only if its key left H, joined H, or its held entry changed (the earliest live ref moved: press sample,
+//     velocity, channel); all of those are keys whose refs came or went, i.e. dirty keys. Every other record is what the full pass would rebuild it as;
+//   * a chord key's source count and earliest source change only if a changed record maps to it. Those are recounted from ALL records (the same loop as the full
+//     pass, over the keys concerned); every other key keeps its count, its note and its chord-set entry;
+//   * the notes start and stop in ascending key order, as in the full pass, so output ids and the event order are the same.
+// Returns false (having changed nothing that matters) when it cannot be sure: Panic / a reset / a key outside 0..127 / too many keys / more records than the table.
+bool Core::chordIncremental(std::int32_t s) {
+  constexpr int kMaxDirtyKeys = 16;   // beyond this a rebuild is as cheap
+  if (dirtyAll_ || chordFullPassForced()) return false;
+  int dk[kMaxDirtyKeys] = {};
+  int nd = 0;
+  for (std::size_t w = 0; w < 2; ++w)
+    for (std::uint64_t bits = keysDirty_[w]; bits != 0; bits &= bits - 1) {
+      if (nd == kMaxDirtyKeys) return false;
+      dk[nd++] = static_cast<int>(w * 64) + std::countr_zero(bits);
+    }
+
+  // -- the held entry of each dirty key now: its EARLIEST live ref, the first of them in table order among equal press samples (collectHeld's rule)
+  HeldKey cur[kMaxDirtyKeys];
+  bool here[kMaxDirtyKeys] = {};
+  for (int i = 0; i < refN_; ++i) {
+    const Ref& r = refs_[static_cast<std::size_t>(i)];
+    if (!isDirty(r.key)) continue;
+    int j = 0;
+    while (dk[j] != r.key) ++j;   // found: the key is dirty
+    if (!here[j] || r.abs < cur[j].abs) { cur[j] = HeldKey{r.key, r.vel, r.ch, r.abs}; here[j] = true; }
+  }
+
+  // -- which records leave, which are refreshed, which keys join; and the chord keys these touch (bit k of `touched`)
+  std::uint64_t touched[2] = {0, 0};
+  auto touch = [&](const ChordRec& r) {
+    for (int t = 0; t < r.n; ++t) touched[r.key[t] >> 6] |= std::uint64_t{1} << (r.key[t] & 63);
+  };
+  std::uint32_t leave = 0;   // bit i: chordRec_[i] leaves (at most kMaxHeldKeys = 32 records)
+  int joiner[kMaxDirtyKeys] = {};
+  int nj = 0, leavers = 0;
+  for (int j = 0; j < nd; ++j) {
+    int ri = -1;
+    for (int i = 0; i < chordRecN_; ++i)
+      if (chordRec_[static_cast<std::size_t>(i)].h.key == dk[j]) { ri = i; break; }
+    if (ri < 0) {
+      if (here[j]) joiner[nj++] = j;
+      continue;
+    }
+    ChordRec& rec = chordRec_[static_cast<std::size_t>(ri)];
+    if (!here[j]) { leave |= std::uint32_t{1} << ri; ++leavers; touch(rec); }
+    else if (!ARP_PLANT(chordIncSkipsRefresh) && (rec.h.abs != cur[j].abs || rec.h.vel != cur[j].vel || rec.h.ch != cur[j].ch)) { rec.h = cur[j]; touch(rec); }   // (refreshing a record is harmless if we give up below: the full pass sets it again)
+  }
+  if (chordRecN_ - leavers + nj > static_cast<int>(chordRec_.size())) return false;   // cannot happen: H has at most 32 keys
+
+  // -- apply: leavers out (the others keep their order), joiners in at the end in ascending key order, each mapped once
+  if (leave != 0) {
+    int w = 0;
+    for (int i = 0; i < chordRecN_; ++i)
+      if (((leave >> i) & 1u) == 0) chordRec_[static_cast<std::size_t>(w++)] = chordRec_[static_cast<std::size_t>(i)];
+    chordRecN_ = w;
+  }
+  if (nj > 0) {
+    // chord_root anchors on the lowest PLAYED key: a joiner is held, so there is one. (lowestHeldKey() starts at 127, which only matters when every key is above it.)
+    const ChordQuant quant = chordQuant(chordSig_, true, S_.quantize == Quantize::ChordRoot ? lowestHeldKey() : 0);
+    for (int q = 0; q < nj; ++q) {
+      ChordRec& rec = chordRec_[static_cast<std::size_t>(chordRecN_++)];
+      rec = ChordRec{};
+      rec.h = cur[joiner[q]];
+      chordMapRec(rec, quant);
+      touch(rec);
+    }
+  }
+
+  // -- recount the touched chord keys from all records (the full pass's loop, restricted): source count and earliest source (press sample, slot, source key)
+  struct Acc { std::int64_t abs = 0; std::int32_t slot = 0, src = 0, vel = 0, ch = 0, count = 0; };
+  Acc acc[128] = {};
+  auto isTouched = [&](int k) { return ((touched[k >> 6] >> (k & 63)) & 1u) != 0; };
+  for (int i = 0; i < chordRecN_; ++i) {
+    const ChordRec& r = chordRec_[static_cast<std::size_t>(i)];
+    for (int t = 0; t < r.n; ++t) {
+      const int k = r.key[t];
+      if (!isTouched(k)) continue;
+      Acc& a = acc[k];
+      const bool better = a.count == 0 || r.h.abs < a.abs || (r.h.abs == a.abs && (r.slot[t] < a.slot || (r.slot[t] == a.slot && r.h.key < a.src)));
+      ++a.count;
+      if (better) { a.abs = r.h.abs; a.slot = r.slot[t]; a.src = r.h.key; a.vel = r.h.vel; a.ch = r.h.ch; }
+    }
+  }
+
+  // -- the notes of the touched keys, in ascending key order: the count went to 0 (the note ends), 0 -> 1 (it starts with its earliest source's channel and velocity), or neither
+  auto settle = [&](int k) {
+    ChordNote& n = chordNote_[static_cast<std::size_t>(k)];
+    const Acc& a = acc[k];
+    if (a.count == 0) {
+      if (n.used) {
+        chordStop(n.ref, n.sounding, s);
+        n = ChordNote{};
+        --chordSetN_;
+      }
+      return;
+    }
+    if (!n.used) {
+      n.used = true;
+      n.vel = a.vel;
+      n.ch = a.ch;
+      n.sounding = chordStart(k, n.vel, n.ch, s, n.ref);
+      ++chordSetN_;
+    }
+    n.count = a.count;
+    chordSet_[static_cast<std::size_t>(k)] = HeldKey{k, n.vel, n.ch, a.abs, a.slot};
+  };
+  if (ARP_PLANT(chordIncDescending)) {
+    for (int k = 127; k >= 0; --k)
+      if (isTouched(k)) settle(k);
+  } else {
+    for (std::size_t w = 0; w < 2; ++w)
+      for (std::uint64_t bits = touched[w]; bits != 0; bits &= bits - 1) settle(static_cast<int>(w * 64) + std::countr_zero(bits));
+  }
+  return true;
 }
 
 }  // namespace arp

@@ -890,3 +890,21 @@ heaviest scenario, not the true worst case.
 CI on PR #23 was also red: the digest records 6 fewer runs on Linux g++ than
 on macOS clang, so it is not yet platform-independent; the rework fixes the
 cause without weakening the check.
+
+## D-032 — Dense host input: optimise the two hot spots, then publish the input rate that fits (RATIFIED by poll, 2026-10-25)
+
+A fresh critic re-check of the M3b rework (PR #23) found no HIGH. Every load
+built from settings alone fits horde's 2 % slice (heaviest 1.84 % after x4,
+not the bench's 1.3-1.4 %: the bench lacked a 128-note ratchet-4 load and
+block 16), but dense incoming notes do not: a 32-note chord re-struck at
+every 1/64 step at 999 bpm (about 17,000 note events a second) costs
+2.1-2.3 % after x4, and floods of presses on new keys 3-5 %. The causes: a
+full chord-stage pass for every sample that changes the held set, and an
+O(refs^2) distinct-key count in noteOn. Chosen: fix both (a per-key ref
+count; an incremental chord-stage update), output byte-identical, then
+measure and publish in the readiness notice the input rate that stays within
+2 % after x4. Rejected: publishing a limit with no code change (leaves cheap
+wins unclaimed); demanding any input fit (open-ended structural work for
+pathological floods). The same follow-up restores the digest coverage the
+rework's session fingerprint lost (three G5 band-edge sessions merged into
+one replay key).
