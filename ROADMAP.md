@@ -237,9 +237,15 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   in D-030 and the M3a trace.
 - **M3b rework (D-031):** the critic found heavier loads (32 keys over 16 channels, every note evicting; the same
   on one channel, every note retriggering). Optimised again: every one of 33 scenarios x 4 rates x 4 block sizes is
-  within 2 % after x4 (heaviest 1.3-1.4 %); output byte-identical to the M3a core over 42,210 suite runs (incl. 2,000
+  within 2 % after x4 (heaviest of the bench's scenarios 1.3-1.4 %; of any settings-only load the critic could build, 1.84 %); output byte-identical to the M3a core over 42,210 suite runs (incl. 2,000
   seeded random sessions) and 660 bench configurations, digests reproduced by the lead from 0ef0903. The digest's
-  run set was compiler-dependent (argument evaluation order in the tests); fixed, pending Linux CI.
+  run set was compiler-dependent (argument evaluation order in the tests); fixed, Linux CI green; merged 2026-10-25 (PR #23).
+- **M3c (D-032):** dense host input (a 32-note chord re-struck every 1/64 at 999 bpm, 2.1-2.3 % after x4) — a per-key
+  ref count and an incremental chord-stage update, byte-identical; then the input rate within 2 % is published.
+  **Done 2026-10-25:** a re-struck 32-key chord on the heaviest load 2.40 → 1.95 % after x4; refused-press floods
+  20 → 2 %; envelope published in `docs/horde-copy-in.md` (edge 3,600 incoming note events/s on the heaviest load,
+  9,000 on load A; the notice quotes 1,300 with 10 % headroom, D-033); digests reproduced by the lead from 0ef0903;
+  455 checks per int128 path.
 - **M3a (as planned):** a Release CPU and memory benchmark (reported); checks for the rows not yet covered —
   several meters and tempos, no input no output, a preset load as a terminal path, the pattern-bank selection as a
   morph target; the copy-in file list with a build-from-the-list check.

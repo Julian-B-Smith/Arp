@@ -119,7 +119,7 @@ for bin in arp_bench arp_bench_soft; do
   fi
   "$build/$bin" --digest 2>/dev/null | grep -v '^#' >"$copy_dir/bench.got"
   if [ -s "$copy_dir/bench.got" ] && cmp -s "$copy_dir/bench.want" "$copy_dir/bench.got"; then
-    echo "PASS  bench digest ($bin): $(wc -l <"$copy_dir/bench.want" | tr -d ' ') configurations (scenario x 4 rates x 5 block sizes, 2 s each) hash to the committed pre-optimisation digest"
+    echo "PASS  bench digest ($bin): $(wc -l <"$copy_dir/bench.want" | tr -d ' ') configurations (settings-only scenarios x 4 rates x 5 block sizes, 2 s each; the heavy input scenarios x 3 rate / block pairs, 1 s each) hash to the committed pre-optimisation digest"
   else
     diff "$copy_dir/bench.want" "$copy_dir/bench.got" | head -6 | cut -c1-220
     echo "FAIL  bench digest ($bin): the shipped core's output differs from tests/core/stream_digest_bench.txt"; digest_rc=1

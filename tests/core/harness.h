@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -108,6 +109,12 @@ inline bool setPlant(P& p, const std::string& name) {
     if (name == e.name) { p.*(e.flag) = true; return true; }
   if constexpr (requires { p.evictBornPrevSample; })
     if (name == "evictBornPrevSample") { p.evictBornPrevSample = true; return true; }
+  if constexpr (requires { p.chordFullPass; })
+    if (name == "chordFullPass") { p.chordFullPass = true; return true; }   // M3c: not a fault, the chord stage's reference mode (every pass rebuilds the whole stage)
+  if constexpr (requires { p.chordIncSkipsRefresh; })
+    if (name == "chordIncSkipsRefresh") { p.chordIncSkipsRefresh = true; return true; }
+  if constexpr (requires { p.chordIncDescending; })
+    if (name == "chordIncDescending") { p.chordIncDescending = true; return true; }
   return false;
 }
 #endif
@@ -375,11 +382,21 @@ struct DigestEntry {
   char kind = 'P';             // P: the run the test asked for. W: a replay of it over the wide matrix.
   int sr = 0, block = 0, total = 0;
   std::uint64_t events = 0, stream = 0, counters = 0;
+  std::uint64_t fp = 0;        // P only: the session's fingerprint. Not in the committed digest; test_digest.cpp checks that equal fingerprints give equal output
+};
+// The first session seen under a fingerprint, kept so that a LATER session with the same fingerprint can be replayed beside it (see digestRecord).
+struct FirstOfFingerprint {
+  Session session;
+  bool ran = false;
+  std::uint64_t events = 0, stream = 0, counters = 0;   // its replay, made the first time a repeat needs it
 };
 struct DigestLog {
   bool enabled = true;
   std::vector<DigestEntry> entries;
   std::vector<std::uint64_t> seen;   // the keys of the sessions already replayed
+  std::map<std::uint64_t, FirstOfFingerprint> firsts;
+  std::vector<std::string> conflicts;   // repeats of a fingerprint whose replay differs from the first session's: the fingerprint merged two differing sessions
+  std::size_t repeatsCompared = 0;
 };
 inline DigestLog& digestLog() {
   static DigestLog d;
@@ -390,9 +407,10 @@ inline const std::vector<int>& digestBlocks() { static const std::vector<int> v 
 inline constexpr int kDigestBlock1Max = 12000;
 inline const std::vector<int>& digestRates() { static const std::vector<int> v = {44100, 48000, 96000, 192000}; return v; }
 
-inline void digestNote(DigestLog& d, char kind, const Session& s, int block, const Run& r) {
+inline void digestNote(DigestLog& d, char kind, const Session& s, int block, const Run& r, std::uint64_t fp = 0) {
   DigestEntry e;
   e.kind = kind;
+  e.fp = fp;
   e.sr = s.sr;
   e.block = block;
   e.total = s.total;
@@ -404,8 +422,10 @@ inline void digestNote(DigestLog& d, char kind, const Session& s, int block, con
 
 // What a session IS, as one hash, independent of how it ran: the replay of a session happens once per distinct description, so which of two equal
 // sessions a test happens to run first (an operand order the language leaves to the compiler: clang and g++ differ) cannot change the replay set.
-// Closures cannot be hashed, so they are sampled: each settings change is applied to a copy of the base settings, the jitter and the transport
-// tweak are called on a copy at a fixed set of positions. `before` is the session as the test built it, never run.
+// Closures cannot be hashed, so they are called: each settings change is applied to a copy of the base settings, the jitter and the transport
+// tweak are called on a copy at EVERY position 0..total (D-032). A handful of sample positions was not enough: the three G5 band-edge sessions
+// (960, 961 and -961 ticks of jitter at position 10240 alone) shared one key, so two of them lost their wide replays. `sampledOnly` is the old,
+// blind version, kept as the must-fail control of test_digest.cpp. `before` is the session as the test built it, never run.
 inline void fpDouble(Fnv& f, double v) { std::uint64_t b; std::memcpy(&b, &v, sizeof b); f.u64(b); }   // the bits: a NaN or inf (a host-float test) must not go through an integer cast
 inline void fpSettings(Fnv& f, const Settings& s) {
   f.u64(s.enabled); f.u64(s.arpEnabled); f.u64(static_cast<std::uint64_t>(s.order)); f.u64(static_cast<std::uint64_t>(s.pattern)); f.u64(static_cast<std::uint64_t>(s.rate));
@@ -420,7 +440,7 @@ inline void fpUser(Fnv& f, const UserPattern& u) {
   f.i64(u.length); f.i64(u.stepSize); f.u64(static_cast<std::uint64_t>(u.stepUnit));
   for (const PatternStep& p : u.steps) { f.u64(p.on); f.u64(p.tie); f.i64(p.vel); f.i64(p.gate); f.i64(p.step); f.i64(p.prob); f.i64(p.ratchet); f.i64(p.trig); f.i64(p.pick); }
 }
-inline std::uint64_t sessionFingerprint(Session s) {   // by value: the sampled closures run on this copy
+inline std::uint64_t sessionFingerprint(Session s, bool sampledOnly = false) {   // by value: the called closures run on this copy
   Fnv f;
   f.i64(s.sr); f.i64(s.total); f.i64(s.maxBlock);
   fpDouble(f, s.bpm);
@@ -446,7 +466,7 @@ inline std::uint64_t sessionFingerprint(Session s) {   // by value: the sampled 
     f.u64(1); f.i64(s.host->sr); fpDouble(f, s.host->startBpm); fpDouble(f, s.host->startBeats); f.u64(s.host->startPlaying);
     for (const auto& o : s.host->ops) { f.i64(o.at); f.i64(o.playing ? 1 + *o.playing : -1); fpDouble(f, o.seekBeats ? *o.seekBeats : -1e300); fpDouble(f, o.bpm ? *o.bpm : -1e300); }
   }
-  for (int pos : {0, 1, 777, 4000, 9999, 20000, 40000}) {
+  auto closuresAt = [&](int pos) {
     if (s.jitter) f.i64(s.jitter(pos));
     if (s.tweak) {
       Transport t;
@@ -455,8 +475,21 @@ inline std::uint64_t sessionFingerprint(Session s) {   // by value: the sampled 
       f.i64(t.timeSigNum); f.i64(t.timeSigDen); f.u64(t.hasBarStart); fpDouble(f, t.barStartBeats); f.u64(t.loopActive);
       fpDouble(f, t.loopStartBeats); fpDouble(f, t.loopEndBeats);
     }
+  };
+  if (sampledOnly) {
+    for (int pos : {0, 1, 777, 4000, 9999, 20000, 40000}) closuresAt(pos);
+  } else if (s.jitter || s.tweak) {
+    for (int pos = 0; pos <= s.total; ++pos) closuresAt(pos);
   }
   return f.h;
+}
+
+// A session as the wide replay runs it: no probe or hook (they belong to the test), no allocation counting, lean.
+inline Run replayLean(Session s, int blk) {
+  s.probe = nullptr;
+  s.midBlockHook = nullptr;
+  s.countAllocs = false;
+  return runOnce(s, blk, true);
 }
 
 // `before` is a copy of the session taken BEFORE the run: a stateful closure in it (a jitter that carries a seed) must replay from its start.
@@ -470,10 +503,26 @@ inline void digestRecord(const Session& before, int block, const Run& r) {
   //    depends on how many such runs came before, i.e. on the order the suite runs in, not on the session.
   // Both stay in the suite's checks (each has its own detector and plant); neither is a shipped behaviour.
   for (const std::string& p : before.plants) if (p == "floatPosition" || p == "timeInDraw") return;
-  digestNote(d, 'P', before, block, r);
   const std::uint64_t key = sessionFingerprint(before);
-  if (std::find(d.seen.begin(), d.seen.end(), key) != d.seen.end()) return;   // one replay set per distinct session description
+  digestNote(d, 'P', before, block, r, key);
+  if (std::find(d.seen.begin(), d.seen.end(), key) != d.seen.end()) {   // one replay set per distinct session description
+    // A repeat is claimed to be the SAME session. Replay it and the first one under this fingerprint at ONE common block size (the runs the tests made may
+    // have used different block sizes, which a comparison of the runs themselves cannot use) and demand identical output: a fingerprint that merged two
+    // differing sessions is named here instead of silently costing one of them its replays.
+    FirstOfFingerprint& f = d.firsts[key];
+    const int blk = std::min(64, before.maxBlock);
+    if (!f.ran) {
+      const Run r0 = replayLean(f.session, blk);
+      f.events = r0.nEvents; f.stream = r0.digestStream; f.counters = r0.digestCounters; f.ran = true;
+    }
+    const Run r = replayLean(before, blk);
+    ++d.repeatsCompared;
+    if (r.nEvents != f.events || r.digestStream != f.stream || r.digestCounters != f.counters)
+      d.conflicts.push_back("two sessions share fingerprint " + hex16(key) + " (sample rate " + std::to_string(before.sr) + ", " + std::to_string(before.total) + " samples) but their replays at block " + std::to_string(blk) + " differ: " + hex16(f.stream) + " and " + hex16(r.digestStream));
+    return;
+  }
   d.seen.push_back(key);
+  d.firsts.emplace(key, FirstOfFingerprint{before});
   auto replay = [&](Session s, int blk) {   // runOnce, not run(): a replay does not replay
     s.probe = nullptr;           // a probe belongs to its test (it writes the test's locals): the replay is a different run
     s.midBlockHook = nullptr;
