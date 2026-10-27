@@ -703,16 +703,16 @@ EventSpan Core::process(const Block& b) {
     // that the known answers in test_core.cpp testG4Order and tools/lab_smoke.mjs 7b must catch.
     const std::int64_t inT = ii < b.in.size() ? b.in[ii].offset : kNever;
     const I128 inPos = inT != kNever ? posAt(inT) : I128{};
-    const bool musical = inT != kNever && ARP_PLANT(musicalOrderOnSample), allKinds = musical;
+    const bool musical = inT != kNever && ARP_PLANT(musicalOrderOnSample);
     const std::int64_t offT = nextOffTime();   // kNever when no off is due
-    const bool offBefore = allKinds && offT == inT && schedN_ > 0 && std::max<std::int64_t>(0, ofsMemo(memoOff_, sounding_[static_cast<std::size_t>(schedAt(0))].offPos)) == inT &&
+    const bool offBefore = musical && offT == inT && schedN_ > 0 && std::max<std::int64_t>(0, ofsMemo(memoOff_, sounding_[static_cast<std::size_t>(schedAt(0))].offPos)) == inT &&
                            sounding_[static_cast<std::size_t>(schedAt(0))].offPos < inPos;   // the schedule's front is its earliest off
     std::int64_t t = kNever;
     int kind = -1;
     if (offT < inT || (offT == inT && offBefore)) { t = offT; kind = 1; }
     if (pendN_ > 0) {   // the front of the ring is the soonest, the earliest queued among equals
       const std::int64_t s = std::max<std::int64_t>(0, ofsMemo(memoPend_, pendAt(0).pos));
-      if (s < t && (s < inT || (s == inT && allKinds && pendAt(0).pos < inPos))) { t = s; kind = 2; }
+      if (s < t && (s < inT || (s == inT && musical && pendAt(0).pos < inPos))) { t = s; kind = 2; }
     }
     if (running) {
       const I128 stepPos = I128::mul(gtick(lastEvaluated_ + 1), D_);
@@ -746,7 +746,7 @@ EventSpan Core::process(const Block& b) {
       // at this offset), and a pending on or a grid step only goes after the offs, so what the old one-off-per-iteration loop did is exactly this.
       // (Under plant musicalOrderOnSample an off can go before an input on its sample; then only the offs strictly before the input are taken.)
       int due[kSoundingSlots];
-      const int nd = takeDueOffs(offT, due, offT == inT ? &inPos : nullptr);
+      const int nd = takeDueOffs(offT, due, musical && offT == inT ? &inPos : nullptr);
       for (int q = 0; q < nd; ++q) {
         if (sounding_[static_cast<std::size_t>(due[q])].hasOff) ++counters_.rows[1];
         releaseSlot(due[q], so);

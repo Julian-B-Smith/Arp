@@ -89,11 +89,38 @@
     rate.
   - Keeping the round-down test host under (C): it was made for (A) and
     exercises no rule of (C).
-- **Verify:** see the PR. `./verify full` runs on the final tree after the merge
-  of `origin/main`.
+- **Verify:** `./verify full` exit 0 at fc57045 (tree 56e2adb,
+  2026-10-27T23:08:50Z): 537 passed, 0 failed on both suite binaries;
+  `lab_smoke: OK`. The re-run critic's follow-ups (below) bring it to 539.
+- **Re-run critic (Opus, read-only, independent build): REWORK, on the spec
+  text only.** It verified that the shipped core and the bench outputs are
+  byte-identical to 909ba44's, that the plant is (A) with the gate inverted,
+  that every known answer is order-sensitive and erased by the plant, and the
+  copy-in and MANIFEST hashes.
+  - **H1 (the human's call):** G4's "more than one sample apart" is too
+    narrow for a host that rounds. Up to 1.5 samples (nearest) or 2 (down) can
+    still share a sample: 97 bpm, a release 1.14 samples after step 7 plays
+    differently at 44.1 kHz. Pinned as a fourth near-tie (rounded). The proposed
+    wording correction ("more than two samples", "cause" defined, plus two §1.1
+    clarifications) is in `docs/spec-errata.md`.
+  - **M1:** the spec re-pin needs D-039 in DECISIONS.md in the same PR (the
+    lead's).
+  - **M2:** a settings change rounded onto a step's sample is plausibly a
+    fifth near-tie class. It is not pinned (hypothesis); the proposed G4 text
+    names settings, transport and scale changes as causes.
+  - **Done here:**
+    - L1: the `before` path is gated on the plant, and the duplicate
+      `allKinds` is gone.
+    - L2: the C++ test checks the pending case's on and off counts, and the
+      lab its counts and terminal rows.
+    - L4: the copy-in "Last verified" line.
+  - **Left:**
+    - L3 (§1.1 clarifications): in the proposed text.
+    - L5: no exact-positional-tie known answer (an implausible fault).
 - **Open questions:**
   1. E14.
   2. Critic M1 of the first round (`tickStreamOf` is order-sensitive within one
      sample: two offs one tick apart sharing a sample only at 44.1 kHz above
      about 172 bpm). Not reached by any seed; left noted.
-  3. The re-run critic's findings (see the PR).
+  3. The G4 / §1.1 wording correction (H1 of the re-run critic), pending the
+     human.

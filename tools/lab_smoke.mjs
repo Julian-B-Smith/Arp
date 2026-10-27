@@ -342,14 +342,18 @@ function g1Diverges(plants) {
       : run(Object.assign({ core: mkCore(plants), sr, block: 1024, total: at(6000), bpm: 108, ins: [K(0, "a", 60), { at: at(3889), t: "panic" }] },
           which === 1 ? { base: { pattern: "user", gate: 30 }, userPattern: { length: 1, steps: [{ ratchet: 2 }] } } : { base: { gate: 50 } }));
     const o = ons(r).map(e => e.key + "@" + e.tick);
-    return which === 0 ? (o.includes("60@21120") ? 60 : o.includes("67@21120") ? 67 : 0) : which === 1 ? o.includes("60@13440") : (r.core.rows.T7 || 0);
+    return which === 0 ? (o.includes("60@21120") ? 60 : o.includes("67@21120") ? 67 : 0) : which === 1 ? o.includes("60@13440") + "/" + o.length + "/" + r.evs.filter(e => e.t === "off").length : (r.core.rows.T7 || 0) + "/" + r.core.rows.T1;
   };
   plant(one(0, ["musicalOrderOnSample"], 48000) === 67, "option A erases the step near-tie (step 11 plays 67 at 48 kHz too)");
-  plant(one(1, ["musicalOrderOnSample"], 48000) === true, "option A erases the pending near-tie (the sub-note sounds before the Panic at 48 kHz too)");
-  plant(one(2, ["musicalOrderOnSample"], 48000) === 0, "option A erases the off near-tie (the gate ends the note before the Panic at 48 kHz too)");
+  plant(one(1, ["musicalOrderOnSample"], 48000).startsWith("true"), "option A erases the pending near-tie (the sub-note sounds before the Panic at 48 kHz too)");
+  plant(one(2, ["musicalOrderOnSample"], 48000).startsWith("0/"), "option A erases the off near-tie (the gate ends the note before the Panic at 48 kHz too)");
   check(one(0, [], 48000) === 60 && one(0, [], 96000) === 67, "documented near-tie outside G4 (step): a release 0.70 tick after step 11 counts as on it at 48 kHz (60), after it at 96 kHz (67)");
-  check(one(1, [], 48000) === false && one(1, [], 96000) === true, "documented near-tie outside G4 (pending): a Panic 0.38 tick after a sub-note clears it at 48 kHz, ends it at 96 kHz");
-  check(one(2, [], 48000) === 1 && one(2, [], 96000) === 0, "documented near-tie outside G4 (off): a Panic 0.38 tick after a gate end ends the note itself at 48 kHz (T7), finds it ended at 96 kHz");
+  check(one(1, [], 48000) === "false/7/7" && one(1, [], 96000) === "true/8/8", "documented near-tie outside G4 (pending): a Panic 0.38 tick after a sub-note clears it at 48 kHz, ends it at 96 kHz");
+  check(one(2, [], 48000) === "1/3" && one(2, [], 96000) === "0/4", "documented near-tie outside G4 (off): a Panic 0.38 tick after a gate end ends the note itself at 48 kHz (T7), finds it ended at 96 kHz");
+  // rounded: 97 bpm, 1/16, release at 8 kHz 8660 = 1.14 samples after step 7 at 44.1 kHz, delivered at the NEAREST sample (the C++ suite's atRate)
+  const step7 = (plants, sr) => { const r = run({ core: mkCore(plants), sr, block: 1024, total: Math.round(11000 * sr / 8000), bpm: 97, ins: [K(0, "a", 60), K(0, "b", 67), O(Math.floor((8660 * sr + 4000) / 8000), "b")] }); const e = ons(r).find(x => x.tick === 7 * 3840); return e ? e.key : null; };
+  plant(step7(["musicalOrderOnSample"], 44100) === 67, "option A erases the rounded near-tie (step 7 plays 67 at 44.1 kHz too)");
+  check([44100, 48000, 96000, 192000].map(sr => step7([], sr)).join() === "60,67,67,67", "documented near-tie outside G4 (rounded): a release 1.14 samples after step 7, delivered at the nearest sample, counts as on it at 44.1 kHz (60), after it at 48 / 96 / 192 kHz (67)");
 }
 
 // ---- 8. G5: under +-1/32-beat host jitter every grid step is evaluated exactly once ---------
