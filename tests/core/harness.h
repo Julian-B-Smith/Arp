@@ -176,13 +176,14 @@ struct SimHost {
     segs.push_back(mk(at, playing.value_or(prev.playing), bpm.value_or(prev.bpm), seekBeats ? I128::mul(std::llround(*seekBeats * kTpq), D) : pos));
     std::stable_sort(segs.begin(), segs.end(), [](const Seg& a, const Seg& b) { return a.start < b.start; });
   }
-  // The same script at another sample rate, every sample position mapped through `sc`, every musical position kept EXACTLY.
-  // Only a sample can be rounded, never a position. A position the script holds or sets (a stop holds where it stopped, a start resumes from
+  // The same script at another sample rate, every sample position mapped through `sc`, every position the script NAMES kept exactly.
+  // A position the script holds or sets (a stop holds where it stopped, a start resumes from
   // there, a seek names one) is this host's own exact position in the new rate's posNum units (x newSr / sr). Re-deriving it from the ROUNDED
   // sample instead (the old replay of `ops`) made it a different musical position at 44.1 kHz, where 8 kHz positions are not whole samples
   // (17500 -> 96468.75 -> 96469): a stop held tick 67200.17 there and 67200 at 48 kHz, so "the first grid step at or after" (SPEC 4.5) chose
   // step 36 at one rate and 35 at the other (T-007, the edge fuzz's session 20). A tempo change while playing stays continuous at the new rate,
-  // as a real host is: its position there is not one the script names. `bySample` keeps the old replay, for the control that must diverge.
+  // as a real host is: its position there is not one the script names, so after one, positions at 44.1 kHz drift by up to half a sample of
+  // tempo difference until the next held or set position snaps them back. `bySample` keeps the old replay, for the control that must diverge.
   std::shared_ptr<SimHost> rescaled(int newSr, const std::function<int(int)>& sc, bool bySample = false) const {
     auto h = std::make_shared<SimHost>(newSr, startBpm, startBeats, startPlaying);
     if (bySample) {

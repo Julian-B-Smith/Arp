@@ -880,8 +880,10 @@ void testEdgeFuzz() {
     const std::string want = streamOf(ref);
     for (int blk : {512, 64, 7, 1})
       if (streamOf(runR(s, blk)) != want) { ++g1Bad; if (first.empty()) first = "G1 session " + std::to_string(id) + " at block " + std::to_string(blk); break; }
-    // G4 in sync mode (time mode is held to TM1 in microseconds, not ticks): the tick of every event is the same at every rate, with no exception. (Until T-007 a
+    // G4 in sync mode (time mode is held to TM1 in microseconds, not ticks): the tick of every event is the same at every rate, with no tolerance. (Until T-007 a
     // session whose host stopped was let off when its randomness-off twin diverged too; the cause was the test host, not the core: testHandOver below.)
+    // These 40 seeds are not a proof of G4: an input less than one sample after a grid step's tick, sharing its sample, still reads differently by rate
+    // (the input-versus-step tie order, proposed erratum E13 in docs/spec-errata.md, pending the human). None of these seeds reaches it.
     if (!ek.time) {
       ++g4Ran;
       const std::string t48 = tickStreamOf(runR(atRate(s, 48000), 1024));
@@ -895,7 +897,10 @@ void testEdgeFuzz() {
     EdgeKinds ek;
     if (pG1 == 0) { Session s = fuzzEdgeSession(id, {"randomFromBlock"}, &ek); if (s.base.velRandom + s.base.gateRandom > 0) pG1 += streamOf(runR(s, 4096)) != streamOf(runR(s, 7)); }
     if (pN1 == 0) { Session s = fuzzEdgeSession(id, {"dropRelease"}, &ek); pN1 += !n1(runR(s, 64)).empty(); }
-    if (pG4 == 0) { Session s = fuzzEdgeSession(id, {"srTickMath"}, &ek); if (!ek.time) pG4 += tickStreamOf(runR(atRate(s, 48000), 1024)) != tickStreamOf(runR(atRate(s, 192000), 1024)); }
+    if (pG4 == 0) {   // every rate the check compares; the plant's skew (sr / 44100) is 1 at 44.1 and 48 kHz alike, so only 96 and 192 kHz can read it
+      Session s = fuzzEdgeSession(id, {"srTickMath"}, &ek);
+      if (!ek.time) { const std::string t48 = tickStreamOf(runR(atRate(s, 48000), 1024)); int red = 0; for (int sr : {44100, 96000, 192000}) red += tickStreamOf(runR(atRate(s, sr), 1024)) != t48; pG4 = red > 0; }
+    }
   }
   plant(pG1 > 0, "the edge fuzz reads red on a draw position taken from the block (plant randomFromBlock), G1");
   plant(pN1 > 0, "the edge fuzz reads red on a dropped release (plant dropRelease), N1");
