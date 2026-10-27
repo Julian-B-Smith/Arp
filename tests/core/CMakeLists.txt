@@ -57,8 +57,15 @@ add_executable(arp_bench_soft bench.cpp alloc_hook.cpp)
 target_link_libraries(arp_bench_soft PRIVATE arp_core_soft)
 target_compile_options(arp_bench_soft PRIVATE ${ARP_WARN})
 
+# The listening renders (M3 gate, the human's listening sign-off): drives the SHIPPED core (no ARP_PLANTS) with scripted hosts and writes
+# WAV / MIDI / manifest.json for lab/listen.html. tools/render_listening.sh builds and runs it; ./verify never does. alloc_hook.cpp is linked so the
+# renderer can prove nothing allocates inside process(). Compiled by tools/core_test.sh too, so a core change that breaks it fails there.
+add_executable(arp_render render.cpp alloc_hook.cpp)
+target_link_libraries(arp_render PRIVATE arp_core)
+target_compile_options(arp_render PRIVATE ${ARP_WARN})
+
 # The binaries land directly in the build dir, where tools/core_test.sh and tools/core_params_check.py look.
-set_target_properties(arp_tests arp_tests_fallback arp_shipped_smoke arp_bench arp_bench_soft PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set_target_properties(arp_tests arp_tests_fallback arp_shipped_smoke arp_bench arp_bench_soft arp_render PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_test(NAME arp_tests COMMAND arp_tests)
 add_test(NAME arp_tests_fallback COMMAND arp_tests_fallback)

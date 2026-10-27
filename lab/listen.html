@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arp - listening sign-off</title>
+<!--
+  The listening page for the SHIPPED C++ core (ROADMAP T-007, M3 gate: the human's listening sign-off).
+  Not the lab twin: every sound here was rendered by the real core (tools/render_listening.sh -> build/listen/).
+  Self-contained: no external script, font or stylesheet. Serve the repo root (the "lab" preview server) and open /lab/listen.html;
+  a file:// page cannot fetch the manifest.
+  Reads ../build/listen/manifest.json (required), ../spec/params.json and ../spec/bank/starter.json (optional: display names only).
+  Verdicts live in localStorage under STORE_KEY; "Copy summary" is how they get back to the lead.
+-->
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f6f3; --card: #ffffff; --ink: #1d1d1b; --muted: #5d5d58; --line: #d8d8d0;
+    --accent: #1b5fc1; --accent-ink: #ffffff;
+    --arp: #2468d6; --chord: #d9731a; --trig: #b0258f; --held: #8a8a82; --grid: #e4e4dc; --bar: #c4c4ba; --head: #d6213a; --mark: #3b7a3b;
+    --right: #1e7a3c; --off: #b3261e; --unsure: #8a6a00; --chip: #ecece5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121214; --card: #1c1c20; --ink: #ececea; --muted: #a2a29c; --line: #34343a;
+      --accent: #6aa3ff; --accent-ink: #0b1220;
+      --arp: #6aa3ff; --chord: #ffa04d; --trig: #ff7ad9; --held: #8d8d86; --grid: #26262b; --bar: #3d3d44; --head: #ff5a6e; --mark: #7fd07f;
+      --right: #5fd68a; --off: #ff7f76; --unsure: #e6c04a; --chip: #2a2a30;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 0 12px 64px; }
+  header.top { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); padding: 8px 12px; }
+  header.top .row { max-width: 880px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
+  h1 { font-size: 1.15rem; margin: 0; }
+  h2 { font-size: 1.05rem; margin: 0 0 4px; }
+  p { margin: 6px 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 0.85rem; }
+  button, .btn { font: inherit; min-height: 44px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:focus-visible, textarea:focus-visible, input:focus-visible + label, a:focus-visible, canvas:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  #intro { margin: 14px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 14px 0; }
+  .card .id { font-size: 0.8rem; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .chip { background: var(--chip); border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; }
+  audio { width: 100%; margin: 6px 0; }
+  .links { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin: 4px 0 8px; font-size: 0.9rem; }
+  a { color: var(--accent); }
+  canvas { width: 100%; display: block; border: 1px solid var(--line); border-radius: 8px; touch-action: manipulation; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.8rem; color: var(--muted); margin: 4px 0 10px; }
+  .legend i { display: inline-block; width: 12px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 2px; }
+  .verdict { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+  .verdict input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .verdict label { min-height: 44px; padding: 8px 14px; border-radius: 8px; border: 2px solid var(--line); display: inline-flex; align-items: center; cursor: pointer; background: var(--card); }
+  .verdict input:checked + label.right { border-color: var(--right); color: var(--right); font-weight: 600; }
+  .verdict input:checked + label.off { border-color: var(--off); color: var(--off); font-weight: 600; }
+  .verdict input:checked + label.unsure { border-color: var(--unsure); color: var(--unsure); font-weight: 600; }
+  textarea { width: 100%; min-height: 64px; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); resize: vertical; }
+  #summary { margin: 14px 0; }
+  #summary textarea { min-height: 200px; font: 0.85rem/1.4 ui-monospace, Menlo, monospace; }
+  #error { border: 2px solid var(--off); border-radius: 12px; padding: 14px; margin: 20px 0; background: var(--card); }
+  code { background: var(--chip); padding: 1px 6px; border-radius: 4px; }
+  @media (max-width: 520px) { .verdict label { flex: 1 1 100%; } header.top .row button { flex: 1 1 auto; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="row">
+    <h1>Arp: listening sign-off <span class="muted small" id="progress"></span></h1>
+    <span style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="primary" id="copy" type="button">Copy summary</button>
+    </span>
+  </div>
+</header>
+<main>
+  <div id="intro">
+    <p>Every sound on this page was made by the <strong>real C++ core</strong> (the library that ships to horde), driven by a scripted host, then voiced by a small synth that is not part of the core.
+       The arpeggio is a soft saw slightly to the left, the chord stage a rounder tone slightly to the right, and triggers are short clicks in the centre.</p>
+    <p class="muted small">Per scenario: listen, look at the roll (the red line follows the audio; click the roll to jump), pick a verdict, and say what you heard in the box.
+       Your answers are kept in this browser. When you are done, press <strong>Copy summary</strong> and paste it back to the lead.</p>
+  </div>
+  <div id="error" hidden></div>
+  <div id="list"></div>
+  <section id="summary" hidden>
+    <h2>Summary</h2>
+    <p class="small muted" id="copystatus"></p>
+    <textarea id="summarytext" readonly></textarea>
+  </section>
+  <p><button type="button" id="clear">Clear all my answers</button></p>
+</main>
+<script>
+"use strict";
+const MANIFEST_URL = "../build/listen/manifest.json";
+const PARAMS_URL = "../spec/params.json";
+const BANK_URL = "../spec/bank/starter.json";
+const STORE_KEY = "arp-listening-verdicts/1";
+const VERDICTS = [["right", "Sounds right"], ["off", "Something's off"], ["unsure", "Not sure"]];
+
+let scenarios = [];
+let params = {};       // key -> params.json entry (display names only; empty if the file could not be read)
+let bankNames = {};    // pattern id -> display name
+let answers = {};      // scenario id -> {v, n}
+const cards = new Map(); // scenario id -> {sc, audio, canvas, base, ctx, time}
+
+// ---- storage: localStorage can throw (private mode, blocked storage); the page must work without it ----
+function loadAnswers() {
+  try { const raw = localStorage.getItem(STORE_KEY); if (raw) { const o = JSON.parse(raw); if (o && typeof o === "object") answers = o; } } catch (e) { /* keep in memory only */ }
+}
+function saveAnswers() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(answers)); } catch (e) { /* keep in memory only */ }
+}
+
+// ---- display names from params.json (keys the page cannot name are shown as they are) ----
+function labelOf(key) { return params[key] && params[key].label ? params[key].label : key; }
+function signed(v) { const n = Number(v); return n > 0 ? "+" + n : String(n); }
+function valueText(key, v) {
+  const p = params[key];
+  if (p && p.value_labels && p.value_labels[v] !== undefined) return p.value_labels[v];
+  if (key === "pattern") return v === "user" ? "Build your own" : (bankNames[v] || v);
+  if (p && p.type === "bool") return v === "true" ? "on" : "off";
+  if (key === "swing") return (Number(v) / 10).toFixed(1) + " %";
+  if (key === "step_time_us") return (Number(v) / 1000) + " ms";
+  if (key === "gate") return v + " %";
+  if (key === "repeats") return v === "0" ? "forever" : v;
+  if (key === "step_size" || /^chord_shift/.test(key)) return signed(v);
+  return v;
+}
+function settingText(s) {
+  if (s.sweep) return labelOf(s.key) + ": sweeps " + valueText(s.key, String(s.sweep[0])) + " to " + valueText(s.key, String(s.sweep[1]));
+  return labelOf(s.key) + ": " + s.values.map(v => valueText(s.key, v)).join(" → ");
+}
+function markText(m) { return m.text !== undefined ? m.text : valueText(m.key, m.value); }
+
+// ---- the piano roll ----
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function fmt(t) { const m = Math.floor(t / 60), s = t - m * 60; return m + ":" + (s < 10 ? "0" : "") + s.toFixed(1); }
+
+function drawBase(card) {
+  const sc = card.sc, cv = card.canvas;
+  const dpr = window.devicePixelRatio || 1;
+  const W = Math.max(200, Math.floor(cv.clientWidth)), H = cv.clientHeight || 170;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  card.W = W; card.H = H;
+  const base = card.base || (card.base = document.createElement("canvas"));
+  base.width = cv.width; base.height = cv.height;
+  const g = base.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const dur = sc.duration, x = t => (t / dur) * W;
+  const topPad = 16, trigH = sc.triggers.length ? 30 : 0, botPad = 4;
+  const plotTop = topPad, plotBot = H - trigH - botPad;
+  g.fillStyle = css("--card"); g.fillRect(0, 0, W, H);
+
+  // time grid: beats and bars for a synced scenario, whole seconds in time mode
+  g.lineWidth = 1;
+  if (sc.timeMode) {
+    g.strokeStyle = css("--grid");
+    for (let t = 1; t < dur; t += 1) { const px = Math.round(x(t)) + 0.5; g.beginPath(); g.moveTo(px, plotTop); g.lineTo(px, H); g.stroke(); }
+  } else {
+    const spb = 60 / sc.bpm;
+    for (let b = 0; b * spb < dur; b++) {
+      const px = Math.round(x(b * spb)) + 0.5;
+      g.strokeStyle = css(b % sc.beatsPerBar === 0 ? "--bar" : "--grid");
+      g.beginPath(); g.moveTo(px, plotTop); g.lineTo(px, H); g.stroke();
+    }
+  }
+
+  // pitch range from everything drawn
+  let lo = 127, hi = 0;
+  for (const n of sc.notes) { lo = Math.min(lo, n[2]); hi = Math.max(hi, n[2]); }
+  for (const n of sc.held) { lo = Math.min(lo, n[2]); hi = Math.max(hi, n[2]); }
+  if (lo > hi) { lo = 60; hi = 72; }
+  lo -= 1; hi += 1;
+  const rows = hi - lo + 1, rowH = (plotBot - plotTop) / rows;
+  const y = k => plotBot - (k - lo + 1) * rowH;
+  const barH = Math.max(2, Math.min(10, rowH * 0.8));
+
+  // keys the player holds: outlines behind the notes
+  g.strokeStyle = css("--held"); g.lineWidth = 1;
+  for (const n of sc.held) {
+    const x0 = x(n[0]), x1 = Math.max(x0 + 1, x(n[1]));
+    g.strokeRect(x0 + 0.5, y(n[2]) + (rowH - barH) / 2 + 0.5, x1 - x0, barH - 1);
+  }
+  // chord stream under, arp over: a chord note may sound on the same key as an arp note
+  for (const stream of [1, 0]) {
+    g.fillStyle = css(stream ? "--chord" : "--arp");
+    g.globalAlpha = stream ? 0.6 : 1;
+    for (const n of sc.notes) {
+      if (n[4] !== stream) continue;
+      const x0 = x(n[0]), x1 = Math.max(x0 + 1.5, x(n[1]));
+      const a = 0.35 + 0.65 * (n[3] / 127);
+      g.globalAlpha = (stream ? 0.6 : 1) * a;
+      g.fillRect(x0, y(n[2]) + (rowH - barH) / 2, x1 - x0, barH);
+    }
+  }
+  g.globalAlpha = 1;
+
+  // triggers: a strip at the bottom, one thin row per lane
+  if (trigH) {
+    g.strokeStyle = css("--bar"); g.beginPath(); g.moveTo(0, H - trigH - 1.5); g.lineTo(W, H - trigH - 1.5); g.stroke();
+    g.fillStyle = css("--trig");
+    for (const t of sc.triggers) g.fillRect(Math.round(x(t[0])) - 1, H - trigH + (t[1] - 1) * 3 + 1, 3, 3);
+  }
+
+  // marks: dashed line and a label to the next mark
+  const marks = sc.marks.slice().sort((a, b) => a.t - b.t);
+  g.font = "11px system-ui, sans-serif"; g.textBaseline = "top";
+  marks.forEach((m, i) => {
+    const px = Math.round(x(m.t)) + 0.5, next = i + 1 < marks.length ? x(marks[i + 1].t) : W;
+    g.strokeStyle = css("--mark"); g.setLineDash([3, 3]);
+    g.beginPath(); g.moveTo(px, 0); g.lineTo(px, H); g.stroke(); g.setLineDash([]);
+    let s = markText(m); const room = next - px - 6;
+    while (s.length > 1 && g.measureText(s).width > room) s = s.slice(0, -2) + "…";
+    if (room > 14) { g.fillStyle = css("--mark"); g.fillText(s, px + 3, 2); }
+  });
+  card.baseReady = true;
+}
+
+function paint(card) {
+  if (!card.baseReady) return;
+  const cv = card.canvas, ctx = card.ctx || (card.ctx = cv.getContext("2d"));
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(card.base, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const t = card.audio.currentTime || 0, px = Math.round((t / card.sc.duration) * card.W) + 0.5;
+  ctx.strokeStyle = css("--head"); ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, card.H); ctx.stroke();
+  card.time.textContent = fmt(t) + " / " + fmt(card.sc.duration);
+}
+
+function redrawAll() { for (const c of cards.values()) { c.ctx = null; drawBase(c); paint(c); } }
+
+// ---- playback: one scenario at a time, the playhead follows the audio clock ----
+let rafCard = null;
+function loop() {
+  if (!rafCard) return;
+  paint(rafCard);
+  if (!rafCard.audio.paused) requestAnimationFrame(loop); else rafCard = null;
+}
+function onPlay(card) {
+  for (const c of cards.values()) if (c !== card && !c.audio.paused) c.audio.pause();
+  rafCard = card; requestAnimationFrame(loop);
+}
+
+// ---- building the page ----
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in (attrs || {})) { if (k === "class") e.className = attrs[k]; else if (k === "text") e.textContent = attrs[k]; else e.setAttribute(k, attrs[k]); }
+  for (const kid of kids) if (kid) e.append(kid);
+  return e;
+}
+
+function buildCard(sc, index) {
+  const card = { sc };
+  const root = el("section", { class: "card", id: "s-" + sc.id });
+  root.append(el("div", { class: "id", text: (index + 1) + " of " + scenarios.length + "   " + sc.id }));
+  root.append(el("h2", { text: sc.title }));
+  root.append(el("p", { text: sc.listen }));
+
+  const chips = el("div", { class: "chips" });
+  const facts = sc.settings.map(settingText).concat(sc.extra || []);
+  if (sc.bpm && !sc.timeMode) facts.unshift(sc.bpm + " bpm");
+  if (!sc.transportPlaying) facts.unshift("transport stopped");
+  if (sc.directAudible) facts.push("your own keys are audible (quiet tone)");
+  if (sc.metronomeAudible) facts.push("metronome click on")
+  for (const f of facts) chips.append(el("span", { class: "chip", text: f }));
+  if (!facts.length) chips.append(el("span", { class: "chip", text: "all settings at their defaults" }));
+  root.append(chips);
+
+  const audio = el("audio", { controls: "", preload: "none", src: "../build/listen/" + sc.wav });
+  card.audio = audio;
+  root.append(audio);
+
+  const canvas = el("canvas", { role: "img", tabindex: "0", "aria-label": "Piano roll of " + sc.title + ": " + sc.notes.length + " notes, " + sc.triggers.length + " triggers. Click to jump in the audio." });
+  canvas.style.height = "170px";
+  card.canvas = canvas;
+  root.append(canvas);
+  const legend = el("div", { class: "legend" });
+  const item = (color, text, outline) => { const i = el("i"); if (outline) { i.style.border = "1px solid " + color; } else i.style.background = color; const s = el("span"); s.append(i, text); return s; };
+  const hasChord = sc.notes.some(n => n[4] === 1);
+  legend.append(item("var(--arp)", "arp notes"));
+  if (hasChord) legend.append(item("var(--chord)", "chord notes"));
+  if (sc.triggers.length) legend.append(item("var(--trig)", "triggers (rows = lanes 1 to 8)"));
+  legend.append(item("var(--held)", "keys you hold", true));
+  card.time = el("span", { text: "" });
+  legend.append(card.time);
+  root.append(legend);
+
+  const links = el("div", { class: "links" });
+  const mid = el("a", { href: "../build/listen/" + sc.mid, download: sc.mid, text: "Download MIDI (" + sc.mid + ")" });
+  links.append(mid);
+  root.append(links);
+
+  const name = "v-" + sc.id, a = answers[sc.id] || { v: "", n: "" };
+  const verdict = el("div", { class: "verdict", role: "radiogroup", "aria-label": "Verdict for " + sc.title });
+  for (const [val, text] of VERDICTS) {
+    const id = name + "-" + val;
+    const input = el("input", { type: "radio", name, id, value: val });
+    if (a.v === val) input.checked = true;
+    input.addEventListener("change", () => { setAnswer(sc.id, { v: val }); });
+    verdict.append(input, el("label", { for: id, class: val, text }));
+  }
+  root.append(verdict);
+  const notes = el("textarea", { placeholder: "Notes: what you heard, and where (e.g. at the third bar)", "aria-label": "Notes for " + sc.title });
+  notes.value = a.n || "";
+  notes.addEventListener("input", () => setAnswer(sc.id, { n: notes.value }));
+  root.append(notes);
+
+  canvas.addEventListener("click", ev => {
+    const r = canvas.getBoundingClientRect();
+    audio.currentTime = Math.max(0, Math.min(sc.duration, ((ev.clientX - r.left) / r.width) * sc.duration));
+    paint(card);
+  });
+  audio.addEventListener("play", () => onPlay(card));
+  audio.addEventListener("seeked", () => paint(card));
+  audio.addEventListener("ended", () => paint(card));
+
+  card.root = root;
+  cards.set(sc.id, card);
+  return root;
+}
+
+function setAnswer(id, patch) {
+  answers[id] = Object.assign({ v: "", n: "" }, answers[id], patch);
+  saveAnswers();
+  updateProgress();
+}
+function updateProgress() {
+  const done = scenarios.filter(s => answers[s.id] && answers[s.id].v).length;
+  document.getElementById("progress").textContent = scenarios.length ? "(" + done + " of " + scenarios.length + " answered)" : "";
+}
+
+function summaryText() {
+  const label = Object.fromEntries(VERDICTS);
+  const count = { right: 0, off: 0, unsure: 0, none: 0 };
+  const lines = scenarios.map(s => {
+    const a = answers[s.id] || { v: "", n: "" };
+    count[a.v || "none"]++;
+    const note = (a.n || "").trim().replace(/\s*\n\s*/g, " / ");
+    return s.id + " " + s.title + ": " + (a.v ? label[a.v] : "not answered") + (note ? " — " + note : "");
+  });
+  return "Arp listening sign-off (shipped C++ core), " + new Date().toISOString().slice(0, 10) + "\n" +
+    "Sounds right " + count.right + ", Something's off " + count.off + ", Not sure " + count.unsure + ", not answered " + count.none + " of " + scenarios.length + "\n\n" + lines.join("\n") + "\n";
+}
+
+async function copySummary() {
+  const text = summaryText(), box = document.getElementById("summarytext"), status = document.getElementById("copystatus");
+  document.getElementById("summary").hidden = false;
+  box.value = text;
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch (e) { /* blocked or unavailable: fall back below */ }
+  if (!ok) { try { box.focus(); box.select(); ok = document.execCommand("copy"); } catch (e) { ok = false; } }
+  status.textContent = ok ? "Copied to the clipboard. The text is also here:" : "Could not copy automatically. Select the text below and copy it:";
+  document.getElementById("summary").scrollIntoView({ block: "nearest" });
+}
+
+function showError(html) { const e = document.getElementById("error"); e.innerHTML = html; e.hidden = false; }
+
+async function getJson(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(url + ": HTTP " + r.status);
+  return r.json();
+}
+
+async function main() {
+  loadAnswers();
+  document.getElementById("copy").addEventListener("click", copySummary);
+  document.getElementById("clear").addEventListener("click", () => {
+    if (!confirm("Clear every verdict and note on this page?")) return;
+    answers = {}; saveAnswers(); location.reload();
+  });
+  let manifest;
+  try { manifest = await getJson(MANIFEST_URL); }
+  catch (e) {
+    showError("<p><strong>The listening renders are missing.</strong> Run <code>bash tools/render_listening.sh</code> first, then reload this page.</p>" +
+      "<p class=\"small muted\">It writes <code>build/listen/manifest.json</code> and the audio files. Open this page from the lab preview server (the repo root over http), not as a file. (" + String(e.message).replace(/</g, "&lt;") + ")</p>");
+    return;
+  }
+  // Display names only: if either file cannot be read the page falls back to the raw setting names.
+  try { for (const p of (await getJson(PARAMS_URL)).params) params[p.key] = p; } catch (e) { /* raw keys */ }
+  try { for (const p of (await getJson(BANK_URL)).patterns) bankNames[p.id] = p.name; } catch (e) { /* raw ids */ }
+
+  scenarios = manifest.scenarios;
+  const list = document.getElementById("list");
+  scenarios.forEach((sc, i) => list.append(buildCard(sc, i)));
+  updateProgress();
+  for (const c of cards.values()) { drawBase(c); paint(c); }
+  let timer = 0;
+  window.addEventListener("resize", () => { clearTimeout(timer); timer = setTimeout(redrawAll, 120); });
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  if (mq.addEventListener) mq.addEventListener("change", redrawAll);
+}
+main();
+</script>
+</body>
+</html>
