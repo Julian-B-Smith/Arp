@@ -1,5 +1,5 @@
 # arp bench stream digest of the note-randomness scenarios (tools/core_digest.sh regen-random): scenario <TAB> rate block events stream-hash counters-hash, from the SHIPPED core.
-# generated from core/ at commit 73ba26b: core/src/core.cpp sha256 5fd238fb367ccfee0d602b5bc70c3e52a4b6f2f6ebadf2732d475592809781f9, core/include/arp/core.h sha256 b9505f9e05bb2666dedaa6a3100903d43793d2bebb8cfa8da403f203eeca7cd5
+# generated from core/ at commit ed943b2: core/src/core.cpp sha256 a42b6b8cccb78f122bec15e3cbdb51efbefbb5e722d47fa91049288ef41eab17, core/include/arp/core.h sha256 305a41e73dcd76790ecd183b4c5b55d5d68bb93eb0eddad8adcbf075d5da7ea0
 WORST CASE B++ with randomness: B++, vel_random = gate_random = random_curve = 100	48000 16 264623 140fa60c87e2b425 1953bfd023d6b30a
 WORST CASE B++ with randomness: B++, vel_random = gate_random = random_curve = 100	48000 4096 178816 70815c1a2645a709 3356287fc0d7bad9
 WORST CASE B++ with randomness: B++, vel_random = gate_random = random_curve = 100	192000 128 264623 87561a7abfa597b3 1953bfd023d6b30a
@@ -29,21 +29,21 @@ WORST CASE A at ratchet 4 with randomness: A (32 keys on 16 channels, 128 notes,
 INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	48000 16 264623 140fa60c87e2b425 1953bfd023d6b30a
 INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	48000 4096 178816 70815c1a2645a709 3356287fc0d7bad9
 INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	192000 128 264623 87561a7abfa597b3 1953bfd023d6b30a
-INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 16 272176 ee46bb5bb0b200ea 049703f9020bb5ab
-INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 4096 178816 e9f672a6911ce49e 94311cc8fe44fdea
-INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	192000 128 271771 2e5982eaf3ee35b2 91704341eac6d6ff
+INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 16 272896 4a5fe03aeddb4fdd ac156938393c1f2d
+INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 4096 178816 1a97aa52a7c394eb e562403be4cd7c56
+INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	192000 128 272896 d8c1f3dc0040bd1b ac156938393c1f2d
 INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	48000 16 264623 140fa60c87e2b425 1953bfd023d6b30a
 INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	48000 4096 178816 70815c1a2645a709 3356287fc0d7bad9
 INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	192000 128 264623 87561a7abfa597b3 1953bfd023d6b30a
-INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 16 256136 259c9f70bfe8f200 69c477dc613878d1
-INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 4096 178992 cf8481f2818a87e6 96f8e7c33b438975
-INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	192000 128 256137 8742813f8b08c501 d4d1c0bae5845f1c
-INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 16 264648 778bac817febb964 dc6ba962c9807bde
-INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 4096 178992 41c06ab153c2cfdc 514a3b1d8b53c7fa
-INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	192000 128 264649 ab6ae677126bc2f5 4052249286ef40df
-INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 16 281704 642437f716504c8c b5ad743baddc4a14
-INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 4096 178992 3ea0886367bc08a8 0d2be3123b4588a1
-INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	192000 128 281705 0ba3b70c094d7919 fd70b61631fc55b9
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 16 255963 fab47a0c90917e61 b529e0e59407203a
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 4096 178992 5ced97e58c1ded39 5f4dc057d3d82c6f
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	192000 128 255962 38fb591aa295a566 76a5323ed7d51587
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 16 264475 a769a6a0fefa12ed 7fb2ae60404e21bd
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 4096 178992 4849d7b4ccd70d36 3c446f8f10c8c926
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	192000 128 264474 6e7b3d2d70ead9e6 8fc5e7d45b96c624
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 16 281531 a82515dc21336749 83ec509916d181fb
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 4096 178992 3bf3f9a27ff621ed 8182de6df07c3ef1
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	192000 128 281530 155a3195b28f00de 7ad0bfe4b6b32976
 INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	48000 16 66763 b4c984dbc48fda8e aa242d10b7ead112
 INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	48000 4096 62683 0e6c5ea886903bb4 138c786e63386d32
 INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	192000 128 66763 fb3de8b9e4477595 aa242d10b7ead112

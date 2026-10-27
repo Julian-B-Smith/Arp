@@ -323,14 +323,12 @@ std::string g4Diverges(const Plant& plants) {
   }
   return "";
 }
-// The M1b sessions are written in samples at 8 kHz; replaying one at another rate scales every position. Those are whole samples
-// at 48/96/192 kHz; at 44.1 kHz an input or settings change ROUNDS DOWN (the transport is resampled exactly: SimHost::rescaled).
-// Down, because since D-039 (SPEC 1.1) an input goes after an off, pending on or grid step on its sample only when that is
-// strictly earlier in the music: an input written exactly ON a step tick must stay at or before it, or it would miss the step
-// at 44.1 kHz alone (rounding to the nearest moved half of them past it). An input written LESS than one 44.1 kHz sample after
-// a tick would round before it, a different musical event; none of these scripts has one (G4 would read red if one did).
+// The M1b sessions are written in samples at 8 kHz; replaying one at another rate scales every position (rounded to the
+// nearest sample). Inputs and settings land on or between grid steps either way, and an input that sits exactly ON a step tick
+// still precedes that step at the rounded sample (the step is at cdiv, the input at the nearest), so the musical content is
+// the same and only the sample rate differs.
 Session atRate(Session s, int sr) {
-  auto sc = [sr](int at) { return static_cast<int>((static_cast<long long>(at) * sr) / 8000); };
+  auto sc = [sr](int at) { return static_cast<int>((static_cast<long long>(at) * sr + 4000) / 8000); };
   s.sr = sr;
   s.total = sc(s.total);
   for (auto& i : s.ins) i.at = sc(i.at);
@@ -387,61 +385,69 @@ void testG4() {
   check(d.empty(), "G4: the tick of every event is identical at 44.1, 48, 96 and 192 kHz (three keys, a key released mid-run)" + d);
 }
 
-// G4 / SPEC 1.1 (D-039, erratum E13): an input and an earlier off, pending on or grid step on ONE sample go in musical order. Each case below puts an
-// input less than one 48 kHz sample but at least one 96 kHz sample after the event (exact at 48/96/192 kHz; at 44.1 kHz rounded down and still after it),
-// so the two share a sample at 44.1 and 48 kHz and not at 96 or 192. Before D-039 the input went first wherever they shared one.
-//  - step:    209 bpm, 1/32, keys 60 and 67 held, 67 released at tick 21120.704 (8 kHz sample 3158), 0.70 tick after step 11: step 11 plays 67 everywhere
-//             (input first: 60 at 44.1 and 48 kHz).
-//  - pending: 108 bpm, 1/16, ratchet 2, key 60 held, Panic at tick 13440.384 (8 kHz 3889), 0.38 tick after step 3's second sub-note: the sub-note sounds
-//             and the Panic ends it, everywhere (input first, and also yielding to the grid step alone: the Panic clears it at 44.1 and 48 kHz).
-//  - off:     the same Panic against step 3's gate end (gate 50: tick 13440): the note ends at its gate (T1) everywhere and the Panic finds nothing (input
-//             first: the Panic ends it, T7, at 44.1 and 48 kHz). The events are the same either way, only the terminal row differs, so this one reads the counters.
-// The pending case compares the ons and the number of offs, not the off ticks: at 44.1 and 48 kHz the Panic lands on the sub-note's own on-sample, so its off
-// is deferred one sample (SPEC 1.1, H4) and that deferred off reports no scheduled tick (kNoTick), where at 96 kHz it reports 14016. That is a separate rate
-// dependence, of the 1-sample minimum, not of this order: proposed erratum E14 (docs/spec-errata.md), pending the human.
-struct OrderCase { std::string ons; int offs = 0; std::int64_t t1 = 0, t7 = 0; std::string ticks; };
-OrderCase orderCase(int which, int sr, const Plant& plants) {
-  Session s; s.sr = 8000; s.plants = plants;
-  if (which == 0) { s.total = 5000; s.bpm = 209; s.base.rate = Rate::R1_32; s.ins = {K(0, "a", 60), K(0, "b", 67), O(3158, "b")}; }
-  else {
-    s.total = 6000; s.bpm = 108; s.ins = {K(0, "a", 60), Pan(3889)};
-    if (which == 1) { s.base.pattern = Pattern::User; s.base.gate = 30; UserPattern u; u.length = 1; u.steps[0].ratchet = 2; s.userPattern = u; }
-    else s.base.gate = 50;
-  }
-  const Run r = run(atRate(s, sr), 1024);
-  OrderCase o;
+// G4 / SPEC 1.1 (D-039, erratum E13 option C): an input goes first at its sample, so it counts as ON any off, pending on or grid step of that sample.
+// None of these runs is in the committed stream digest (runOnce, never run()): D-039 kept the output the digest pins, and these sessions did not exist.
+//  1. The case the rule is for (the T-007 critic's probe): 120 bpm, 1/16, key 60 held, key 67 pressed EXACTLY on step 3's tick (11520, 0.375 s). That
+//     is 18000 / 36000 / 72000 samples at 48 / 96 / 192 kHz, and 16537.5 at 44.1 kHz, which a host must deliver at 16537 (rounding down) or 16538
+//     (to the nearest, or up). Step 3 must play the new chord (67) at every rate and every rounding. Under the rejected option A (plant
+//     musicalOrderOnSample) the step, now strictly before the input on sample 16538, goes first and plays 60.
+//  2. The price, documented NEAR-TIES outside G4 (G4 covers causes more than one sample apart): an input less than one 48 kHz sample but at least one
+//     96 kHz sample after an event (exact 8 kHz positions, x6 / x12) shares the event's sample at 48 kHz, where it counts as on it, and not at 96 kHz:
+//     - step:    209 bpm, 1/32, keys 60 and 67, 67 released 0.70 tick after step 11 (8 kHz 3158): step 11 plays 60 at 48 kHz, 67 at 96 kHz;
+//     - pending: 108 bpm, 1/16, ratchet 2, key 60, Panic 0.38 tick after step 3's second sub-note (8 kHz 3889): 48 kHz, the Panic clears it first (7 ons);
+//                96 kHz, it sounds and the Panic ends it (8 ons);
+//     - off:     the same Panic against step 3's gate end (gate 50): 48 kHz, the Panic ends the note (T7); 96 kHz, its gate does (T1).
+//     Pinned as known answers so a change to the order cannot slip in unseen; option A erases all three (the plant must read red on each).
+struct OrderRun { std::string ons; int offs = 0; std::int64_t t1 = 0, t7 = 0; };
+OrderRun orderRun(Session s, int sr, const Plant& plants) {
+  s = atRate(s, sr);   // the 8 kHz positions are whole samples at 48 / 96 kHz, where these sessions run
+  s.plants = plants;
+  const Run r = runOnce(s, 1024);
+  OrderRun o;
   for (const Rec& e : r.evs) {
     if (e.t == EventType::NoteOn) o.ons += std::to_string(e.key) + "@" + std::to_string(e.tick) + " ";
     if (e.t == EventType::NoteOff) ++o.offs;
   }
   o.t1 = r.core->counters().rows[1];
   o.t7 = r.core->counters().rows[7];
-  o.ticks = tickStreamOf(r);
   return o;
 }
-// "" when every rate agrees with 48 kHz on what case `which` checks, else where it does not.
-std::string orderDiverges(int which, const Plant& plants) {
-  const OrderCase ref = orderCase(which, 48000, plants);
-  for (int sr : {44100, 96000, 192000}) {
-    const OrderCase o = orderCase(which, sr, plants);
-    const bool same = which == 0 ? o.ticks == ref.ticks : which == 1 ? (o.ons == ref.ons && o.offs == ref.offs) : (o.ticks == ref.ticks && o.t1 == ref.t1 && o.t7 == ref.t7);
-    if (!same) return "differs at " + std::to_string(sr) + " Hz";
-  }
-  return "";
+Session nearTie(int which) {
+  Session s; s.sr = 8000;
+  if (which == 0) { s.total = 5000; s.bpm = 209; s.base.rate = Rate::R1_32; s.ins = {K(0, "a", 60), K(0, "b", 67), O(3158, "b")}; return s; }
+  s.total = 6000; s.bpm = 108; s.ins = {K(0, "a", 60), Pan(3889)};
+  if (which == 1) { s.base.pattern = Pattern::User; s.base.gate = 30; UserPattern u; u.length = 1; u.steps[0].ratchet = 2; s.userPattern = u; }
+  else s.base.gate = 50;
+  return s;
+}
+// The note step 3 plays when the chord change at its tick arrives at sample `at` of a run at `sr`.
+std::string halfSampleChord(int sr, int at, const Plant& plants) {
+  Session s; s.sr = sr; s.total = sr; s.plants = plants;
+  s.ins = {K(0, "a", 60), K(at, "b", 67)};
+  const Run r = runOnce(s, 1024);
+  for (const Rec& e : r.evs) if (e.t == EventType::NoteOn && e.tick == 3 * 3840) return std::to_string(e.key);
+  return "none";
 }
 void testG4Order() {
-  std::puts("G4 / SPEC 1.1 (D-039): an input and an earlier off, pending on or grid step on one sample go in musical order");
-  plant(!orderDiverges(0, {"inputFirstOnSample"}).empty(), "G4 detects an input taken before an earlier grid step on its sample (plant inputFirstOnSample): step 11 " + orderDiverges(0, {"inputFirstOnSample"}));
-  plant(!orderDiverges(1, {"inputFirstOnSample"}).empty(), "G4 detects an input taken before an earlier pending sub-note on its sample (plant inputFirstOnSample): the sub-note " + orderDiverges(1, {"inputFirstOnSample"}));
-  plant(!orderDiverges(1, {"inputYieldsStepOnly"}).empty(), "G4 detects an input that yields to the grid step alone (plant inputYieldsStepOnly): the Panic clears a sub-note due before it, which " + orderDiverges(1, {"inputYieldsStepOnly"}));
-  plant(!orderDiverges(2, {"inputYieldsStepOnly"}).empty(), "the terminal rows detect an input taken before an earlier off on its sample (plant inputYieldsStepOnly): the gate end counts as a Panic, which " + orderDiverges(2, {"inputYieldsStepOnly"}));
-  const OrderCase st = orderCase(0, 48000, {}), pe = orderCase(1, 48000, {}), of = orderCase(2, 48000, {});
-  check(orderDiverges(0, {}).empty() && st.ons.find("67@21120 ") != std::string::npos,
-        "known answer (E13, step): a key released 0.70 tick after step 11 is still held at step 11 at 44.1 / 48 / 96 / 192 kHz (step 11 plays 67), and every tick is identical" + orderDiverges(0, {}));
-  check(orderDiverges(1, {}).empty() && pe.ons.find("60@13440 ") != std::string::npos && pe.offs == 8 && pe.t7 == 1,
-        "known answer (E13, pending): a Panic 0.38 tick after a ratchet sub-note finds it sounding at every rate: the sub-note plays (60 at tick 13440), the Panic ends it, 8 ons and 8 offs at 44.1 / 48 / 96 / 192 kHz" + orderDiverges(1, {}));
-  check(orderDiverges(2, {}).empty() && of.t1 == 4 && of.t7 == 0,
-        "known answer (E13, off): a Panic 0.38 tick after a gate end finds the note already ended at every rate: 4 gate ends (T1), no Panic terminal (T7), identical ticks at 44.1 / 48 / 96 / 192 kHz" + orderDiverges(2, {}));
+  std::puts("G4 / SPEC 1.1 (D-039, E13 option C): an input goes first at its sample; a chord change on a step's tick plays on that step at every host rounding");
+  struct At { int sr, at; const char* how; };
+  const At ats[] = {{48000, 18000, "48 kHz"}, {96000, 36000, "96 kHz"}, {192000, 72000, "192 kHz"}, {44100, 16537, "44.1 kHz rounded down"}, {44100, 16538, "44.1 kHz rounded to the nearest or up"}};
+  auto chordAll = [&](const Plant& pl) { std::string v; for (const At& a : ats) v += std::string(a.how) + ": " + halfSampleChord(a.sr, a.at, pl) + "; "; return v; };
+  const std::string want = "48 kHz: 67; 96 kHz: 67; 192 kHz: 67; 44.1 kHz rounded down: 67; 44.1 kHz rounded to the nearest or up: 67; ";
+  plant(chordAll({"musicalOrderOnSample"}) != want, "the rejected option A (plant musicalOrderOnSample) misses the chord change a rounding-up host delivers: " + chordAll({"musicalOrderOnSample"}));
+  check(chordAll({}) == want, "known answer (E13 C): key 67 pressed exactly on step 3's tick (a half sample at 44.1 kHz) plays on step 3 at every rate and every host rounding: " + chordAll({}));
+  const OrderRun s48 = orderRun(nearTie(0), 48000, {}), s96 = orderRun(nearTie(0), 96000, {});
+  const OrderRun p48 = orderRun(nearTie(1), 48000, {}), p96 = orderRun(nearTie(1), 96000, {});
+  const OrderRun o48 = orderRun(nearTie(2), 48000, {}), o96 = orderRun(nearTie(2), 96000, {});
+  const bool stepNear = s48.ons.find("60@21120 ") != std::string::npos && s96.ons.find("67@21120 ") != std::string::npos;
+  const bool pendNear = p48.ons.find("60@13440 ") == std::string::npos && p96.ons.find("60@13440 ") != std::string::npos;
+  const bool offNear = o48.t1 == 3 && o48.t7 == 1 && o96.t1 == 4 && o96.t7 == 0;
+  plant(orderRun(nearTie(0), 48000, {"musicalOrderOnSample"}).ons.find("60@21120 ") == std::string::npos, "option A (plant) erases the step near-tie: at 48 kHz step 11 plays 67, as at 96 kHz");
+  plant(orderRun(nearTie(1), 48000, {"musicalOrderOnSample"}).ons.find("60@13440 ") != std::string::npos, "option A (plant) erases the pending near-tie: at 48 kHz the sub-note sounds before the Panic");
+  plant(orderRun(nearTie(2), 48000, {"musicalOrderOnSample"}).t7 == 0, "option A (plant) erases the off near-tie: at 48 kHz the note ends at its gate (T1), not by the Panic");
+  check(stepNear, "documented near-tie outside G4 (step): a release 0.70 tick after step 11 counts as on it at 48 kHz (step 11 plays 60) and comes after it at 96 kHz (67)");
+  check(pendNear && p48.offs == 7 && p96.offs == 8, "documented near-tie outside G4 (pending): a Panic 0.38 tick after a sub-note clears it first at 48 kHz and ends it at 96 kHz");
+  check(offNear, "documented near-tie outside G4 (off): a Panic 0.38 tick after a gate end ends the note itself at 48 kHz (T7) and finds it ended at 96 kHz (T1)");
 }
 
 // G5: host-position jitter of +-1/32 beat -> every grid step is evaluated exactly once

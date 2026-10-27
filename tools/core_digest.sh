@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
 # core_digest.sh - regenerate the committed stream digests (D-030, T-007 M3b). ONLY for a change that is MEANT to move the core's output
 # (a ratified behaviour change with its decision recorded); a CPU optimisation must never need it - that is what the digests are for.
-#   bash tools/core_digest.sh regen [REV]          the two committed digests of the M3 corpus
+#   bash tools/core_digest.sh regen [REV]          the two committed digests of the M3 corpus (cut from 0ef0903: no note randomness)
 #   bash tools/core_digest.sh regen-random [REV]   the two randomness digests, tests/core/stream_digest_random.txt (the RN1 suite's runs) and stream_digest_random_bench.txt
-#                                                  (the bench scenarios that use note randomness)
-# Origins: the M3 corpus was cut from 0ef0903 (no note randomness, D-030) and the randomness digests from ed943b2 (the first core with it, D-036).
-# Since D-039 (an input yields its sample to an earlier off, pending on or grid step: SPEC 1.1, erratum E13, a decided output change) all four are
-# cut from 73ba26b, D-039's core, BEFORE any optimisation of it: `regen 73ba26b` and `regen-random 73ba26b` must reproduce them byte for byte.
-# 73ba26b with the D-039 order switched off reproduced the 0ef0903 and ed943b2 digests byte for byte (trace 2026-10-27-g4-handover).
+#                                                  (the bench scenarios that use note randomness), cut from ed943b2, the first core with randomness (D-036)
 # With no REV the core of the working tree produces the digests. With a git REV (a commit hash) the core files of THAT commit are read out with
 # `git show` (read-only; the working tree is not touched) into a scratch directory and built from there, so a digest can be produced by a core other
 # than the one being edited: that is how the M3b digests were made, from the M3a core (0ef0903), before the optimised one existed.
@@ -41,7 +37,7 @@ fi
 [ -f "$core/src/core.cpp" ] && [ -f "$core/include/arp/core.h" ] || { echo "FAIL  core_digest: no core found in $core"; exit 1; }
 
 # A core older than D-036 has no vel_random / gate_random / random_curve: the tests that name them (test_random.cpp, and a few lines of test_core.cpp, harness.h, bench.cpp)
-# are left out of its suite with ARP_NO_RANDOM. Their runs never enter the main digest, so `regen 0ef0903` reproduced the M3 digests byte for byte until D-039 moved them.
+# are left out of its suite with ARP_NO_RANDOM. Their runs never enter the main digest, so `regen 0ef0903` must keep reproducing the committed M3 digests byte for byte.
 noRandom=(-DARP_NO_RANDOM)
 random_src=()
 if grep -q velRandom "$core/include/arp/types.h"; then noRandom=(); random_src=("$repo/tests/core/test_random.cpp"); fi
