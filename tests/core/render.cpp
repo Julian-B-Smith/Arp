@@ -781,7 +781,7 @@ bool writeMidi(const std::filesystem::path& p, const Scenario& sc, const Result&
   conductor.push_back({0, 0, {0xFF, 0x58, 0x04, static_cast<std::uint8_t>(sc.beatsPerBar), 0x02, 0x18, 0x08}});
   std::vector<MidiEv> arpTrack{nameEv("arp")}, chordTrack{nameEv("chord")}, trigTrack{nameEv("triggers")};
   for (const OutNote& n : r.notes) {
-    const std::int64_t on = tickOf(n.on), off = std::max(on + 1, tickOf(n.off < 0 ? n.on + 1 : n.off));
+    const std::int64_t on = tickOf(n.on), off = std::max<std::int64_t>(on + 1, tickOf(n.off < 0 ? n.on + 1 : n.off));
     const int ch = n.stream == Stream::Chord ? 1 : 0;
     auto& t = n.stream == Stream::Chord ? chordTrack : arpTrack;
     t.push_back({on, 1, {static_cast<std::uint8_t>(0x90 | ch), static_cast<std::uint8_t>(n.key), static_cast<std::uint8_t>(std::max(1, std::min(127, n.vel)))}});
