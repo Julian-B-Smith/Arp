@@ -725,6 +725,188 @@ void testSweep() {
   check(notes > 202 * 20, "the sweep plays: " + std::to_string(notes) + " notes over 202 sessions");
 }
 
+// ---------------------------------------------------------------------------------------------------- `n` is the index BEFORE the dedupe (critic M2)
+// SPEC 4.9: x = kAbs * 1024 + sub * 256 + n, n the note's index in the step's notes in style order, before any dedupe. Held 60 (vel 90), 61 (vel 40), 67 (vel 110), quantize to the
+// own scale {C, E, G}: 61 snaps to 60 and collides with it; the earliest source in style order (key 60, n = 0) survives with ITS velocity; 67 survives as the THIRD note of the
+// step (n = 2), though it is the second one played. A core that numbers after the dedupe (67 -> n = 1) or by the key's rank among the played keys (also 1) draws other numbers.
+// Written after the sweep so that the runs above keep their numbers in the randomness digest.
+struct CollisionOut { int checked = 0, wrong = 0; bool gap = true; std::string first; };
+CollisionOut collisionCheck(const std::vector<Obs>& obs, const Knobs& k, const std::function<int(int key, const std::vector<Obs>& stepNotes)>& nOf) {
+  CollisionOut o;
+  const std::map<int, int> inVel = {{60, 90}, {67, 110}};
+  for (const Obs& x : obs) {
+    if (inVel.find(x.key) == inVel.end()) { o.gap = false; continue; }   // a key 61 would mean the collision never happened
+    std::vector<Obs> step;
+    for (const Obs& y : obs) if (y.kAbs == x.kAbs && y.sub == x.sub) step.push_back(y);
+    const RefNote want = refNote(k, x.kAbs, x.sub, nOf(x.key, step), inVel.at(x.key), 80, kL16, Shape{2, 100, 100, 0, 100});
+    ++o.checked;
+    if (x.vel != want.vel || x.len != want.len) { ++o.wrong; if (o.first.empty()) o.first = "step " + std::to_string(x.kAbs) + " sub " + std::to_string(x.sub) + " key " + std::to_string(x.key) + ": core vel " + std::to_string(x.vel) + " len " + std::to_string(x.len) + ", spec vel " + std::to_string(want.vel) + " len " + std::to_string(want.len); }
+  }
+  return o;
+}
+void testCollision() {
+  std::puts("RN1: n is the note's index in style order BEFORE the dedupe (a quantize collision leaves a gap)");
+  Session s;
+  s.sr = 48000; s.total = 12 * 6000 - 1000;
+  s.base.pattern = Pattern::User; s.base.gate = 80; s.base.seed = 31; s.base.velRandom = 80; s.base.gateRandom = 90; s.base.randomCurve = 35;
+  s.base.quantize = Quantize::Scale; s.base.scaleSource = ScaleSource::Own; s.base.scaleRoot = 0;
+  for (int d = 0; d < 12; ++d) s.base.scaleDeg[d] = d == 0 || d == 4 || d == 7;
+  UserPattern u;
+  u.length = 1;
+  u.steps[0].pick = kPickChord; u.steps[0].ratchet = 2;
+  s.userPattern = u;
+  s.ins = {K(0, "a", 60, 90), K(0, "b", 61, 40), K(0, "c", 67, 110)};
+  const Knobs k{31, 0, 80, 90, 35};
+  const Run r = runR(s, 4096);
+  std::string err;
+  const std::vector<Obs> obs = observe(r, kL16, [](std::int64_t) { return 2; }, err);
+  const auto preDedupe = [](int key, const std::vector<Obs>&) { return key == 60 ? 0 : 2; };
+  const auto postDedupe = [](int key, const std::vector<Obs>&) { return key == 60 ? 0 : 1; };   // the list after the collision was dropped: 60, 67
+  const auto keyRank = [](int key, const std::vector<Obs>& step) { int n = 0; for (const Obs& y : step) n += y.key < key; return n; };   // rank among the keys that sound
+  const CollisionOut bad1 = collisionCheck(obs, k, postDedupe), bad2 = collisionCheck(obs, k, keyRank), good = collisionCheck(obs, k, preDedupe);
+  plant(bad1.wrong > 10 && !bad1.first.empty(), "a reference that numbers the notes AFTER the dedupe (67 -> n = 1) disagrees with the core: " + std::to_string(bad1.wrong) + " of " + std::to_string(bad1.checked) + " notes (" + bad1.first + ")");
+  plant(bad2.wrong > 10, "a reference that uses the key's rank among the sounding keys disagrees with the core: " + std::to_string(bad2.wrong) + " of " + std::to_string(bad2.checked) + " notes");
+  check(err.empty() && good.gap && good.checked == 48 && good.wrong == 0,
+        "known answer (spec formulas): quantize collision 60 + 61 -> 60 with 67 held, chord x2 ratchets: 48 notes, key 61 never sounds, key 60 plays with its own velocity at n = 0 and key 67 at n = 2 (a gap in n): every velocity and length equals the reference" + (good.first.empty() ? "" : " - " + good.first) + (err.empty() ? "" : " - " + err));
+  // Python literals (separate implementation of SPEC 4.9): steps 0-3, key 60 (n = 0) and key 67 (n = 2) as (vel, len) per sub-note
+  struct W { std::int64_t kAbs; int sub, vel60; std::int64_t len60; int vel67; std::int64_t len67; };
+  const W pre[] = {{0, 0, 121, 1920, 38, 1665}, {0, 1, 104, 1100, 127, 1920}, {1, 0, 125, 1920, 127, 1729}, {1, 1, 127, 1036, 93, 1920}, {2, 0, 88, 1829, 108, 1920}, {2, 1, 127, 584, 127, 1920}, {3, 0, 59, 781, 87, 1132}, {3, 1, 108, 1077, 127, 1920}};
+  const W post[] = {{0, 0, 121, 1920, 105, 1920}, {0, 1, 104, 1100, 73, 1537}, {1, 0, 125, 1920, 104, 689}, {1, 1, 127, 1036, 127, 1920}, {2, 0, 88, 1829, 127, 1900}, {2, 1, 127, 584, 73, 1757}, {3, 0, 59, 781, 69, 1920}, {3, 1, 108, 1077, 104, 1139}};
+  auto matches = [&](const W* w) {
+    int m = 0;
+    for (int i = 0; i < 8; ++i)
+      for (const Obs& x : obs)
+        if (x.kAbs == w[i].kAbs && x.sub == w[i].sub) m += x.key == 60 ? (x.vel == w[i].vel60 && x.len == w[i].len60) : (x.vel == w[i].vel67 && x.len == w[i].len67);
+    return m;
+  };
+  plant(matches(post) < 16, "the Python literals of a post-dedupe numbering (67 at n = 1) are not what the core plays: " + std::to_string(matches(post)) + " of 16 match");
+  check(matches(pre) == 16, "known answer (Python literals): steps 0-3 of the collision session, key 60 at n = 0 and key 67 at n = 2, both sub-notes: 16 of 16 velocities and lengths match");
+}
+
+// ---------------------------------------------------------------------------------------------------- randomness across transport edges, time mode, latch, pedal and panic (critic M3)
+// gate_random up to 100 doubles the longest untied note, so randomised notes cross more transport edges (a stop, a jump / loop wrap, a panic, a latch release). 40 seeded sessions,
+// each with a host that stops, starts, seeks and changes tempo, a pedal, panics, latch and time mode (rate_mode time, step_time_us), long gates and all three randomness settings
+// changing mid-session. N1 (one terminal per note), G1 (blocks 512 / 64 / 7 / 1) and, for the sync-mode sessions, G4 (44.1 / 96 / 192 kHz against 48 kHz).
+struct EdgeKinds { bool stop = false, seek = false, tempo = false, time = false, latch = false, pedal = false, panic = false; };
+Session fuzzEdgeSession(std::uint32_t id, const Plant& pl, EdgeKinds* kinds = nullptr) {
+  Rng r(0x45444745u + id * 2654435761u);
+  Session s;
+  s.sr = 8000; s.total = 36000; s.plants = pl;
+  EdgeKinds ek;
+  s.base.order = static_cast<Order>(r.in(0, 15));
+  s.base.pattern = static_cast<Pattern>(r.in(0, 11));
+  static const Rate kRates[] = {Rate::R1_16, Rate::R1_8, Rate::R1_32, Rate::R1_16T, Rate::R1_4};
+  s.base.rate = kRates[r.in(0, 4)];
+  s.base.gate = r.in(80, 200);
+  s.base.swing = r.in(500, 750);
+  s.base.seed = r.next();
+  s.base.velRandom = r.pct(15) ? 0 : r.in(1, 100);
+  s.base.gateRandom = r.pct(10) ? 0 : r.in(50, 100);
+  s.base.randomCurve = r.in(0, 100);
+  s.base.chordEnabled = r.pct(25);
+  s.base.latch = r.pct(40) ? static_cast<Latch>(r.in(1, 2)) : Latch::Off;
+  ek.latch = s.base.latch != Latch::Off;
+  if (r.pct(35)) { s.base.rateMode = RateMode::Time; s.base.stepTimeUs = r.in(30000, 250000); ek.time = true; }
+  UserPattern u;
+  u.length = r.in(1, 16);
+  for (int i = 0; i < u.length; ++i) {
+    PatternStep& p = u.steps[i];
+    p.on = r.pct(85); p.tie = r.pct(25); p.vel = r.in(20, 200); p.gate = r.in(60, 200); p.ratchet = r.in(1, 4); p.pick = r.pct(60) ? kPickOrder : r.in(0, 12);
+  }
+  s.userPattern = u;
+  auto h = std::make_shared<SimHost>(8000, r.pct(50) ? 120 : r.in(70, 200), 0, true);
+  const int nOps = r.in(1, 4);
+  for (int i = 0; i < nOps; ++i) {
+    const int at = r.in(1, 34) * 1000 + 500;
+    switch (r.in(0, 3)) {
+      case 0: h->set(at, false); h->set(at + r.in(1, 6) * 1000, true); ek.stop = true; break;       // stop, then start again
+      case 1: h->set(at, std::nullopt, r.in(0, 16) * 0.5); ek.seek = true; break;                     // a jump (a loop wrap is one)
+      case 2: h->set(at, std::nullopt, std::nullopt, r.in(60, 220)); ek.tempo = true; break;
+      default: h->set(at, false); ek.stop = true; break;                                              // stop and stay stopped (the free clock runs)
+    }
+  }
+  s.host = h;
+  const int nKeys = r.in(1, 5);
+  for (int i = 0; i < nKeys; ++i) {
+    const std::string label = "k" + std::to_string(i);
+    const int at = r.in(0, 20000);
+    s.ins.push_back(K(at, label.c_str(), r.in(36, 84), r.in(1, 127)));
+    if (r.pct(50)) s.ins.push_back(O(at + r.in(1000, 9000), label.c_str()));
+  }
+  if (r.pct(50)) { const int at = r.in(1, 25) * 1000 + 500; s.ins.push_back(Ped(at, true)); s.ins.push_back(Ped(at + r.in(1, 9) * 1000, false)); ek.pedal = true; }
+  if (r.pct(40)) { s.ins.push_back(Pan(r.in(1, 34) * 1000 + 500)); ek.panic = true; }
+  for (int i = 0; i < 4; ++i) {
+    const int at = r.in(1, 34) * 1000 + 250;
+    const int which = r.in(0, 4), val = r.in(0, 100), tus = r.in(30000, 250000);
+    s.cfg.push_back(C(at, [which, val, tus](Settings& x) {
+      switch (which) {
+        case 0: x.velRandom = val; break;
+        case 1: x.gateRandom = val; break;
+        case 2: x.randomCurve = val; break;
+        case 3: x.latch = static_cast<Latch>(val % 3); break;
+        default: x.stepTimeUs = tus; break;
+      }
+    }));
+  }
+  if (kinds) *kinds = ek;
+  return s;
+}
+void testEdgeFuzz() {
+  std::puts("RN1: randomness across transport stop / jump / loop, time mode, latch, pedal and panic (40 seeded sessions)");
+  constexpr int kSessions = 40;
+  int n1Bad = 0, g1Bad = 0, g4Bad = 0, g4Ran = 0, g4Core = 0, notes = 0, noRandom = 0;
+  std::int64_t t6 = 0, t7 = 0;
+  int nStop = 0, nSeek = 0, nTempo = 0, nTime = 0, nLatch = 0, nPedal = 0, nPanic = 0;
+  std::string first;
+  for (std::uint32_t id = 0; id < kSessions; ++id) {
+    EdgeKinds ek;
+    const Session s = fuzzEdgeSession(id, {}, &ek);
+    nStop += ek.stop; nSeek += ek.seek; nTempo += ek.tempo; nTime += ek.time; nLatch += ek.latch; nPedal += ek.pedal; nPanic += ek.panic;
+    noRandom += s.base.velRandom == 0 && s.base.gateRandom == 0;
+    const Run ref = runR(s, 4096);
+    notes += static_cast<int>(onsOf(ref).size());
+    t6 += ref.core->counters().rows[6];
+    t7 += ref.core->counters().rows[7];
+    if (!n1(ref).empty()) { ++n1Bad; if (first.empty()) first = "N1 session " + std::to_string(id) + ": " + n1(ref)[0]; }
+    const std::string want = streamOf(ref);
+    for (int blk : {512, 64, 7, 1})
+      if (streamOf(runR(s, blk)) != want) { ++g1Bad; if (first.empty()) first = "G1 session " + std::to_string(id) + " at block " + std::to_string(blk); break; }
+    // G4 in sync mode (time mode is held to TM1 in microseconds, not ticks): the tick of every event is the same at every rate. One thing is excluded by construction: when the transport
+    // restarts while keys are held, the hand-over from the free clock to the host clock lands the next step at a tick that depends on the sample rate (found by this fuzz in session 20; it
+    // is the core's, not the feature's: it happens with randomness OFF too). So a session whose host stops must show no divergence that the same session with randomness off does not show.
+    if (!ek.time) {
+      ++g4Ran;
+      auto g4Differs = [&](const Session& q) {
+        const std::string t48 = tickStreamOf(runR(atRate(q, 48000), 1024));
+        for (int sr : {44100, 96000, 192000}) if (tickStreamOf(runR(atRate(q, sr), 1024)) != t48) return sr;
+        return 0;
+      };
+      if (const int sr = g4Differs(s)) {
+        Session z = s;   // the same session with both amounts forced to 0
+        z.base.velRandom = 0; z.base.gateRandom = 0;
+        for (Change& c : z.cfg) { auto f = c.f; c.f = [f](Settings& x) { f(x); x.velRandom = 0; x.gateRandom = 0; }; }
+        if (ek.stop && g4Differs(z) != 0) ++g4Core;
+        else { ++g4Bad; if (first.empty()) first = "G4 session " + std::to_string(id) + " at " + std::to_string(sr) + " Hz"; }
+      }
+    }
+  }
+  // plants: a draw position taken from the block (G1), a dropped release (N1), a sample-rate-dependent value in tick math (G4)
+  int pG1 = 0, pN1 = 0, pG4 = 0;
+  for (std::uint32_t id = 0; id < kSessions; ++id) {
+    EdgeKinds ek;
+    if (pG1 == 0) { Session s = fuzzEdgeSession(id, {"randomFromBlock"}, &ek); if (s.base.velRandom + s.base.gateRandom > 0) pG1 += streamOf(runR(s, 4096)) != streamOf(runR(s, 7)); }
+    if (pN1 == 0) { Session s = fuzzEdgeSession(id, {"dropRelease"}, &ek); pN1 += !n1(runR(s, 64)).empty(); }
+    if (pG4 == 0) { Session s = fuzzEdgeSession(id, {"srTickMath"}, &ek); if (!ek.time) pG4 += tickStreamOf(runR(atRate(s, 48000), 1024)) != tickStreamOf(runR(atRate(s, 192000), 1024)); }
+  }
+  plant(pG1 > 0, "the edge fuzz reads red on a draw position taken from the block (plant randomFromBlock), G1");
+  plant(pN1 > 0, "the edge fuzz reads red on a dropped release (plant dropRelease), N1");
+  plant(pG4 > 0, "the edge fuzz reads red on a sample-rate-dependent value in tick math (plant srTickMath), G4");
+  check(n1Bad == 0 && g1Bad == 0 && g4Bad == 0 && notes > 500,
+        "edge fuzz: " + std::to_string(kSessions) + " sessions (stop/start " + std::to_string(nStop) + ", jump " + std::to_string(nSeek) + ", tempo " + std::to_string(nTempo) + ", time mode " + std::to_string(nTime) + ", latch " + std::to_string(nLatch) + ", pedal " + std::to_string(nPedal) + ", panic " +
+        std::to_string(nPanic) + "; " + std::to_string(kSessions - noRandom) + " with randomness on): " + std::to_string(notes) + " notes, N1 holds, G1 identical at blocks 4096 / 512 / 64 / 7 / 1, G4 identical at 44.1 / 48 / 96 / 192 kHz in " + std::to_string(g4Ran - g4Core) + " of the " + std::to_string(g4Ran) + " sync-mode sessions (the other " + std::to_string(g4Core) + " diverge with randomness OFF too: the free-clock hand-over, the core's)" + (first.empty() ? "" : " - " + first));
+  check(t6 > 10 && t7 > 3 && nStop > 5 && nSeek > 5 && nTime > 5 && nLatch > 5 && nPedal > 5 && nPanic > 5 && g4Ran > 5, "the edge fuzz really reaches those paths: " + std::to_string(t6) + " transport-edge terminals (T6) and " + std::to_string(t7) + " panic terminals (T7) counted over the sessions");
+}
+
 // ---------------------------------------------------------------------------------------------------- the randomness digest
 // One line per clean run of this file, in the order made: `name <TAB> sr block events stream-hash counters-hash`. The committed file is tests/core/stream_digest_random.txt.
 std::vector<std::string> digestTextLines() {
@@ -794,6 +976,8 @@ void runRandomTests() {
   testInvariants();
   testFuzz();
   testSweep();
+  testCollision();
+  testEdgeFuzz();
   testDigest();
 }
 

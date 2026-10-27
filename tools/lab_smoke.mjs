@@ -1062,6 +1062,33 @@ const swingDelayUs = (U, swing, k) => (k % 2 === 1 ? Math.floor(U * (2 * swing -
   }
 }
 
+// ---- RN1 (critic M2): `n` in x = kAbs * 1024 + sub * 256 + n is the note's index in style order BEFORE any dedupe (SPEC 4.9). Held 60 (vel 90), 61 (vel 40), 67 (vel 110), quantize to the own scale
+// {C, E, G}: 61 snaps to 60 and collides with it (the earliest source, key 60 at n = 0, survives with its own velocity); 67 is the THIRD note of the step (n = 2). Literals from a separate Python
+// implementation of SPEC 4.9 / 5.2 (steps 0-3, both sub-notes of a chord x2 ratchets step): [kAbs, sub, vel60, len60, vel67, len67]. The plant is a lab core with the numbering changed to the index
+// AFTER the dedupe (the lab file itself is not edited: the smoke rebuilds CORE from its text with one expression replaced).
+{
+  const PRE = [[0, 0, 121, 1920, 38, 1665], [0, 1, 104, 1100, 127, 1920], [1, 0, 125, 1920, 127, 1729], [1, 1, 127, 1036, 93, 1920], [2, 0, 88, 1829, 108, 1920], [2, 1, 127, 584, 127, 1920], [3, 0, 59, 781, 87, 1132], [3, 1, 108, 1077, 127, 1920]];
+  const POST = [[0, 0, 121, 1920, 105, 1920], [0, 1, 104, 1100, 73, 1537], [1, 0, 125, 1920, 104, 689], [1, 1, 127, 1036, 127, 1920], [2, 0, 88, 1829, 127, 1900], [2, 1, 127, 584, 73, 1757], [3, 0, 59, 781, 69, 1920], [3, 1, 108, 1077, 104, 1139]];
+  const L16 = 3840, degs = {}; for (let d = 0; d < 12; d++) degs["scale_deg" + d] = d === 0 || d === 4 || d === 7;
+  const anchor = "const o = { key: x.q, vel, ch: x.nt.ch, src };";
+  if (core.split(anchor).length !== 2) throw new Error("lab_smoke: RN1 plant anchor not unique");
+  const Xpost = build(core.replace(anchor, "const o = { key: x.q, vel, ch: x.nt.ch, src: out.length };"));   // plant: n numbered after the dedupe
+  const played = c => {
+    const r = run({ core: c, sr: 48000, block: 4096, total: 12 * 6000 - 1000, userPattern: { length: 1, steps: [{ pick: "chord", ratchet: 2 }] },
+      base: Object.assign({ pattern: "user", gate: 80, seed: 31, vel_random: 80, gate_random: 90, random_curve: 35, quantize: "scale", scale_source: "own", scale_root: 0 }, degs),
+      ins: [K(0, "a", 60, { vel: 90 }), K(0, "b", 61, { vel: 40 }), K(0, "c", 67, { vel: 110 })] });
+    const off = new Map(r.evs.filter(e => e.t === "off").map(e => [e.epoch + ":" + e.id, e.tick]));
+    return ons(r).filter(e => e.stream === "arp").map(e => ({ key: e.key, vel: e.vel, kAbs: Math.floor(e.tick / L16), sub: e.tick - Math.floor(e.tick / L16) * L16 === 0 ? 0 : 1, len: off.get(e.epoch + ":" + e.id) - e.tick }));
+  };
+  const matches = (ns, tab) => tab.filter(([k, sub, v6, l6, v7, l7]) => { const a = ns.find(x => x.kAbs === k && x.sub === sub && x.key === 60), b = ns.find(x => x.kAbs === k && x.sub === sub && x.key === 67); return a && b && a.vel === v6 && a.len === l6 && b.vel === v7 && b.len === l7; }).length;
+  const good = played(mkCore()), mutated = new Xpost.ArpCore();
+  const bad = played(mutated);
+  plant(!ns_ok(bad) , "RN1 detects n numbered after the dedupe: the core with 67 at n = 1 plays " + matches(bad, PRE) + " of 8 steps' literals (and " + matches(bad, POST) + " of 8 of the post-dedupe ones)");
+  function ns_ok(ns) { return matches(ns, PRE) === 8; }
+  plant(matches(good, POST) < 8, "the literals of a post-dedupe numbering are not what the lab plays (" + matches(good, POST) + " of 8)");
+  check(ns_ok(good) && !good.some(x => x.key === 61) && good.length === 48, "RN1 known answer (Python literals): quantize collision 60 + 61 -> 60 with 67 held: key 61 never sounds, key 60 plays at n = 0 with its own velocity and key 67 at n = 2 (a gap in n); steps 0-3, both sub-notes, 8 of 8 literals match");
+}
+
 // Coverage: a session that never reaches the style it names proves nothing, so every window must hold notes.
 {
   const w = (evs, a, b) => evs.filter(e => e.t === "on" && e.a >= a && e.a < b).length;
