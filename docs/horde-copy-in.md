@@ -13,12 +13,12 @@ Keep the relative layout: `core/include` is the include root (`#include "arp/cor
 |---|---|
 | `core/include/arp/arith.h` | 702d89b13848b554a6e32392f5f48a22bbdd157e8a531270f194e0a103f37162 |
 | `core/include/arp/bank_data.h` | 87876a9f7681733500c17e65463f043b1be4f5bda8a77aff5949347c3a4b3723 |
-| `core/include/arp/core.h` | d49771c1f7be5d53e786f4c01fdefbd227168929101aaceb50e9822e22ac8050 |
+| `core/include/arp/core.h` | 305a41e73dcd76790ecd183b4c5b55d5d68bb93eb0eddad8adcbf075d5da7ea0 |
 | `core/include/arp/draw.h` | 8ea2c17c6eb55baa621fd37659c7f19bcb6c46b0304d59870d371eca0ca8dc92 |
 | `core/include/arp/int128.h` | bb2c26a4cea9e04015c18957bf81a0d76b10f332ba72c86416fa41065112b433 |
 | `core/include/arp/pattern.h` | 1ad8f47861d91587aa6df2b6180d85cfc7d611fc8001769d42547cf1714e3899 |
-| `core/include/arp/types.h` | 509619c7b671701d0c16b88c88d3d14e3e3dfef41b019c57b317d929153d7952 |
-| `core/src/core.cpp` | 752a659a1b5d254b315ab7162bb18d2b9a5be5bd9735bec470d3feb44efa9ab0 |
+| `core/include/arp/types.h` | b45f811cdc241a5bf3ab6d76d4cc9fb8b168cb195870cbfdb452afab6879133b |
+| `core/src/core.cpp` | a42b6b8cccb78f122bec15e3cbdb51efbefbb5e722d47fa91049288ef41eab17 |
 
 - **Pinned at commit:** the commit that contains this file. horde records `git log -1 --format=%h -- core/ docs/horde-copy-in.md`
   in its copy-in PR; the sha256 column above is the authority (it is what `tools/core_test.sh` checks), the commit is the label.

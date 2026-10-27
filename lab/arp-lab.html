@@ -419,6 +419,42 @@ const ARP_PARAMS = {
    "unit": "MIDI velocity (1–127)"
   },
   {
+   "key": "vel_random",
+   "label": "Velocity random",
+   "kind": "continuous",
+   "type": "percent",
+   "min": 0,
+   "max": 100,
+   "default": 0,
+   "ref": "SPEC §4.4, §4.9",
+   "unit": "%",
+   "note": "each arp note's velocity moves up or down by up to this share of itself, from the seeded draw (lane 3); 0 = none (D-036)"
+  },
+  {
+   "key": "gate_random",
+   "label": "Gate random",
+   "kind": "continuous",
+   "type": "percent",
+   "min": 0,
+   "max": 100,
+   "default": 0,
+   "ref": "SPEC §5.2, §4.9",
+   "unit": "%",
+   "note": "each arp note's length moves up or down by up to this share of itself, from the seeded draw (lane 4); 0 = none (D-036)"
+  },
+  {
+   "key": "random_curve",
+   "label": "Random curve",
+   "kind": "continuous",
+   "type": "percent",
+   "min": 0,
+   "max": 100,
+   "default": 0,
+   "ref": "SPEC §4.9",
+   "unit": "%",
+   "note": "the shape of both randomnesses: 0 = uniform (every value up to the amount equally likely); toward 100 = a bell around the setting (D-036)"
+  },
+  {
    "key": "restart",
    "label": "Restart",
    "kind": "discrete",
@@ -1392,7 +1428,8 @@ const ARP_PLANTS = ["dropRelease", "doubleRelease", "sameSampleOff", "clampOffse
   "repeatsCountPatternPasses", "repeatsNeverStop", "chordNoDedupe", "chordEndsOnFirstSource", "arpIgnoresChord", "chordRestartAll",
   "chordRecomputeAtRelease", "t2AcrossStreams", "arpToggleEndsChord", "chordT6Restart", "sharedSoundingTable", "exhaustedStopsGuard", "onlyGestureResets", "morphRevives", "chordSyncPerEvent", "chordDedupeByChannelKey", "latchAtNextStep", "chordPlusZeroUnquantized", "chordSkipQuantize", "swingPerStep",
   "repeatsPauseWhileEmpty", "keepSpilledRatchets",
-  "chordSyncBlockStartFirst", "adoptKeepsLastBar", "reanchorKeepsLastBar", "swingLatchUnanchored", "chordStalePressTime", "cOnlyAtStep", "edgeRevivesWhileEmpty", "swingSpentNoLatch", "edgeResetsCountWhileEmpty"];
+  "chordSyncBlockStartFirst", "adoptKeepsLastBar", "reanchorKeepsLastBar", "swingLatchUnanchored", "chordStalePressTime", "cOnlyAtStep", "edgeRevivesWhileEmpty", "swingSpentNoLatch", "edgeResetsCountWhileEmpty",
+  "randomIgnoresCurve"];
 // Every discrete setting except `enabled` (which applies at offset 0, T4/T5) switches at the next
 // evaluated step (SPEC §9). Derived from params.json, so a new discrete setting cannot be forgotten.
 const DISCRETE_KEYS = ARP_PARAMS.params.filter(p => p.kind === "discrete" && p.key !== "enabled").map(p => p.key);
@@ -1652,7 +1689,7 @@ class ArpCore {
     if (P.noOnceGuard) this.lastEvaluated = this._kAtOrAfter(this._start) - 1;
 
     // -- T9 bookkeeping, rate/enabled changes that act at offset 0
-    const cont = S.gate + "," + S.swing + "," + S.vel_fixed;
+    const cont = S.gate + "," + S.swing + "," + S.vel_fixed + "," + S.vel_random + "," + S.gate_random + "," + S.random_curve;
     if (this.prevCont !== null && cont !== this.prevCont && this.sounding.length) this.rows.T9++;
     this.prevCont = cont;
     // SPEC 14: `enabled` is the WHOLE module (off: every chord and arp note ends, T4); `arp_enabled` is the arp alone, applied at offset 0 and never
@@ -2066,6 +2103,15 @@ class ArpCore {
     return draw(seed, x, lane, this.epoch);
   }
 
+  // SPEC 4.9 (D-036): the note's random value U in permille from one draw split into its bytes b0..b3 (low first): U1 uniform, U4 the mean of four, blended by the curve.
+  _randomU(x, lane, curve) {
+    const r = this._draw(this.active.seed, x, lane);
+    const b0 = r & 255, sum = b0 + ((r >>> 8) & 255) + ((r >>> 16) & 255) + (r >>> 24);
+    const u1 = fdiv((2 * b0 - 255) * 1000, 255), u4 = fdiv((2 * sum - 1020) * 1000, 1020);
+    const c = this.lab.plant.randomIgnoresCurve ? 0 : curve;   // plant: the curve is read as 0
+    return fdiv(u1 * (100 - c) + u4 * c, 100);
+  }
+
   _evalStep(kAbs, so) {
     const P = this.lab.plant, a = this.active, S = this.incoming, L = this.L, D = this.D;
     // anchor bookkeeping per restart mode (SPEC 4.5)
@@ -2187,11 +2233,12 @@ class ArpCore {
     }
     // collisions keep the earliest source in the style's order (the list order, not the quantize order)
     const out = [], seen = new Map();
-    for (const x of items) {
+    for (let src = 0; src < items.length; src++) {   // src: the note's index in style order, the `n` of its draw position (SPEC 4.9)
+      const x = items[src];
       if (x.q === null) continue;
       const base = a.vel_mode === "fixed" ? S.vel_fixed : x.nt.vel, vel = clamp(fdiv(base * st.vel + 50, 100), 1, 127);
       if (seen.has(x.q)) { if (P.collisionKeepsLast) { const o = seen.get(x.q); o.vel = vel; o.ch = x.nt.ch; } continue; }
-      const o = { key: x.q, vel, ch: x.nt.ch };
+      const o = { key: x.q, vel, ch: x.nt.ch, src };
       seen.set(x.q, o); out.push(o);
     }
     // ties by look-ahead (SPEC 5.2): consecutive tie steps after this one, cyclic, ignoring prob
@@ -2199,18 +2246,32 @@ class ArpCore {
     if (!P.tieAtTieStep) while (t < plen - 1 && this._step(pat, j + 1 + t).tie) t++;
     if (t > 0) this.rows.T12++;
     const on0 = onT(kAbs), span = onT(kAbs + 1) - on0, r = clamp(st.ratchet | 0, 1, 4);
+    // SPEC 4.4 / 5.2 / 4.9 (D-036): note randomness; continuous settings, read now. At 0 no draw is made. Draw position: the grid's kAbs, the sub-note, the note's index.
+    const velR = clamp(S.vel_random | 0, 0, 100), gateR = clamp(S.gate_random | 0, 0, 100), curve = clamp(S.random_curve | 0, 0, 100);
     for (let i = 0; i < r; i++) {
       const subOn = on0 + fdiv(i * span, r);
-      let len;
-      if (r === 1) len = Math.max(1, fdiv(span * S.gate * st.gate, 10000));
-      else len = Math.min(fdiv(span, r), Math.max(1, fdiv(fdiv(span, r) * S.gate * st.gate, 10000)));
-      let off = subOn + len;
-      if (i === r - 1 && t > 0) {
+      const len0 = Math.max(1, fdiv((r === 1 ? span : fdiv(span, r)) * S.gate * st.gate, 10000));   // the gate-derived length, before the ratchet cap
+      const tied = i === r - 1 && t > 0;
+      let tailOn = 0, tail0 = 0;
+      if (tied) {   // the LAST sub-note runs on to the end of the last tied step
         const x = kAbs + t, sp = onT(x + 1) - onT(x);
-        off = onT(x) + Math.max(1, fdiv(sp * S.gate * this._step(pat, j + t).gate, 10000));
+        tailOn = onT(x);
+        tail0 = Math.max(1, fdiv(sp * S.gate * this._step(pat, j + t).gate, 10000));
       }
       for (const o of out) {
-        this._queue({ kind: "on", pos: BigInt(subOn) * D, offPos: BigInt(off) * D, key: o.key, vel: o.vel, ch: o.ch, ord });
+        let vel = o.vel, len = len0, tail = tail0;
+        if (velR > 0 || gateR > 0) {
+          const x = kAbs * 1024 + i * 256 + o.src;
+          if (velR > 0) vel = clamp(vel + fdiv(vel * velR * this._randomU(x, 3, curve) + 50000, 100000), 1, 127);
+          if (gateR > 0) {
+            const u = this._randomU(x, 4, curve);
+            len = Math.max(1, len0 + fdiv(len0 * gateR * u, 100000));
+            tail = Math.max(1, tail0 + fdiv(tail0 * gateR * u, 100000));
+          }
+        }
+        if (r > 1) len = Math.min(fdiv(span, r), len);
+        const off = tied ? tailOn + tail : subOn + len;
+        this._queue({ kind: "on", pos: BigInt(subOn) * D, offPos: BigInt(off) * D, key: o.key, vel, ch: o.ch, ord });
         // plant: the trigger fires on every ratchet, not just the first
         if (P.trigEveryRatchet && i > 0 && fires && st.trig) this._queue({ kind: "trig", pos: BigInt(subOn) * D, lane: st.trig, ord });
       }

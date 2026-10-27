@@ -71,6 +71,7 @@ struct Scenario {
   double floodEventsPerSec = 0;   // presses on keys that are NOT held, as note events per second (a press and its release half a period later)
   std::string family;             // scenarios of one family differ only in the input rate: the summary derives the largest rate inside the slice from them
   bool lightDigest = false;       // the stream digest covers a few rates / block sizes for 1 s, not the whole matrix (heavy loads, added with D-032: the digest's cost grows with them)
+  const char* noDigest = nullptr;  // not null: left out of the stream digest, and this is why (D-036: the digest file was cut from a core without the feature this scenario uses)
   std::optional<UserPattern> user;
   Scale scale{0, 0xAB5};   // horde's global scale: C major
 };
@@ -156,6 +157,21 @@ std::vector<Scenario> scenarios() {
     for (int i = 0; i < 6; ++i) { s.st.chordOn[i] = true; s.st.chordShift[i] = i + 1; }
   });
   add("WORST CASE B++: B+ with 4 transposition steps of 2 semitones", [loadBHeavy](Scenario& s) { loadBHeavy(s); s.st.steps = 4; s.st.stepSize = 2; s.lightDigest = true; });
+  // D-036: note randomness at its most expensive, 100 % on all three settings: every sub-note of every note draws twice (velocity and length) and blends two
+  // integer curves. These two have NO entry in tests/core/stream_digest_bench.txt (cut from 0ef0903, which has no randomness, and not regenerated): `noDigest`.
+  const char* const kNoDigestWhy = "D-036: the committed bench digest was cut from 0ef0903, which has no note randomness";
+  add("WORST CASE B++ with randomness: B++, vel_random = gate_random = random_curve = 100", [loadBHeavy, kNoDigestWhy](Scenario& s) {
+    loadBHeavy(s); s.st.steps = 4; s.st.stepSize = 2; s.lightDigest = true;
+    s.st.velRandom = 100; s.st.gateRandom = 100; s.st.randomCurve = 100; s.noDigest = kNoDigestWhy;
+  });
+  add("WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100", [kNoDigestWhy](Scenario& s) {
+    s.bpm = 999; s.keyBase = 14; s.keyStride = 7;
+    s.st.order = Order::Chord; s.st.pattern = Pattern::User; s.st.gate = 200;
+    s.st.chordEnabled = true;
+    for (int i = 0; i < 6; ++i) { s.st.chordOn[i] = true; s.st.chordShift[i] = i + 1; }
+    UserPattern u; u.length = 1; u.steps[0].ratchet = 4; s.user = u;
+    s.st.velRandom = 100; s.st.gateRandom = 100; s.st.randomCurve = 100; s.noDigest = kNoDigestWhy;
+  });
 
   // D-032: dense incoming notes. Each family holds one load and varies only the input rate (rate 0 is the load alone); the bench summary derives from
   // a family the largest rate that stays inside the slice. The loads are A at ratchet 4 (the critic's: the heaviest table, every step ratcheted, so the load
@@ -433,7 +449,8 @@ void digestAll(bool perturb) {
     for (int block : {32, 64, 128, 512, 4096}) full.push_back({sr, block});
   light = {{48000, 16}, {48000, 4096}, {192000, 128}};   // the heavy D-032 loads: the rate, a tiny and a huge block; the engine is block-partition independent, the matrix above proves that
   std::printf("# arp bench stream digest: scenario <TAB> rate block events stream-hash counters-hash (%.0f s of audio each, %.0f s for the heavy input scenarios; tests/core/stream_digest.h)\n", kDigestSeconds, kLightDigestSeconds);
-  for (const Scenario& sc : scenarios())
+  for (const Scenario& sc : scenarios()) {
+    if (sc.noDigest) continue;
     for (const Cfg& c : sc.lightDigest ? light : full) {
       const int sr = c.sr, block = c.block;
       auto core = std::make_unique<Core>();
@@ -462,6 +479,7 @@ void digestAll(bool perturb) {
       arp_test::hashCounters(fc, core->counters());
       std::printf("%s\t%d %d %lld %s %s\n", sc.name.c_str(), sr, block, static_cast<long long>(nEv), arp_test::hex16(fs.h).c_str(), arp_test::hex16(fc.h).c_str());
     }
+  }
 }
 
 // ---------------------------------------------------------------- the memory figure

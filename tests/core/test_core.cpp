@@ -28,6 +28,7 @@
 #include "test_m2a.h"
 #include "test_m2b.h"
 #include "test_m3.h"
+#include "test_random.h"
 #include "test_digest.h"
 #include "test_input.h"
 #include "test_evict.h"
@@ -961,6 +962,7 @@ static void dumpDefaults() {
   ENUM("latch", s.latch, arp::kLatchNames);
   ENUM("vel_mode", s.velMode, arp::kVelModeNames);
   std::printf("vel_fixed=%d\n", s.velFixed);
+  std::printf("vel_random=%d\ngate_random=%d\nrandom_curve=%d\n", s.velRandom, s.gateRandom, s.randomCurve);
   ENUM("restart", s.restart, arp::kRestartNames);
   std::printf("repeats=%d\n", s.repeats);
   ENUM("quantize", s.quantize, arp::kQuantizeNames);
@@ -1020,6 +1022,7 @@ int main(int argc, char** argv) {
   runM2aTests();
   runM2bTests();
   runM3Tests();
+  runRandomTests();   // D-036: its sessions are kept out of the committed digest (they did not exist when it was cut)
   testTiming();
   testUpModel();
   runEvictTests();

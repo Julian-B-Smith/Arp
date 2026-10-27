@@ -691,7 +691,8 @@ lane: lane 3 for velocity, lane 4 for length.
       len' = max(1, len + fdiv(len · gate_random · U, 100000))
 
   then the ratchet cap applies as above. For a tied note the same factor
-  applies to the tie's tail term `max(1, fdiv(span(kAbs+t) · gate · …))`. At
+  applies to the tie's tail term `max(1, fdiv(span(kAbs+t) · gate · …))`,
+  using the `U` of the sub-note the tail extends (the last, `sub = r − 1`). At
   `gate_random` = 0 nothing changes; chord-stage notes are never randomised.
 - **Ties by look-ahead (H3).** When step kAbs plays, let `t ≥ 0` be the
   number of consecutive tie steps that follow it in the pattern data, read
@@ -830,7 +831,7 @@ produce no extra and no missing terminal (LIBRARY L0001).
 ## 9. Settings, morph and timing of changes
 - All settings arrive as **integers** (`params.json`). horde rounds morph
   blends to the nearest integer before the snapshot.
-- **Continuous settings:** `gate` (1–200 %), `swing` (500–750 ‰, latched per step pair, §5.1), `vel_fixed`, and `step_time_us`
+- **Continuous settings:** `gate` (1–200 %), `swing` (500–750 ‰, latched per step pair, §5.1), `vel_fixed`, `vel_random`, `gate_random`, `random_curve` (§4.9), and `step_time_us`
   (time mode; it changes smoothly per §2.6).
 - **Discrete settings:** all the rest. All of them are morph targets
   (D-000 Open 5).

@@ -126,8 +126,8 @@ inline constexpr const char* kRestartNames[] = {"chord", "bar", "free"};
 inline constexpr const char* kQuantizeNames[] = {"off", "scale", "chord_root"};
 inline constexpr const char* kScaleSourceNames[] = {"global", "own"};
 
-// Mirrors spec/params.json, key for key (47 settings); tools/core_params_check.py guards the drift.
-// `continuous` ones (gate, swing, vel_fixed, step_time_us) are read at step evaluation; every other
+// Mirrors spec/params.json, key for key (50 settings); tools/core_params_check.py guards the drift.
+// `continuous` ones (gate, swing, vel_fixed, vel_random, gate_random, random_curve, step_time_us) are read at step evaluation; every other
 // one is discrete and applies from the next evaluated step, except `enabled` and `latch`, which
 // apply at offset 0 of their block (SPEC 9, 13b.12).
 struct Settings {
@@ -146,6 +146,9 @@ struct Settings {
   Latch latch = Latch::Off;
   VelMode velMode = VelMode::Played;
   std::int32_t velFixed = 100;        // continuous 1..127
+  std::int32_t velRandom = 0;         // continuous, percent 0..100 (SPEC 4.4, 4.9; D-036): 0 = the output is byte-identical to a core without it
+  std::int32_t gateRandom = 0;        // continuous, percent 0..100 (SPEC 5.2, 4.9)
+  std::int32_t randomCurve = 0;       // continuous, percent 0..100 (SPEC 4.9): 0 uniform, 100 the mean of four byte draws
   Restart restart = Restart::Chord;
   std::int32_t repeats = 0;
   Quantize quantize = Quantize::Off;

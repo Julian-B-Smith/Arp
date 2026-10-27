@@ -1,5 +1,5 @@
 # The RATIFIED 1.0 spec (D-022), pinned by sha256; ./verify's spec_gate checks every line and every file under spec/.
 # A deliberate spec change = the human's gate + a decision record + a re-pin of these lines in the same change.
-604e06aae533d6523391ffded35edbb746deee7b65833d16e0cc21a196f3695a  spec/SPEC.md
+9918aa408065d9d3b17a71d77a32d8fde4dc1f3230eb73fd221a583bad5fbd5e  spec/SPEC.md
 effa973ba73e18c8554aed727ce12c16f5805f4cab84e2597987d8bb40dc237c  spec/params.json
 6925aa22be0c9100c09b4ad280e2bda911ccc39c95f911c0acbde304336f8490  spec/bank/starter.json

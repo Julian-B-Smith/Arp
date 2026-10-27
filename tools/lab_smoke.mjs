@@ -1004,6 +1004,64 @@ const swingDelayUs = (U, swing, k) => (k % 2 === 1 ? Math.floor(U * (2 * swing -
   check(bad.length === 0, "CH1: C + {+4, +7} = C E G as stream chord at the press (arp off: only chord notes); a shared key is emitted once and ends with its LAST source; degrees +2 +4 on D in C major = D F A; semitones +4 with quantize on in C minor snaps to Eb; the arp plays the chord set; a shape change moves only leavers and joiners at offset 0; stage off ends all; the pedal holds the chord; a stored mapping survives an anchor change (no stranded note); both streams sound on one key; the arp toggle, a transport edge and arp eviction never touch chord notes; 1-0-1 in one sample keeps its note; dedupe is by key; latch-off applies at offset 0 (a latched chord ends there with the arp off, and a latched arp stops there); one quantize switch snaps the chord too, the played note included (C# in C major = C F G), and every arp and chord NoteOn is in the scale" + (bad.length ? " - FAILED: " + bad.join(" ") : ""));
 }
 
+// ---- RN1 (D-036): velocity and gate randomness, with a shared curve. The known answers below are the SAME Python-computed literals tests/core/test_random.cpp
+// checks the C++ core against (a separate implementation of SPEC 10 / 4.9 / 5.2), so the JS and the C++ are each held to a third thing, not to each other.
+{
+  const L16 = 3840;
+  const notesOf = r => {   // each arp note with its scheduled length in ticks; sub-note and index n as the spec numbers them (ascending key within a step and sub-note)
+    const off = new Map(r.evs.filter(e => e.t === "off").map(e => [e.epoch + ":" + e.id, e.tick]));
+    const v = ons(r).filter(e => e.stream === "arp").map(e => ({ key: e.key, vel: e.vel, tick: e.tick, len: off.get(e.epoch + ":" + e.id) - e.tick, kAbs: Math.floor(e.tick / L16), sub: 0, n: 0 }));
+    for (const x of v) x.sub = x.tick - x.kAbs * L16 === 0 ? 0 : 1;   // these sessions ratchet by 1 or 2 only
+    for (const x of v) x.n = v.filter(y => y.kAbs === x.kAbs && y.sub === x.sub && y.key < x.key).length;
+    return v;
+  };
+  const key1 = (plants, seed, curve, amt) => notesOf(run({ core: mkCore(plants), sr: 48000, block: 4096, total: 16 * 6000 - 1000, base: { order: "up", seed, vel_random: amt, gate_random: amt, random_curve: curve }, ins: [K(0, "a", 60)] })).slice(0, 16);
+  const LITS = [
+    [0, 0, 100, [127,65,86,127,90,11,87,19,127,119,127,88,63,59,127,127], [4985,2479,4144,4647,4816,4359,5563,3876,746,672,1661,577,1010,623,1492,2433]],
+    [7, 100, 100, [127,97,86,127,108,72,80,70,63,127,106,52,106,127,104,73], [2967,3594,2208,2433,2472,2915,2171,1612,2282,3342,3173,2617,1858,3612,2780,4125]],
+    [12345, 50, 60, [123,59,72,90,77,103,74,127,70,97,123,112,126,127,89,125], [2472,3177,3427,3505,2568,2045,2015,3051,3698,3173,3965,3204,2622,2780,2506,2683]]
+  ];
+  plant(key1(["randomIgnoresCurve"], 7, 100, 100).map(x => x.vel).join() !== LITS[1][3].join(), "RN1 detects a random_curve that is ignored (curve 100 played as curve 0)");
+  for (const [seed, curve, amt, vel, len] of LITS) {
+    const got = key1([], seed, curve, amt);
+    check(got.length === 16 && got[0].kAbs === 0 && got.map(x => x.vel).join() === vel.join() && got.map(x => x.len).join() === len.join(),
+      `RN1 known answer (Python literals): seed ${seed}, curve ${curve}, amounts ${amt}: the first 16 steps play velocity [${got.map(x => x.vel)}] and length [${got.map(x => x.len)}] ticks`);
+  }
+  {   // a chord step's per-note index and its ratchet sub-note: step 5 of a chord x2 ratchets step, seed 2, curve 25
+    const sess = plants => notesOf(run({ core: mkCore(plants), sr: 48000, block: 4096, total: 8 * 6000, userPattern: { length: 1, steps: [{ pick: "chord", ratchet: 2, gate: 150 }] },
+      base: { pattern: "user", gate: 60, seed: 2, vel_random: 100, gate_random: 100, random_curve: 25 }, ins: [K(0, "a", 60), K(0, "b", 64), K(0, "c", 67)] })).filter(x => x.kAbs === 5);
+    const want = { "0,0": "127/1468", "0,1": "29/1920", "0,2": "94/1441", "1,0": "77/1920", "1,1": "123/1118", "1,2": "96/1242" };
+    const ok = ns => ns.length === 6 && ns.every(x => want[x.sub + "," + x.n] === x.vel + "/" + x.len);
+    plant(!ok(sess(["randomIgnoresCurve"])), "RN1 detects the curve ignored on a chord step too (curve 25)");
+    check(ok(sess([])), "RN1 known answer (Python literals): step 5 of a chord x2 ratchets step (seed 2, curve 25): (sub,n) -> vel/len " + JSON.stringify(want) + " (vel clamped at 127, lengths capped at the ratchet span 1920)");
+  }
+  {   // the tie tail, per note of a chord step and for the last sub-note of a ratchet
+    const sess = plants => notesOf(run({ core: mkCore(plants), sr: 48000, block: 4096, total: 8 * 6000, userPattern: { length: 4, steps: [{ pick: "chord" }, { tie: true, gate: 150 }, { pick: "chord", ratchet: 2 }, { tie: true, gate: 50 }] },
+      base: { pattern: "user", gate: 80, seed: 21, vel_random: 50, gate_random: 100, random_curve: 100 }, ins: [K(0, "a", 60), K(0, "b", 64), K(0, "c", 67)] }));
+    const W = [[0, 0, [11000, 8779, 8535], [74, 93, 120]], [2, 1, [3256, 3422, 3873], [82, 103, 115]]];
+    const ok = ns => W.every(([k, sub, len, vel]) => [0, 1, 2].every(n => { const x = ns.find(y => y.kAbs === k && y.sub === sub && y.n === n); return x && x.len === len[n] && x.vel === vel[n]; }));
+    plant(!ok(sess(["randomIgnoresCurve"])), "RN1 detects the curve ignored on tied tails (curve 100)");
+    check(ok(sess([])), "RN1 known answer (Python literals): the tied tail of every note of steps 0 and 2 of the tie pattern (a plain tie, and the last sub-note of a x2 ratchet) is the spec's");
+  }
+  {   // byte-identity at 0: the amounts at 0 leave the stream as it was, whatever the curve
+    const base = { order: "chord", pattern: "user", gate: 80, seed: 5 }, pat = { length: 2, steps: [{ pick: "chord", ratchet: 2 }, { tie: true }] };
+    const s = (extra, plants = []) => streamOf(run({ core: mkCore(plants), sr: 8000, block: 64, total: 20000, userPattern: pat, base: Object.assign({}, base, extra), ins: [K(0, "a", 60), K(0, "b", 64), K(0, "c", 67)] }).evs);
+    plant(s({ vel_random: 100, gate_random: 100 }) !== s({}), "RN1 identity check can see randomness (both amounts at 100 change the stream)");
+    check(s({ random_curve: 100 }) === s({}) && s({}).length > 500, "RN1: with vel_random = gate_random = 0 the stream is the same whatever random_curve is");
+  }
+  {   // N1 and G1 over a session with all three settings non-zero and changing mid-step
+    const U5 = { length: 5, steps: [{ ratchet: 2 }, { tie: true, gate: 120 }, { pick: "chord", vel: 140, ratchet: 3 }, { gate: 40 }, { ratchet: 4, gate: 200 }] };
+    const mix = (plants, block) => run({ core: mkCore(plants), block, total: 40000, userPattern: U5, base: { pattern: "user", order: "up", gate: 90, seed: 9, vel_random: 100, gate_random: 100, random_curve: 0 },
+      cfg: [{ at: 9500, set: { vel_random: 40, random_curve: 60 } }, { at: 14500, set: { gate_random: 30, order: "bounce" } }, { at: 21500, set: { random_curve: 100, vel_random: 80 } }, { at: 26500, set: { pattern: "gallop", gate_random: 100 } }, { at: 31500, set: { random_curve: 20, vel_random: 0, gate_random: 55 } }],
+      ins: [K(0, "a", 60), K(0, "b", 64, { vel: 70 }), K(0, "c", 67, { vel: 110 }), K(6500, "d", 72, { vel: 90 }), O(18000, "b"), K(24500, "e", 55, { vel: 80 })] });
+    const ref = streamOf(mix([], 4096).evs), diverge = plants => [512, 64, 7, 1].filter(b => streamOf(mix(plants, b).evs) !== ref);
+    plant(diverge(["clampOffset"]).length > 0, "RN1/G1 detects offsets clamped into the block on the randomness session");
+    check(diverge([]).length === 0 && mix([], 64).evs.length > 100, `RN1/G1: velocity and length randomness (ratchets, ties, a chord step, five settings changes) give identical absolute samples and velocities at blocks 4096 / 512 / 64 / 7 / 1 (${mix([], 64).evs.length} events)`);
+    plant(n1(mix(["dropRelease"], 64).evs).length > 0, "RN1/N1 detects a dropped release on the randomness session");
+    check(n1(mix([], 64).evs).length === 0, "RN1/N1: exactly one NoteOff per NoteOn over the randomness session");
+  }
+}
+
 // Coverage: a session that never reaches the style it names proves nothing, so every window must hold notes.
 {
   const w = (evs, a, b) => evs.filter(e => e.t === "on" && e.a >= a && e.a < b).length;

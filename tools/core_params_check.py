@@ -7,7 +7,7 @@
 
 It runs the test binary with --dump-defaults (one `key=value` per setting, plus `values.<key>=` enum
 lists, `tpq=` and `rate_ticks.<name>=`) and checks, against spec/params.json and spec/bank/starter.json:
-  - the set of setting keys is exactly params.json's 47 (no extra, none missing);
+  - the set of setting keys is exactly params.json's 50 (no extra, none missing);
   - every default equals params.json's default (bools true/false, ints, enums by NAME);
   - every enum's value list equals params.json's, in order (rate names and ticks from `rate[]`,
     pattern ids from the starter bank plus `user`);
