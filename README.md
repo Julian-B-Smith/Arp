@@ -6,7 +6,7 @@ library that horde runs ahead of its engine, plus a browser lab for playing it. 
 user-facing name is cleared before release.
 
 **Status: the 1.0 spec is RATIFIED (2026-10-23) and functionality is frozen.** The spec was four times independently
-reviewed, and the lab plays all of it. The C++ core is under way: M1a (the skeleton), M1b (every order style, step field, the user pattern and time mode) and M2 (scale, feel, restart, repeats, morph timing, the chord stage) are built; M3 (horde admission) is next.
+reviewed, and the lab plays all of it. The C++ core is under way: M1a (the skeleton), M1b (every order style, step field, the user pattern and time mode) and M2 (scale, feel, restart, repeats, morph timing, the chord stage) are built; M3 (horde admission) is under way: the evidence for horde's 1.0 bar, row by row, is in `docs/horde-1.0-bar.md`.
 To play it:
 
 ```bash
@@ -60,6 +60,7 @@ landed" (replaying the timing of your presses) is held for after 1.0: `docs/defe
 | `intake/` | horde's packet: note vocabulary, engine note interface, quantizer, tempo divisions. Read-only, hash-pinned | done |
 | `integrations/` | Inbound mailbox (`integrations/<sender>/`) and the outbound thread table | live |
 | `docs/filings/` | Working copies of what Arp filed in other repos | live |
+| `docs/horde-1.0-bar.md`, `docs/horde-copy-in.md` | horde's 1.0 checklist mapped to evidence; the files horde copies, with hashes, build notes and the CPU envelope | live |
 | `docs/prior-art.md` | Phase 0: pattern-bank landscape, failure modes, grid math, name check (dated, cited) | done |
 | `spec/` | The 1.0 spec (SPEC.md), every setting (params.json), the candidate step-pattern bank | RATIFIED 2026-10-23 (protected) |
 | `lab/arp-lab.html` | The playable twin: Ableton-style computer keys, MIDI, transport, every setting, morph A/B, a small synth, a **pattern view** (one full cycle as the core plays it, plus a live roll), an **order × pattern** thumbnail matrix, and a **build-your-own** step editor | built; play it to settle the open listening questions in ROADMAP (how settings switch during a morph, restart under morph, which patterns ship, pre-roll, tie memory, which pass a pick takes) |
@@ -83,4 +84,4 @@ landed" (replaying the timing of your presses) is held for after 1.0: `docs/defe
 ./verify fast
 ```
 
-_Last verified: 2026-10-22 (session close: `./verify fast` green on main 7b4d857; this README's map, statuses and counts checked against the tree)._
+_Last verified: 2026-10-27 (`./verify fast` green on `m3/horde-answers` from main 97e01fb; statuses checked against ROADMAP)._

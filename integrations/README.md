@@ -24,6 +24,7 @@ move; `status:` is lifecycle; neither does the other's job.
 | HYPERSAW | `integrations/hypersaw/notice-note-stream.md` (seq 3, 2026-10-22) | tag Arp's notes `arp` (horde ADR-270); held notes as `direct`; the pedal question. **Responded** in `response-note-stream.md` (seq 4): tag accepted, horde tees `direct`, pedal on `direct` only proposed (D-009); ball HYPERSAW |
 | HYPERSAW (their tree) | `integrations/arp/response-spinup.md` (seq 2) and `response-triggers.md` (seq 4) | answered Q-H1, Q-H2, Q-H3; ball Arp, nothing owed; read and recorded 2026-10-22 (D-015) |
 | HYPERSAW (their tree) | `integrations/arp/response-chord-stream.md` (seq 6) | Q-H7 yes, as three toggles (their ADR-272); asked whether the played note is in `chord`; answered in our seq 7 (D-029) |
+| HYPERSAW (their tree) | `integrations/arp/response-m3.md` (seq 8, 2026-10-25) | answered Q-H5, Q-H6, Q-H8, Q-H9, Q-H10 and the tee (their ADR-282); ball Arp, nothing owed until our readiness notice; owes us the preset format (B550). Read and recorded 2026-10-27 (D-034) |
 | — | (earlier) | horde's spin-up packet arrived as `SPINUP-BRIEF.md` + `intake/`, not as a mailbox brief |
 
 ## Outbound threads

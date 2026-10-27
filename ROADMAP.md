@@ -262,19 +262,15 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 - **Q-H1 — which MUST rows bind Arp: ANSWERED by horde (D-015).** horde's `docs/proposals/note-processor-1.0-bar.md` (incl. CPU ≤ 2 % of a min-spec core); it is M3's checklist.
 - **Q-H2 — how horde consumes the core: ANSWERED by horde (D-015).** copied into horde's tree at our V1 by a horde PR recording our commit; keep the core self-contained, ship a file list.
 - **Q-H3 — the trigger-lane handoff: ANSWERED by horde (D-015).** `Trigger{lane 1–8, sampleOffset}` as proposed; horde shows "Arp · T1–T8" event sources.
-- **Q-H6 — How a horde preset carries Arp's user pattern** (D-011): proposed in our seq 7 (D-029), after reading
-  horde ADR-169: embedded by value in Arp's module preset as one `arp-user-pattern/1` blob; asked whether each
-  corner may carry its own. Ball HYPERSAW, respond-by 2026-11-13. Blocks the M3 preset wiring only.
-- **Q-H8 — Does the bar's "no input, no output" cover triggers?** SPEC §2.5 fires trigger-only steps with no keys
-  under restart bar/free; we read the row as notes only (seq 7). Ball HYPERSAW.
-- **Q-H9 — The face and undo** read as horde's work, from our settings table (seq 7). Ball HYPERSAW.
-- **Q-H10 — Who authors the factory presets** (init + starter bank) (seq 7). Ball HYPERSAW.
+- **Q-H6: ANSWERED (horde seq 8, D-034):** embedded by value in Arp's module preset (`arp-user-pattern/1`), per corner.
+- **Q-H8: ANSWERED (D-034):** the row is about notes; triggers may fire with no keys under bar/free. horde amends it.
+- **Q-H9: ANSWERED (D-034):** the face and undo are horde's; they need display names and formats in `spec/params.json`.
+- **Q-H10: ANSWERED (D-034):** Arp authors the factory presets as horde preset files, **once horde sends the format
+  (their B550)**. Blocks the M3 factory-content row only.
 - **Q-H7 — A third stream, `chord`: ANSWERED by horde (seq 6, their ADR-272):** three toggles per source;
   their question back (is the played note `chord`?) answered (b) in our seq 7 (D-029).
-- **Q-H5 — Stream-scoped pedal** (D-009). We proposed that horde's VO-12
-  sustain `direct` voices only. The ball is horde's, in our
-  `integrations/hypersaw/response-note-stream.md`. It blocks nothing in the
-  core: Arp's side (the `arp` tag, consuming CC 64) is specified and tested.
+- **Q-H5 — Stream-scoped pedal: ANSWERED (D-034):** horde's pedal holds `direct` voices only, once the stream
+  behaviour is built (their RC-6.7).
 - **Q-A5 — Whether pre-roll plays: SETTLED 2026-10-23 by poll (D-021).**
 - **Q-A1 — The morph threshold rule for discrete settings: SETTLED 2026-10-23 by poll (D-021).**
 - **Q-A2 — Restart × morph: SETTLED 2026-10-23 by poll (D-021).**
