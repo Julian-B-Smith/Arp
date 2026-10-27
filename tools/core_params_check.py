@@ -156,14 +156,48 @@ def planted(dumped: dict) -> dict:
     return bad
 
 
+def check_face(params: dict) -> list:
+    """horde builds Arp's face from spec/params.json (D-034 Q-H9, D-035): every setting needs a key, a display name,
+    a morph class, a default and its range, a unit or display format where it is a continuous value, and a display
+    label for every enum value. Missing any of these is a face horde cannot draw, so it is a failure here."""
+    problems, labels = [], set()
+    for x in params["params"]:
+        k = x.get("key", "?")
+        if not x.get("label"):
+            problems.append("setting %s has no display name (label)" % k)
+        elif x["label"] in labels:
+            problems.append("display name %r is used twice" % x["label"])
+        labels.add(x.get("label"))
+        if x.get("kind") not in ("discrete", "continuous"):
+            problems.append("setting %s has no morph class (kind)" % k)
+        if "default" not in x:
+            problems.append("setting %s has no default" % k)
+        if x.get("type") in ("int", "percent", "permille") and not ("min" in x and "max" in x):
+            problems.append("setting %s has no range" % k)
+        if x.get("kind") == "continuous" and not (x.get("unit") or x.get("display")):
+            problems.append("continuous setting %s has no unit or display format" % k)
+        if x.get("type") == "enum" and "values" in x and set(x.get("value_labels", {})) != set(x["values"]):
+            problems.append("enum %s does not label every value" % k)
+    return problems
+
+
+def planted_face(params: dict) -> dict:
+    bad = json.loads(json.dumps(params))
+    del bad["params"][10]["label"]                                 # gate loses its display name
+    del bad["params"][2]["value_labels"]["pedal_high"]             # one order style loses its label
+    return bad
+
+
 def main(argv) -> int:
     binary = DEFAULT_BINARY
     if "--binary" in argv:
         binary = Path(argv[argv.index("--binary") + 1])
     dumped = dump_defaults(binary)
     bank = json.loads((REPO / "spec" / "bank" / "starter.json").read_text())
+    params = json.loads((REPO / "spec" / "params.json").read_text())
     if "--plant" in argv:
-        problems = check(planted(dumped)) + check_bank(dump_bank(binary), planted_bank(bank)) + check_header(planted_bank(bank))
+        problems = check(planted(dumped)) + check_bank(dump_bank(binary), planted_bank(bank)) + check_header(planted_bank(bank)) \
+            + check_face(planted_face(params))
         for p in problems:
             print("  RED   (planted) " + p)
         print("planted control: %s" % ("RED, as it must be" if problems else "STILL GREEN - the drift guard is blind"))
@@ -191,7 +225,17 @@ def main(argv) -> int:
     bank_fired = bool(red_dump) and bool(red_header)
     print("%s  plant fires: one changed probability in the JSON is reported by the compiled-bank check (%s) and by the generated-header check" % (
         "PASS" if bank_fired else "FAIL", red_dump[0] if red_dump else "nothing reported"))
-    return 0 if (not problems and seen == wants and not bank_problems and bank_fired) else 1
+    # the face horde draws (D-034 Q-H9, D-035): names, units, formats and value labels, from params.json alone
+    face_problems = check_face(params)
+    for p in face_problems:
+        print("  FAIL  " + p)
+    print("%s  every setting carries what horde's face needs (%d settings: display name, morph class, default, range, unit or format, enum value labels)" % (
+        "FAIL" if face_problems else "PASS", len(params["params"])))
+    face_fired = check_face(planted_face(params))
+    face_seen = any("gate" in f for f in face_fired) and any("order" in f for f in face_fired)
+    print("%s  plant fires: a setting without a display name and an enum with an unlabelled value are both reported (%s)" % (
+        "PASS" if face_seen else "FAIL", "; ".join(face_fired) if face_fired else "nothing reported"))
+    return 0 if (not problems and seen == wants and not bank_problems and bank_fired and not face_problems and face_seen) else 1
 
 
 if __name__ == "__main__":

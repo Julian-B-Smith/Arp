@@ -920,3 +920,39 @@ under it, and the figure moves 0.05-0.1 % with machine state. Chosen: quote
 alongside it the measured edge (3,600) and the room on ordinary loads (9,000
 on load A, far more on typical ones). Rejected: quoting 2,500 with a 5 %
 margin. Even 1,300 is far beyond human playing.
+
+## D-034 — horde answered seq 7 and Q-H5 (recorded 2026-10-27)
+
+horde filed `response-m3` (seq 8, 2026-10-25) in its tree (`integrations/arp/`),
+`ball: Arp`, nothing owed until our readiness notice. horde's human answered
+by poll (their ADR-282):
+- **The tee** (our seq 4): confirmed. horde copies the player's input to the
+  engine as `direct`, before Arp; Arp never echoes input.
+- **Q-H5:** yes, the engine's sustain pedal holds `direct` voices only once the
+  stream behaviour is built (their RC-6.7, round 36); `chord` and `arp` voices
+  are held by Arp's input hold. Nothing changes in horde's 1.0 until our core lands.
+- **Q-H6:** yes, and per corner. The user pattern rides inside Arp's module
+  preset, embedded by value as one `arp-user-pattern/1` blob (their ADR-169),
+  and each morph corner may carry its own, flipping at the morph threshold.
+- **Q-H8:** yes. The bar's "no input, no output" row is about notes; trigger
+  lanes may keep firing with nothing held under restart bar/free (SPEC §2.5).
+  horde amends the row.
+- **Q-H9:** the face and the undo are horde's (one undo step per control
+  gesture; a trigger makes none). They need from us each setting's key,
+  display name, unit, range, default and morph class, plus any display format
+  beyond the unit (a division name, a note name), in `spec/params.json`.
+- **Q-H10:** Arp authors its factory presets (the init and the starter bank) as
+  horde preset files. horde owes us the format first (their B550), as a notice.
+
+## D-035 — `spec/params.json` gains display names and formats for horde's face (RATIFIED by poll, 2026-10-27)
+
+horde builds Arp's face and undo (D-034, Q-H9) from our settings table. The
+table had keys, ranges, defaults and morph classes, but no display names and
+few units. Approved by poll as purely additive metadata: every setting gains a
+`label` (its display name), and where needed a `unit`, a `display` format
+(swing permille shown as a percentage, the own-scale root as a note name, the
+rate as its division name, repeats 0 as ∞) and `value_labels` for every enum
+value. No key, range, default, kind or behaviour changes (proved field by
+field against the ratified file). A new check in `tools/core_params_check.py`
+requires all of it, with a plant. The lab's embedded copy is regenerated and
+`spec/MANIFEST` re-pinned in the same change, as D-023 requires.

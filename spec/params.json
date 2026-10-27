@@ -2,10 +2,11 @@
   "format": "arp-params/1",
   "status": "RATIFIED 2026-10-23 (D-022); protected: changes need the human's gate",
   "tpq": 15360,
-  "note": "Every setting is a morph target (D-000 Open 5). All values are INTEGERS in the snapshot (horde rounds morph blends). kind=continuous blends; kind=discrete resolves to the largest-weight corner with 0.05 hysteresis and applies from the next evaluated step (SPEC §9, Q-A1 PROPOSED); `enabled` applies at offset 0 of its block (SPEC T4/T5). Enums are stored by NAME. Tempo is clamped to [20, 999] bpm (SPEC §1.3).",
+  "note": "Every setting is a morph target (D-000 Open 5). All values are INTEGERS in the snapshot (horde rounds morph blends). kind=continuous blends; kind=discrete resolves to the largest-weight corner with 0.05 hysteresis and applies from the next evaluated step (SPEC §9, Q-A1 PROPOSED); `enabled` applies at offset 0 of its block (SPEC T4/T5). Enums are stored by NAME. Tempo is clamped to [20, 999] bpm (SPEC §1.3). Each setting carries a `label` (its display name), and where needed a `unit`, a `display` format and `value_labels` for enums (D-035, for horde's face, Q-H9).",
   "params": [
     {
       "key": "enabled",
+      "label": "Arp module",
       "kind": "discrete",
       "type": "bool",
       "default": false,
@@ -14,6 +15,7 @@
     },
     {
       "key": "arp_enabled",
+      "label": "Arp on",
       "kind": "discrete",
       "type": "bool",
       "default": true,
@@ -22,6 +24,7 @@
     },
     {
       "key": "order",
+      "label": "Order",
       "kind": "discrete",
       "type": "enum",
       "values": [
@@ -43,27 +46,50 @@
         "pairs"
       ],
       "default": "up",
-      "ref": "SPEC §4.2"
+      "ref": "SPEC §4.2",
+      "value_labels": {
+        "up": "Up",
+        "down": "Down",
+        "bounce": "Up-down",
+        "bounce2": "Up-down (ends twice)",
+        "played": "As played",
+        "chord": "Chord",
+        "random": "Random",
+        "shuffle": "Shuffle (no repeats)",
+        "converge": "Converge",
+        "diverge": "Diverge",
+        "pedal_low": "Pedal low",
+        "pedal_high": "Pedal high",
+        "chord_walk": "Chord then walk",
+        "stride": "Stride",
+        "chord_between": "Chord between notes",
+        "pairs": "Pairs"
+      }
     },
     {
       "key": "pattern",
+      "label": "Pattern",
       "kind": "discrete",
       "type": "enum",
       "values_from": "spec/bank/starter.json patterns[].id, plus `user` (the player's own pattern, SPEC §4.6)",
       "default": "none",
-      "ref": "SPEC §4.3"
+      "ref": "SPEC §4.3",
+      "display": "the pattern's name from the bank (spec/bank/starter.json `name`), or \"Build your own\" for `user`"
     },
     {
       "key": "rate",
+      "label": "Rate",
       "kind": "discrete",
       "type": "enum",
       "values_from": "rate[].name (aliases accepted on load)",
       "default": "1/16",
       "ref": "SPEC §2.1",
-      "note": "used in rate_mode = sync"
+      "note": "used in rate_mode = sync",
+      "display": "the division name, e.g. 1/16, 1/8T, 3/16 (shown with its dotted alias where it has one, e.g. 3/16 = 1/8D)"
     },
     {
       "key": "rate_mode",
+      "label": "Rate mode",
       "kind": "discrete",
       "type": "enum",
       "values": [
@@ -72,10 +98,15 @@
       ],
       "default": "sync",
       "ref": "SPEC §2.6",
-      "note": "sync = tempo-synced divisions (rate); time = a free step length (step_time_us) from the key press, ignoring the host tempo and transport (D-016)"
+      "note": "sync = tempo-synced divisions (rate); time = a free step length (step_time_us) from the key press, ignoring the host tempo and transport (D-016)",
+      "value_labels": {
+        "sync": "Sync",
+        "time": "Time"
+      }
     },
     {
       "key": "step_time_us",
+      "label": "Step time",
       "kind": "continuous",
       "type": "int",
       "min": 10000,
@@ -88,26 +119,32 @@
     },
     {
       "key": "steps",
+      "label": "Steps",
       "kind": "discrete",
       "type": "int",
       "min": 0,
       "max": 8,
       "default": 0,
       "ref": "SPEC §4.7",
-      "note": "transposition steps, Ableton-style: the whole pattern repeats shifted by step_size each pass, `steps` times, then returns; 0 = none (D-014)"
+      "note": "transposition steps, Ableton-style: the whole pattern repeats shifted by step_size each pass, `steps` times, then returns; 0 = none (D-014)",
+      "unit": "passes"
     },
     {
       "key": "step_size",
+      "label": "Step size",
       "kind": "discrete",
       "type": "int",
       "min": -48,
       "max": 48,
       "default": 12,
       "ref": "SPEC §4.7",
-      "note": "shift per pass, in step_unit"
+      "note": "shift per pass, in step_unit",
+      "unit": "semitones or degrees, per step_unit",
+      "display": "signed, e.g. +12, −7"
     },
     {
       "key": "step_unit",
+      "label": "Step unit",
       "kind": "discrete",
       "type": "enum",
       "values": [
@@ -116,29 +153,39 @@
       ],
       "default": "semitones",
       "ref": "SPEC §4.7",
-      "note": "degrees = in-scale keys of the effective scale (§6); with no scale active, a degree is a semitone"
+      "note": "degrees = in-scale keys of the effective scale (§6); with no scale active, a degree is a semitone",
+      "value_labels": {
+        "semitones": "Semitones",
+        "degrees": "Scale degrees"
+      }
     },
     {
       "key": "gate",
+      "label": "Gate",
       "kind": "continuous",
       "type": "percent",
       "min": 1,
       "max": 200,
       "default": 80,
-      "ref": "SPEC §5"
+      "ref": "SPEC §5",
+      "unit": "%"
     },
     {
       "key": "swing",
+      "label": "Swing",
       "kind": "continuous",
       "type": "permille",
       "min": 500,
       "max": 750,
       "default": 500,
       "ref": "SPEC §5",
-      "note": "500 straight, 667 triplet feel"
+      "note": "500 straight, 667 triplet feel",
+      "unit": "%",
+      "display": "permille shown as a percentage with one decimal: 500 → 50.0 %, 667 → 66.7 %"
     },
     {
       "key": "latch",
+      "label": "Latch",
       "kind": "discrete",
       "type": "enum",
       "values": [
@@ -147,10 +194,16 @@
         "append"
       ],
       "default": "off",
-      "ref": "SPEC §3"
+      "ref": "SPEC §3",
+      "value_labels": {
+        "off": "Off",
+        "replace": "Replace",
+        "append": "Add"
+      }
     },
     {
       "key": "vel_mode",
+      "label": "Velocity",
       "kind": "discrete",
       "type": "enum",
       "values": [
@@ -158,19 +211,26 @@
         "fixed"
       ],
       "default": "played",
-      "ref": "SPEC §4.4"
+      "ref": "SPEC §4.4",
+      "value_labels": {
+        "played": "As played",
+        "fixed": "Fixed"
+      }
     },
     {
       "key": "vel_fixed",
+      "label": "Fixed velocity",
       "kind": "continuous",
       "type": "int",
       "min": 1,
       "max": 127,
       "default": 100,
-      "ref": "SPEC §4.4"
+      "ref": "SPEC §4.4",
+      "unit": "MIDI velocity (1–127)"
     },
     {
       "key": "restart",
+      "label": "Restart",
       "kind": "discrete",
       "type": "enum",
       "values": [
@@ -179,20 +239,29 @@
         "free"
       ],
       "default": "chord",
-      "ref": "SPEC §4.5"
+      "ref": "SPEC §4.5",
+      "value_labels": {
+        "chord": "New chord",
+        "bar": "Bar",
+        "free": "Free"
+      }
     },
     {
       "key": "repeats",
+      "label": "Repeats",
       "kind": "discrete",
       "type": "int",
       "min": 0,
       "max": 16,
       "default": 0,
       "ref": "SPEC §4.8",
-      "note": "full cycles of the whole pattern per chord, then stop until the next gesture; 0 = forever (D-018)"
+      "note": "full cycles of the whole pattern per chord, then stop until the next gesture; 0 = forever (D-018)",
+      "unit": "cycles",
+      "display": "0 shown as ∞ (forever)"
     },
     {
       "key": "quantize",
+      "label": "Quantize",
       "kind": "discrete",
       "type": "enum",
       "values": [
@@ -202,10 +271,16 @@
       ],
       "default": "off",
       "ref": "SPEC §6",
-      "note": "off; scale = snap to the scale anchored at its root; chord_root = horde's movable-do 'scale (offset)' mode for an arp: the scale SHAPE anchored on the lowest held key (the root setting is ignored, as in horde ADR-112) — governs the arp AND the chord stage: while on, every note Arp emits is in the effective scale, the played note included (D-020)"
+      "note": "off; scale = snap to the scale anchored at its root; chord_root = horde's movable-do 'scale (offset)' mode for an arp: the scale SHAPE anchored on the lowest held key (the root setting is ignored, as in horde ADR-112) — governs the arp AND the chord stage: while on, every note Arp emits is in the effective scale, the played note included (D-020)",
+      "value_labels": {
+        "off": "Off",
+        "scale": "Scale",
+        "chord_root": "Chord root"
+      }
     },
     {
       "key": "scale_source",
+      "label": "Scale",
       "kind": "discrete",
       "type": "enum",
       "values": [
@@ -214,116 +289,147 @@
       ],
       "default": "global",
       "ref": "SPEC §6",
-      "note": "global = horde's scale (scaleRoot + scaleDeg0..11, B260), read never owned; own = Arp's scale_root + scale_deg0..11 below, in exactly horde's shape (D-010)"
+      "note": "global = horde's scale (scaleRoot + scaleDeg0..11, B260), read never owned; own = Arp's scale_root + scale_deg0..11 below, in exactly horde's shape (D-010)",
+      "value_labels": {
+        "global": "horde's scale",
+        "own": "Arp's own"
+      }
     },
     {
       "key": "scale_root",
+      "label": "Own scale root",
       "kind": "discrete",
       "type": "int",
       "min": 0,
       "max": 11,
       "default": 0,
       "ref": "SPEC §6",
-      "note": "C=0 … B=11; horde's scaleRoot shape"
+      "note": "C=0 … B=11; horde's scaleRoot shape",
+      "display": "the note name: 0 → C, 1 → C♯, … 11 → B"
     },
     {
       "key": "scale_deg0",
+      "label": "Own scale: +0 (C over C)",
       "kind": "discrete",
       "type": "bool",
       "default": true,
       "ref": "SPEC §6",
-      "note": "degree 0: the pitch class 0 semitones above scale_root is in the scale (horde's scaleDeg0; root-relative)"
+      "note": "degree 0: the pitch class 0 semitones above scale_root is in the scale (horde's scaleDeg0; root-relative)",
+      "display": "on/off; the name follows the root: degree i is the note i semitones above scale_root"
     },
     {
       "key": "scale_deg1",
+      "label": "Own scale: +1 (C♯ over C)",
       "kind": "discrete",
       "type": "bool",
       "default": false,
       "ref": "SPEC §6",
-      "note": "degree 1: the pitch class 1 semitones above scale_root is in the scale (horde's scaleDeg1; root-relative)"
+      "note": "degree 1: the pitch class 1 semitones above scale_root is in the scale (horde's scaleDeg1; root-relative)",
+      "display": "on/off; the name follows the root: degree i is the note i semitones above scale_root"
     },
     {
       "key": "scale_deg2",
+      "label": "Own scale: +2 (D over C)",
       "kind": "discrete",
       "type": "bool",
       "default": true,
       "ref": "SPEC §6",
-      "note": "degree 2: the pitch class 2 semitones above scale_root is in the scale (horde's scaleDeg2; root-relative)"
+      "note": "degree 2: the pitch class 2 semitones above scale_root is in the scale (horde's scaleDeg2; root-relative)",
+      "display": "on/off; the name follows the root: degree i is the note i semitones above scale_root"
     },
     {
       "key": "scale_deg3",
+      "label": "Own scale: +3 (D♯ over C)",
       "kind": "discrete",
       "type": "bool",
       "default": false,
       "ref": "SPEC §6",
-      "note": "degree 3: the pitch class 3 semitones above scale_root is in the scale (horde's scaleDeg3; root-relative)"
+      "note": "degree 3: the pitch class 3 semitones above scale_root is in the scale (horde's scaleDeg3; root-relative)",
+      "display": "on/off; the name follows the root: degree i is the note i semitones above scale_root"
     },
     {
       "key": "scale_deg4",
+      "label": "Own scale: +4 (E over C)",
       "kind": "discrete",
       "type": "bool",
       "default": true,
       "ref": "SPEC §6",
-      "note": "degree 4: the pitch class 4 semitones above scale_root is in the scale (horde's scaleDeg4; root-relative)"
+      "note": "degree 4: the pitch class 4 semitones above scale_root is in the scale (horde's scaleDeg4; root-relative)",
+      "display": "on/off; the name follows the root: degree i is the note i semitones above scale_root"
     },
     {
       "key": "scale_deg5",
+      "label": "Own scale: +5 (F over C)",
       "kind": "discrete",
       "type": "bool",
       "default": true,
       "ref": "SPEC §6",
-      "note": "degree 5: the pitch class 5 semitones above scale_root is in the scale (horde's scaleDeg5; root-relative)"
+      "note": "degree 5: the pitch class 5 semitones above scale_root is in the scale (horde's scaleDeg5; root-relative)",
+      "display": "on/off; the name follows the root: degree i is the note i semitones above scale_root"
     },
     {
       "key": "scale_deg6",
+      "label": "Own scale: +6 (F♯ over C)",
       "kind": "discrete",
       "type": "bool",
       "default": false,
       "ref": "SPEC §6",
-      "note": "degree 6: the pitch class 6 semitones above scale_root is in the scale (horde's scaleDeg6; root-relative)"
+      "note": "degree 6: the pitch class 6 semitones above scale_root is in the scale (horde's scaleDeg6; root-relative)",
+      "display": "on/off; the name follows the root: degree i is the note i semitones above scale_root"
     },
     {
       "key": "scale_deg7",
+      "label": "Own scale: +7 (G over C)",
       "kind": "discrete",
       "type": "bool",
       "default": true,
       "ref": "SPEC §6",
-      "note": "degree 7: the pitch class 7 semitones above scale_root is in the scale (horde's scaleDeg7; root-relative)"
+      "note": "degree 7: the pitch class 7 semitones above scale_root is in the scale (horde's scaleDeg7; root-relative)",
+      "display": "on/off; the name follows the root: degree i is the note i semitones above scale_root"
     },
     {
       "key": "scale_deg8",
+      "label": "Own scale: +8 (G♯ over C)",
       "kind": "discrete",
       "type": "bool",
       "default": false,
       "ref": "SPEC §6",
-      "note": "degree 8: the pitch class 8 semitones above scale_root is in the scale (horde's scaleDeg8; root-relative)"
+      "note": "degree 8: the pitch class 8 semitones above scale_root is in the scale (horde's scaleDeg8; root-relative)",
+      "display": "on/off; the name follows the root: degree i is the note i semitones above scale_root"
     },
     {
       "key": "scale_deg9",
+      "label": "Own scale: +9 (A over C)",
       "kind": "discrete",
       "type": "bool",
       "default": true,
       "ref": "SPEC §6",
-      "note": "degree 9: the pitch class 9 semitones above scale_root is in the scale (horde's scaleDeg9; root-relative)"
+      "note": "degree 9: the pitch class 9 semitones above scale_root is in the scale (horde's scaleDeg9; root-relative)",
+      "display": "on/off; the name follows the root: degree i is the note i semitones above scale_root"
     },
     {
       "key": "scale_deg10",
+      "label": "Own scale: +10 (A♯ over C)",
       "kind": "discrete",
       "type": "bool",
       "default": false,
       "ref": "SPEC §6",
-      "note": "degree 10: the pitch class 10 semitones above scale_root is in the scale (horde's scaleDeg10; root-relative)"
+      "note": "degree 10: the pitch class 10 semitones above scale_root is in the scale (horde's scaleDeg10; root-relative)",
+      "display": "on/off; the name follows the root: degree i is the note i semitones above scale_root"
     },
     {
       "key": "scale_deg11",
+      "label": "Own scale: +11 (B over C)",
       "kind": "discrete",
       "type": "bool",
       "default": true,
       "ref": "SPEC §6",
-      "note": "degree 11: the pitch class 11 semitones above scale_root is in the scale (horde's scaleDeg11; root-relative)"
+      "note": "degree 11: the pitch class 11 semitones above scale_root is in the scale (horde's scaleDeg11; root-relative)",
+      "display": "on/off; the name follows the root: degree i is the note i semitones above scale_root"
     },
     {
       "key": "seed",
+      "label": "Seed",
       "kind": "discrete",
       "type": "uint32",
       "default": 0,
@@ -331,6 +437,7 @@
     },
     {
       "key": "chord_enabled",
+      "label": "Chord",
       "kind": "discrete",
       "type": "bool",
       "default": false,
@@ -339,6 +446,7 @@
     },
     {
       "key": "chord_unit",
+      "label": "Chord unit",
       "kind": "discrete",
       "type": "enum",
       "values": [
@@ -346,10 +454,15 @@
         "degrees"
       ],
       "default": "semitones",
-      "ref": "SPEC §14"
+      "ref": "SPEC §14",
+      "value_labels": {
+        "semitones": "Semitones",
+        "degrees": "Scale degrees"
+      }
     },
     {
       "key": "chord_on1",
+      "label": "Chord interval 1 on",
       "kind": "discrete",
       "type": "bool",
       "default": true,
@@ -357,15 +470,19 @@
     },
     {
       "key": "chord_shift1",
+      "label": "Chord interval 1",
       "kind": "discrete",
       "type": "int",
       "min": -24,
       "max": 24,
       "default": 4,
-      "ref": "SPEC §14"
+      "ref": "SPEC §14",
+      "unit": "semitones or degrees, per chord_unit",
+      "display": "signed, e.g. +4, −12"
     },
     {
       "key": "chord_on2",
+      "label": "Chord interval 2 on",
       "kind": "discrete",
       "type": "bool",
       "default": true,
@@ -373,15 +490,19 @@
     },
     {
       "key": "chord_shift2",
+      "label": "Chord interval 2",
       "kind": "discrete",
       "type": "int",
       "min": -24,
       "max": 24,
       "default": 7,
-      "ref": "SPEC §14"
+      "ref": "SPEC §14",
+      "unit": "semitones or degrees, per chord_unit",
+      "display": "signed, e.g. +4, −12"
     },
     {
       "key": "chord_on3",
+      "label": "Chord interval 3 on",
       "kind": "discrete",
       "type": "bool",
       "default": false,
@@ -389,15 +510,19 @@
     },
     {
       "key": "chord_shift3",
+      "label": "Chord interval 3",
       "kind": "discrete",
       "type": "int",
       "min": -24,
       "max": 24,
       "default": 12,
-      "ref": "SPEC §14"
+      "ref": "SPEC §14",
+      "unit": "semitones or degrees, per chord_unit",
+      "display": "signed, e.g. +4, −12"
     },
     {
       "key": "chord_on4",
+      "label": "Chord interval 4 on",
       "kind": "discrete",
       "type": "bool",
       "default": false,
@@ -405,15 +530,19 @@
     },
     {
       "key": "chord_shift4",
+      "label": "Chord interval 4",
       "kind": "discrete",
       "type": "int",
       "min": -24,
       "max": 24,
       "default": 0,
-      "ref": "SPEC §14"
+      "ref": "SPEC §14",
+      "unit": "semitones or degrees, per chord_unit",
+      "display": "signed, e.g. +4, −12"
     },
     {
       "key": "chord_on5",
+      "label": "Chord interval 5 on",
       "kind": "discrete",
       "type": "bool",
       "default": false,
@@ -421,15 +550,19 @@
     },
     {
       "key": "chord_shift5",
+      "label": "Chord interval 5",
       "kind": "discrete",
       "type": "int",
       "min": -24,
       "max": 24,
       "default": 0,
-      "ref": "SPEC §14"
+      "ref": "SPEC §14",
+      "unit": "semitones or degrees, per chord_unit",
+      "display": "signed, e.g. +4, −12"
     },
     {
       "key": "chord_on6",
+      "label": "Chord interval 6 on",
       "kind": "discrete",
       "type": "bool",
       "default": false,
@@ -437,12 +570,15 @@
     },
     {
       "key": "chord_shift6",
+      "label": "Chord interval 6",
       "kind": "discrete",
       "type": "int",
       "min": -24,
       "max": 24,
       "default": 0,
-      "ref": "SPEC §14"
+      "ref": "SPEC §14",
+      "unit": "semitones or degrees, per chord_unit",
+      "display": "signed, e.g. +4, −12"
     }
   ],
   "rate": [
