@@ -662,7 +662,11 @@ Session fuzzSession(std::uint32_t id, const Plant& pl) {
   for (int i = 0; i < nKeys; ++i) {
     const std::string label = "k" + std::to_string(i);
     const int at = r.in(0, 20000);
-    s.ins.push_back(K(at, label.c_str(), r.in(36, 84), r.in(1, 127)));
+    // two statements, not two draws in one argument list: argument evaluation order is unspecified (clang left to right, g++ right to left),
+    // so that form builds a different session on Linux CI and the digest (cut on clang) misses. This keeps clang's order.
+    const int key = r.in(36, 84);
+    const int vel = r.in(1, 127);
+    s.ins.push_back(K(at, label.c_str(), key, vel));
     if (r.pct(50)) s.ins.push_back(O(at + r.in(1000, 9000), label.c_str()));
   }
   for (int i = 0; i < 3; ++i) {
@@ -831,7 +835,11 @@ Session fuzzEdgeSession(std::uint32_t id, const Plant& pl, EdgeKinds* kinds = nu
   for (int i = 0; i < nKeys; ++i) {
     const std::string label = "k" + std::to_string(i);
     const int at = r.in(0, 20000);
-    s.ins.push_back(K(at, label.c_str(), r.in(36, 84), r.in(1, 127)));
+    // two statements, not two draws in one argument list: argument evaluation order is unspecified (clang left to right, g++ right to left),
+    // so that form builds a different session on Linux CI and the digest (cut on clang) misses. This keeps clang's order.
+    const int key = r.in(36, 84);
+    const int vel = r.in(1, 127);
+    s.ins.push_back(K(at, label.c_str(), key, vel));
     if (r.pct(50)) s.ins.push_back(O(at + r.in(1000, 9000), label.c_str()));
   }
   if (r.pct(50)) { const int at = r.in(1, 25) * 1000 + 500; s.ins.push_back(Ped(at, true)); s.ins.push_back(Ped(at + r.in(1, 9) * 1000, false)); ek.pedal = true; }
