@@ -17,6 +17,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <ctime>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -46,7 +47,18 @@
 #endif
 
 using namespace arp;
-using SteadyClock = std::chrono::steady_clock;
+// `--cpu-time` swaps wall time for this thread's CPU time, so that other processes on a busy (shared) machine do not inflate a figure: for comparing two builds side by side. The per-call
+// columns (p99, max) are only meaningful in wall time. The default, and every figure the docs quote, is wall time.
+bool gCpuTime = false;
+struct SteadyClock {
+  using time_point = std::chrono::steady_clock::time_point;
+  static time_point now() {
+    if (!gCpuTime) return std::chrono::steady_clock::now();
+    timespec ts{};
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+    return time_point(std::chrono::nanoseconds(static_cast<std::int64_t>(ts.tv_sec) * 1000000000 + ts.tv_nsec));
+  }
+};
 
 namespace {
 
@@ -71,6 +83,7 @@ struct Scenario {
   double floodEventsPerSec = 0;   // presses on keys that are NOT held, as note events per second (a press and its release half a period later)
   std::string family;             // scenarios of one family differ only in the input rate: the summary derives the largest rate inside the slice from them
   bool lightDigest = false;       // the stream digest covers a few rates / block sizes for 1 s, not the whole matrix (heavy loads, added with D-032: the digest's cost grows with them)
+  const char* noDigest = nullptr;  // not null: left out of the stream digest, and this is why (D-036: the digest file was cut from a core without the feature this scenario uses)
   std::optional<UserPattern> user;
   Scale scale{0, 0xAB5};   // horde's global scale: C major
 };
@@ -156,6 +169,28 @@ std::vector<Scenario> scenarios() {
     for (int i = 0; i < 6; ++i) { s.st.chordOn[i] = true; s.st.chordShift[i] = i + 1; }
   });
   add("WORST CASE B++: B+ with 4 transposition steps of 2 semitones", [loadBHeavy](Scenario& s) { loadBHeavy(s); s.st.steps = 4; s.st.stepSize = 2; s.lightDigest = true; });
+  // D-036: note randomness at its most expensive, 100 % on all three settings: every sub-note of every note draws twice (velocity and length) and blends two
+  // integer curves. These two have NO entry in tests/core/stream_digest_bench.txt (cut from 0ef0903, which has no randomness, and not regenerated): `noDigest`; they have
+  // their own, tests/core/stream_digest_random_bench.txt (`arp_bench --digest-random`). The cores before D-036 have no such settings: ARP_NO_RANDOM (tools/core_digest.sh) leaves them out.
+#ifndef ARP_NO_RANDOM
+  const char* const kNoDigestWhy = "D-036: the committed bench digest was cut from 0ef0903, which has no note randomness";
+  add("WORST CASE B++ with randomness: B++, vel_random = gate_random = random_curve = 100", [loadBHeavy, kNoDigestWhy](Scenario& s) {
+    loadBHeavy(s); s.st.steps = 4; s.st.stepSize = 2; s.lightDigest = true;
+    s.st.velRandom = 100; s.st.gateRandom = 100; s.st.randomCurve = 100; s.noDigest = kNoDigestWhy;
+  });
+  add("WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100", [kNoDigestWhy](Scenario& s) {
+    s.bpm = 999; s.keyBase = 14; s.keyStride = 7;
+    s.st.order = Order::Chord; s.st.pattern = Pattern::User; s.st.gate = 200;
+    s.st.chordEnabled = true;
+    for (int i = 0; i < 6; ++i) { s.st.chordOn[i] = true; s.st.chordShift[i] = i + 1; }
+    UserPattern u; u.length = 1; u.steps[0].ratchet = 4; s.user = u;
+    s.st.velRandom = 100; s.st.gateRandom = 100; s.st.randomCurve = 100; s.noDigest = kNoDigestWhy;
+  });
+  add("WORST CASE A at ratchet 4 with randomness: A (32 keys on 16 channels, 128 notes, 8 transposition steps, every on evicts) at ratchet 4, vel_random = gate_random = random_curve = 100", [loadA, kNoDigestWhy](Scenario& s) {
+    loadA(s); s.user->steps[0].ratchet = 4; s.lightDigest = true;
+    s.st.velRandom = 100; s.st.gateRandom = 100; s.st.randomCurve = 100; s.noDigest = kNoDigestWhy;
+  });
+#endif
 
   // D-032: dense incoming notes. Each family holds one load and varies only the input rate (rate 0 is the load alone); the bench summary derives from
   // a family the largest rate that stays inside the slice. The loads are A at ratchet 4 (the critic's: the heaviest table, every step ratcheted, so the load
@@ -202,6 +237,17 @@ std::vector<Scenario> scenarios() {
   families("B+ chromatic", loadBHeavy, {0.0, 1.0}, {0.0, 1.0, 2.0, 4.0}, {0.0, 4000.0, 17000.0});
   // ... and on B++, the heaviest of all (B+ with 4 transposition steps): the load the quoted limit has to hold over
   families("B++ chromatic transposed", [loadBHeavy](Scenario& s) { loadBHeavy(s); s.st.steps = 4; s.st.stepSize = 2; }, {0.0, 1.0}, {0.0, 1.0, 2.0}, {0.0, 17000.0});
+#ifndef ARP_NO_RANDOM
+  // D-036: the same heaviest load with all three randomness settings at 100: the input room that is left (docs/horde-copy-in.md). Not in the main digest (kNoDigestWhy); in the randomness one.
+  {
+    const std::size_t from = v.size();
+    families("B++ chromatic transposed + randomness 100", [loadBHeavy](Scenario& s) {
+      loadBHeavy(s); s.st.steps = 4; s.st.stepSize = 2;
+      s.st.velRandom = 100; s.st.gateRandom = 100; s.st.randomCurve = 100;
+    }, {0.0, 1.0}, {0.0, 1.0, 2.0, 4.0}, {0.0, 17000.0});
+    for (std::size_t k = from; k < v.size(); ++k) v[k].noDigest = kNoDigestWhy;
+  }
+#endif
   return v;
 }
 
@@ -426,14 +472,17 @@ Result measure(const Scenario& sc, int sr, int block, const Params& base, double
 // `perturb` is the must-fail control: it changes one field of one event in what is HASHED (never in the core), and the diff must see it.
 constexpr double kDigestSeconds = 2.0, kLightDigestSeconds = 1.0;
 
-void digestAll(bool perturb) {
+// `randomOnly`: the scenarios the main digest leaves out (noDigest: they use note randomness, which the file cut from 0ef0903 cannot hold) - their own file, cut from ed943b2.
+void digestAll(bool perturb, bool randomOnly) {
   struct Cfg { int sr, block; };
   std::vector<Cfg> full, light;
   for (int sr : {48000, 44100, 96000, 192000})
     for (int block : {32, 64, 128, 512, 4096}) full.push_back({sr, block});
   light = {{48000, 16}, {48000, 4096}, {192000, 128}};   // the heavy D-032 loads: the rate, a tiny and a huge block; the engine is block-partition independent, the matrix above proves that
+  if (randomOnly) std::printf("# the note-randomness scenarios only (D-036; tools/core_digest.sh regen-random): cut from ed943b2, the first core with randomness, before it was optimised\n");
   std::printf("# arp bench stream digest: scenario <TAB> rate block events stream-hash counters-hash (%.0f s of audio each, %.0f s for the heavy input scenarios; tests/core/stream_digest.h)\n", kDigestSeconds, kLightDigestSeconds);
-  for (const Scenario& sc : scenarios())
+  for (const Scenario& sc : scenarios()) {
+    if ((sc.noDigest != nullptr) != randomOnly) continue;
     for (const Cfg& c : sc.lightDigest ? light : full) {
       const int sr = c.sr, block = c.block;
       auto core = std::make_unique<Core>();
@@ -462,6 +511,7 @@ void digestAll(bool perturb) {
       arp_test::hashCounters(fc, core->counters());
       std::printf("%s\t%d %d %lld %s %s\n", sc.name.c_str(), sr, block, static_cast<long long>(nEv), arp_test::hex16(fs.h).c_str(), arp_test::hex16(fc.h).c_str());
     }
+  }
 }
 
 // ---------------------------------------------------------------- the memory figure
@@ -543,17 +593,20 @@ int main(int argc, char** argv) {
 #endif
   Params params;
   std::string only;
-  bool digest = false, perturb = false;
+  bool digest = false, perturb = false, randomDigest = false;
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], "--quick") == 0) { params.reps = 5; params.secondsPerRep = 0.15; params.warmupSeconds = 0.3; params.inputReps = 5; params.inputSecondsPerRep = 0.15; }
     else if (std::strcmp(argv[i], "--reps") == 0 && i + 1 < argc) { params.reps = std::max(3, std::atoi(argv[++i])); params.inputReps = params.reps; }
     else if (std::strcmp(argv[i], "--input-seconds") == 0 && i + 1 < argc) params.inputSecondsPerRep = std::max(0.05, std::atof(argv[++i]));
     else if (std::strcmp(argv[i], "--only") == 0 && i + 1 < argc) only = argv[++i];   // a substring of a scenario name: profile one scenario
+    else if (std::strcmp(argv[i], "--cpu-time") == 0) gCpuTime = true;
     else if (std::strcmp(argv[i], "--digest") == 0) { digest = true; }
     else if (std::strcmp(argv[i], "--digest-perturb") == 0) { digest = true; perturb = true; }
-    else { std::fprintf(stderr, "usage: arp_bench [--quick] [--reps N] [--input-seconds S] [--only SUBSTRING] [--digest | --digest-perturb]\n"); return 2; }
+    else if (std::strcmp(argv[i], "--digest-random") == 0) { digest = true; randomDigest = true; }
+    else if (std::strcmp(argv[i], "--digest-random-perturb") == 0) { digest = true; perturb = true; randomDigest = true; }
+    else { std::fprintf(stderr, "usage: arp_bench [--quick] [--reps N] [--input-seconds S] [--only SUBSTRING] [--cpu-time] [--digest | --digest-perturb | --digest-random | --digest-random-perturb]\n"); return 2; }
   }
-  if (digest) { digestAll(perturb); return 0; }   // the stream digest: no timing, so it is meaningful in any build type and on a loaded machine
+  if (digest) { digestAll(perturb, randomDigest); return 0; }   // the stream digest: no timing, so it is meaningful in any build type and on a loaded machine
   std::printf("arp core benchmark - int128 path: %s, compiler: %s\n", kInt128IsNative ? "native __int128" : "two-word fallback (ARP_FORCE_INT128_FALLBACK)", __VERSION__);
   std::printf("method: %d repetitions of %.2f s of audio per configuration after %.1f s warm-up (the INPUT scenarios: %d of %.2f s); mean = median of batch timings; p50/p99/max per call, timer overhead subtracted\n", params.reps, params.secondsPerRep, params.warmupSeconds, params.inputReps, params.inputSecondsPerRep);
   std::printf("%%core = ns per sample x sample rate / 1e9 (one core, real time); 'x4' = horde's min-spec derate heuristic (NOT min-spec verified) against the %.0f %% budget\n", kBudgetPct);

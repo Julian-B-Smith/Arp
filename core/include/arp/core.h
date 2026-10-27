@@ -147,6 +147,10 @@ struct Plants {
   bool chordFullPass = false;       // NOT a fault: the REFERENCE mode of the chord stage. Every pass rebuilds the whole stage (the M3a algorithm) instead of updating it for the keys that changed; the output must not differ
   bool chordIncSkipsRefresh = false;  // the incremental chord pass does not refresh a stored record whose held entry changed (a stale press time, velocity or channel)
   bool chordIncDescending = false;  // the incremental chord pass starts and stops notes in DESCENDING key order (output ids and event order differ from the full pass)
+  // ---- note randomness (D-036, RN1) ----
+  bool randomFromBlock = false;     // RN1 / G1: the draw position x is taken from the step's offset in its block instead of the grid (kAbs)
+  bool randomIgnoresCurve = false;  // RN1: random_curve is read as 0 (always uniform)
+  bool randomChordStage = false;    // RN1: chord-stage notes get the velocity randomness too
 };
 #endif
 
@@ -194,6 +198,8 @@ class Core {
 
   // SPEC 10, as the core uses it: draw() with this instance's current epoch.
   std::uint32_t draw(std::uint32_t seed, std::int64_t x, std::uint32_t lane) const;
+  // SPEC 4.9: the note's random value U in permille (-1000..1000) from lane 3 (velocity) or 4 (length), blended by `curve` (0..100).
+  std::int64_t randomU(std::int64_t x, std::uint32_t lane, std::int64_t curve) const;
 
 #ifdef ARP_PLANTS
   Plants plants;
@@ -414,7 +420,7 @@ class Core {
 
   // enable state: moduleOn_ is `enabled`, enabled_ is "the arp is running" (module on and arp_enabled)
   bool moduleOn_ = false, enabled_ = false;
-  std::array<std::int64_t, 4> prevCont_{};
+  std::array<std::int64_t, 7> prevCont_{};
   bool havePrevCont_ = false;
 #ifdef ARP_PLANTS
   std::int64_t inactSeen_ = -1;   // inactiveReanchors: the last value of the inactive timing setting

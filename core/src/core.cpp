@@ -17,6 +17,10 @@
 // (core.h, keyRefCnt_), and the chord stage updates itself for the keys that changed instead of rebuilding (chordIncremental; chordRebuild is the
 // definition it must agree with, plant chordFullPass runs it every time). Same digests, same bytes.
 //
+// D-036 (a recorded exception to the 1.0 freeze) added note randomness: vel_random, gate_random and random_curve (SPEC 4.4, 4.9, 5.2). It is the one
+// change of behaviour since M3a, and it is OFF by default: at vel_random = gate_random = 0 the output is byte-identical to M3a's, which the same
+// committed digests prove (they were not regenerated).
+//
 // Everything is fixed-capacity: the only allocations are in prepare().
 // (__FINITE_MATH_ONLY__ is predefined as 0 normally and 1 under -ffinite-math-only, so test its VALUE.)
 #if defined(__FAST_MATH__) || (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__)
@@ -291,6 +295,53 @@ std::uint32_t Core::draw(std::uint32_t seed, std::int64_t x, std::uint32_t lane)
   if (plants.timeInDraw) seed ^= plantedTicks++;
 #endif
   return arp::draw(seed, x, lane, ARP_PLANT(drawIgnoresEpoch) ? 0 : epoch_);
+}
+
+// ---- SPEC 4.4 / 4.9 / 5.2 (D-036): the arithmetic of note randomness, exact and division-free where it can be ----
+// This runs for every sub-note of every note (two draws each), so it is the hot path of the feature. Every result below equals the spec's floor-division formula
+// bit for bit (tests/core/stream_digest_random.txt pins it at every curve and amount); only the way it is computed differs:
+//  * U1 and U4 depend on one byte / one byte-sum, so they are tables built at compile time FROM the spec's formulas (fdiv, constexpr);
+//  * a floor division of a value known to be >= -K*b by a constant b is (v + K*b) / b - K in UNSIGNED arithmetic, which compilers turn into a multiply: no sign test, no remainder.
+namespace {
+struct UTables { std::int16_t u1[256]; std::int16_t u4[1021]; };
+constexpr UTables makeUTables() {
+  UTables t{};
+  for (int b = 0; b < 256; ++b) t.u1[b] = static_cast<std::int16_t>(fdiv((2 * b - 255) * 1000, 255));      // uniform
+  for (int s = 0; s < 1021; ++s) t.u4[s] = static_cast<std::int16_t>(fdiv((2 * s - 1020) * 1000, 1020));   // the mean of four: a bell around 0
+  return t;
+}
+constexpr UTables kU = makeUTables();
+
+// U in permille from the draw `r` (bytes b0..b3, low first) and the curve c in 0..100: fdiv(U1 * (100 - c) + U4 * c, 100). At the ends of the curve the blend IS one of the two values.
+inline std::int64_t uOfDraw(std::uint32_t r, std::int64_t c) {
+  const std::int64_t u1 = kU.u1[r & 0xFFu];
+  if (c == 0) return u1;
+  const std::uint32_t sum = (r & 0xFFu) + ((r >> 8) & 0xFFu) + ((r >> 16) & 0xFFu) + (r >> 24);
+  const std::int64_t u4 = kU.u4[sum];
+  if (c == 100) return u4;
+  const std::int64_t mix = u1 * (100 - c) + u4 * c;   // |mix| <= 100,000
+  return static_cast<std::int64_t>((static_cast<std::uint32_t>(mix + 100000)) / 100u) - 1000;
+}
+// The draws of one lane for the notes of one sub-note: out[q] = draw(seed, x, lane, epoch) with x = xStep + i * 256 + src[q], i.e. the x term (uint32)x * kDrawX is
+// ((uint32)(xStep + i * 256)) * kDrawX + src[q] * kDrawX modulo 2^32: `srcK[q]` is the second part, kept per note. A plain loop over 32-bit integers: the compiler vectorises it.
+inline void drawLane(std::uint32_t* out, const std::uint32_t* srcK, int n, std::uint32_t base, std::uint32_t xTerm) {
+  for (int q = 0; q < n; ++q) out[q] = drawWith(base, xTerm + srcK[q]);
+}
+// SPEC 4.4: out' = clamp(out + fdiv(out * amount * U + 50000, 100000), 1, 127), out 1..127, amount 0..100, |U| <= 1000: the numerator is >= -12,650,000.
+inline std::int32_t randomVel(std::int64_t out, std::int64_t amount, std::int64_t u) {
+  const auto q = static_cast<std::int64_t>(static_cast<std::uint32_t>(out * amount * u + 50000 + 13000000) / 100000u) - 130;
+  return static_cast<std::int32_t>(clampi(out + q, 1, 127));
+}
+// fdiv(p * amount * U, 100000) for a length p >= 1 (int64): floor toward minus infinity, in unsigned arithmetic.
+inline std::int64_t randomLenDelta(std::int64_t len, std::int64_t amount, std::int64_t u) {
+  const std::int64_t p = len * amount * u;
+  return p >= 0 ? static_cast<std::int64_t>(static_cast<std::uint64_t>(p) / 100000u) : -static_cast<std::int64_t>((static_cast<std::uint64_t>(-p) + 99999u) / 100000u);
+}
+}  // namespace
+
+// SPEC 4.9: the note's U (permille, -1000..1000) from lane 3 (velocity) or 4 (length), blended by the curve.
+std::int64_t Core::randomU(std::int64_t x, std::uint32_t lane, std::int64_t curve) const {
+  return uOfDraw(draw(active_.seed, x, lane), ARP_PLANT(randomIgnoresCurve) ? 0 : curve);
 }
 
 std::size_t Core::heldKeyCount() const {
@@ -571,7 +622,7 @@ EventSpan Core::process(const Block& b) {
   }
 
   // -- T9 bookkeeping, then the settings that act at offset 0: enabled, arp_enabled, latch
-  const std::array<std::int64_t, 4> cont = {S_.gate, S_.swing, S_.velFixed, S_.stepTimeUs};
+  const std::array<std::int64_t, 7> cont = {S_.gate, S_.swing, S_.velFixed, S_.stepTimeUs, S_.velRandom, S_.gateRandom, S_.randomCurve};
   if (havePrevCont_ && cont != prevCont_ && soundN_ > 0) ++counters_.rows[9];
   prevCont_ = cont;
   havePrevCont_ = true;
@@ -1172,6 +1223,9 @@ void Core::adopt(std::int32_t so) {
   t.gate = active_.gate;
   t.swing = active_.swing;
   t.velFixed = active_.velFixed;
+  t.velRandom = active_.velRandom;
+  t.gateRandom = active_.gateRandom;
+  t.randomCurve = active_.randomCurve;
   t.stepTimeUs = active_.stepTimeUs;
   if (t == active_) return;
   if (ARP_PLANT(allocInSettings)) plantAlloc();
@@ -1466,7 +1520,7 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
       }
       fin[i] = key;
     }
-    struct Out { std::int32_t key, vel, ch; bool setsLastQ; };
+    struct Out { std::int32_t key, vel, ch; bool setsLastQ; int src; };   // src: the note's index in style order, the `n` of its draw position (SPEC 4.9)
     Out outs[kMaxArpKeys];
     int no = 0;
     std::int8_t outAt[128];   // key -> its index in outs (-1: none yet); a chord step has up to 112 keys, a linear search per key was quadratic
@@ -1482,7 +1536,7 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
         continue;
       }
       outAt[fin[i]] = static_cast<std::int8_t>(no);
-      outs[no++] = Out{static_cast<std::int32_t>(fin[i]), vel, nl[i].ch, finSetsLastQ[i]};
+      outs[no++] = Out{static_cast<std::int32_t>(fin[i]), vel, nl[i].ch, finSetsLastQ[i], i};
     }
     // -- SPEC 5.2: ties by look-ahead: the consecutive tie steps after this one, cyclic, at most length - 1, ignoring prob
     std::int64_t t = 0;
@@ -1491,22 +1545,61 @@ void Core::evalStep(std::int64_t kAbs, std::int32_t so) {
     // -- ratchets: sub-note i starts at on + fdiv(i * span, r); the length is floored first, then gated
     const std::int64_t span = onTick(kAbs + 1) - on0, r = clampi(st.ratchet, 1, 4);
     const std::int64_t gate = clampi(S_.gate, 1, 200);
+    // -- SPEC 4.4 / 5.2 / 4.9 (D-036): note randomness. Continuous settings, read now, at the step's evaluation. At 0 neither draw is made, so the
+    // output is byte-identical to a core without the feature. The draw position is the grid's (kAbs), the sub-note and the note's style-order index,
+    // never the block's: the plant takes the step's offset in its block instead (G1).
+    const std::int64_t velRnd = clampi(S_.velRandom, 0, 100), gateRnd = clampi(S_.gateRandom, 0, 100), curve = clampi(S_.randomCurve, 0, 100);
+    const std::int64_t xStep = (ARP_PLANT(randomFromBlock) ? static_cast<std::int64_t>(so) : kAbs) * 1024;
+    const bool rnd = velRnd > 0 || gateRnd > 0;
+    const std::int64_t cEff = ARP_PLANT(randomIgnoresCurve) ? 0 : curve;
+    const std::uint32_t seedBase3 = drawBase(a.seed, 3, ARP_PLANT(drawIgnoresEpoch) ? 0u : epoch_), seedBase4 = drawBase(a.seed, 4, ARP_PLANT(drawIgnoresEpoch) ? 0u : epoch_);
+    std::uint32_t srcK[kMaxArpKeys], r3[kMaxArpKeys], r4[kMaxArpKeys];   // per note: its index times kDrawX; the lane 3 and lane 4 draws of the sub-note being queued
+    if (rnd) for (int q = 0; q < no; ++q) srcK[q] = static_cast<std::uint32_t>(outs[q].src) * kDrawX;
     for (std::int64_t i = 0; i < r; ++i) {
       const std::int64_t subOn = on0 + fdiv(i * span, r);
-      std::int64_t len;
-      if (r == 1) len = std::max<std::int64_t>(1, fdiv(span * gate * st.gate, 10000));
-      else len = std::min(fdiv(span, r), std::max<std::int64_t>(1, fdiv(fdiv(span, r) * gate * st.gate, 10000)));
-      std::int64_t off = subOn + len;
-      if (i == r - 1 && t > 0) {   // the LAST sub-note runs on to the end of the last tied step
+      // the gate-derived length, before the ratchet cap (the randomness moves it, THEN the cap applies)
+      const std::int64_t len0 = std::max<std::int64_t>(1, fdiv((r == 1 ? span : fdiv(span, r)) * gate * st.gate, 10000));
+      std::int64_t tailOn = 0, tail0 = 0;   // the tie's tail term (SPEC 5.2 H3): the last sub-note runs on to the end of the last tied step
+      const bool tied = i == r - 1 && t > 0;
+      if (tied) {
         const std::int64_t x = kAbs + t, sp = onTick(x + 1) - onTick(x);
-        off = onTick(x) + std::max<std::int64_t>(1, fdiv(sp * gate * steps[mod(j + t, plen)].gate, 10000));
+        tailOn = onTick(x);
+        tail0 = std::max<std::int64_t>(1, fdiv(sp * gate * steps[mod(j + t, plen)].gate, 10000));
       }
+      if (rnd) {   // the sub-note's draws, all its notes at once (the plant timeInDraw keeps its stateful per-draw path)
+        const auto xTerm = static_cast<std::uint32_t>(xStep + i * 256) * kDrawX;
+        if (ARP_PLANT(timeInDraw)) {
+          for (int q = 0; q < no; ++q) { r3[q] = draw(a.seed, xStep + i * 256 + outs[q].src, 3); r4[q] = draw(a.seed, xStep + i * 256 + outs[q].src, 4); }
+        } else {
+          if (velRnd > 0) drawLane(r3, srcK, no, seedBase3, xTerm);
+          if (gateRnd > 0) drawLane(r4, srcK, no, seedBase4, xTerm);
+        }
+      }
+      // everything a plain (unrandomised) note of this sub-note shares: the on position, and the off position unless the length is randomised
+      const std::int64_t lenPlain = r > 1 ? std::min(fdiv(span, r), len0) : len0;
+      const I128 posD = I128::mul(subOn, D);
+      const std::int64_t offPlain = tied ? tailOn + tail0 : subOn + lenPlain;
+      const I128 offPlainD = I128::mul(offPlain, D);   // offs are scheduled in TICKS, so a tempo change moves them with the music
       for (int q = 0; q < no; ++q) {
+        std::int32_t vel = outs[q].vel;
+        I128 offD = offPlainD;
+        if (velRnd > 0) vel = randomVel(vel, velRnd, uOfDraw(r3[q], cEff));
+        if (gateRnd > 0) {
+          const std::int64_t u = uOfDraw(r4[q], cEff);
+          std::int64_t off;
+          if (tied) off = tailOn + std::max<std::int64_t>(1, tail0 + randomLenDelta(tail0, gateRnd, u));
+          else {
+            std::int64_t len = std::max<std::int64_t>(1, len0 + randomLenDelta(len0, gateRnd, u));
+            if (r > 1) len = std::min(fdiv(span, r), len);
+            off = subOn + len;
+          }
+          if (off != offPlain) offD = I128::mul(off, D);   // a randomised length the ratchet cap brings back to the plain one (often, at a long gate) needs no new product
+        }
         Pending p;
-        p.pos = I128::mul(subOn, D);
-        p.offPos = I128::mul(off, D);   // offs are scheduled in TICKS, so a tempo change moves them with the music
+        p.pos = posD;
+        p.offPos = offD;
         p.key = outs[q].key;
-        p.vel = outs[q].vel;
+        p.vel = vel;
         p.ch = outs[q].ch;
         p.ord = ord;
 #ifdef ARP_PLANTS
@@ -1983,6 +2076,8 @@ bool Core::chordStart(std::int32_t key, std::int32_t vel, std::int32_t ch, std::
   if (!room(2)) { ++counters_.rows[13]; ++counters_.refused; return false; }
   if (chordSoundN_ >= kMaxChordSounding || soundN_ >= kSoundingSlots) { ++counters_.refused; return false; }
   const NoteRef ref{0, ch, key, idCounter_++};
+  if (ARP_PLANT(randomChordStage) && S_.velRandom > 0)   // plant (RN1): the chord stage follows the hands, never the dice; this one rolls them
+    vel = randomVel(vel, clampi(S_.velRandom, 0, 100), randomU(ref.id, 3, clampi(S_.randomCurve, 0, 100)));
   allocSlot(ref, true, absBase_ + s);   // a chord note has no scheduled off: it ends with its last source (chordStop)
   Event ev;
   ev.type = EventType::NoteOn;

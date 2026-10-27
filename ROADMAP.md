@@ -259,6 +259,15 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 - **With the human:** ~~the listening sign-off~~ **given 2026-10-27 (D-037)**, 18 of 18 on the shipped core (the
   randomness sliders get their own listen); goldens cut per pattern; name clearance (Phase N, B433).
 - **Scope:** `core/`, `tests/core/`, `tools/`, `docs/`, the traces. **Out of scope:** any 1.0 feature (frozen).
+- **Freeze exception (D-036, 2026-10-27):** velocity and gate randomness with a shared curve, on `m3/randomness`;
+  defaults 0 keep the output byte-identical. The listening renders include them before the sign-off.
+  Every load still fits 2 % x4 (worst 1.91 %, the 112-note chord, two-word path; estimates from a busy machine). **Before the
+  readiness notice: re-measure on a quiet machine and quote one input figure covering every setting (D-038).** Listening piece 17.
+- **FOUND 2026-10-27, not yet diagnosed (candidate G4 breach, predates D-036):** the randomness edge fuzz
+  (`tests/core/test_random.cpp`, `fuzzEdgeSession` session 20: host stops at 12500 and 17500, starts at 20500 in 8 kHz base positions,
+  keys and pedal held) puts the first note after the free-clock -> host-clock hand-over on a different step at 44.1 kHz (tick 69120)
+  than at 48 kHz (tick 68125), with randomness OFF too. That check tolerates it only where the randomness-off twin diverges as well;
+  diagnose against SPEC 2.4 / T6 before M3 closes: a core bug, a spec gap, or a test-host artifact (e.g. rounding of the host's own positions).
 - **Acceptance criteria:** the M3 gate above.
 
 ## Open questions (blocking — ask the human or horde)

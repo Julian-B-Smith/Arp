@@ -115,6 +115,12 @@ inline bool setPlant(P& p, const std::string& name) {
     if (name == "chordIncSkipsRefresh") { p.chordIncSkipsRefresh = true; return true; }
   if constexpr (requires { p.chordIncDescending; })
     if (name == "chordIncDescending") { p.chordIncDescending = true; return true; }
+  if constexpr (requires { p.randomFromBlock; })
+    if (name == "randomFromBlock") { p.randomFromBlock = true; return true; }
+  if constexpr (requires { p.randomIgnoresCurve; })
+    if (name == "randomIgnoresCurve") { p.randomIgnoresCurve = true; return true; }
+  if constexpr (requires { p.randomChordStage; })
+    if (name == "randomChordStage") { p.randomChordStage = true; return true; }
   return false;
 }
 #endif
@@ -430,7 +436,11 @@ inline void fpDouble(Fnv& f, double v) { std::uint64_t b; std::memcpy(&b, &v, si
 inline void fpSettings(Fnv& f, const Settings& s) {
   f.u64(s.enabled); f.u64(s.arpEnabled); f.u64(static_cast<std::uint64_t>(s.order)); f.u64(static_cast<std::uint64_t>(s.pattern)); f.u64(static_cast<std::uint64_t>(s.rate));
   f.u64(static_cast<std::uint64_t>(s.rateMode)); f.i64(s.stepTimeUs); f.i64(s.steps); f.i64(s.stepSize); f.u64(static_cast<std::uint64_t>(s.stepUnit)); f.i64(s.gate); f.i64(s.swing);
-  f.u64(static_cast<std::uint64_t>(s.latch)); f.u64(static_cast<std::uint64_t>(s.velMode)); f.i64(s.velFixed); f.u64(static_cast<std::uint64_t>(s.restart)); f.i64(s.repeats);
+  f.u64(static_cast<std::uint64_t>(s.latch)); f.u64(static_cast<std::uint64_t>(s.velMode)); f.i64(s.velFixed);
+#ifndef ARP_NO_RANDOM
+  f.i64(s.velRandom); f.i64(s.gateRandom); f.i64(s.randomCurve);
+#endif
+  f.u64(static_cast<std::uint64_t>(s.restart)); f.i64(s.repeats);
   f.u64(static_cast<std::uint64_t>(s.quantize)); f.u64(static_cast<std::uint64_t>(s.scaleSource)); f.i64(s.scaleRoot);
   for (bool d : s.scaleDeg) f.u64(d);
   f.u64(s.seed); f.u64(s.chordEnabled); f.u64(static_cast<std::uint64_t>(s.chordUnit));

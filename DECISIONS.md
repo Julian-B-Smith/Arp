@@ -957,6 +957,29 @@ field against the ratified file). A new check in `tools/core_params_check.py`
 requires all of it, with a plant. The lab's embedded copy is regenerated and
 `spec/MANIFEST` re-pinned in the same change, as D-023 requires.
 
+## D-036 — Velocity and gate randomness with a shared curve: a recorded exception to the freeze (RATIFIED by poll, 2026-10-27)
+
+During M3's listening sign-off the human asked for velocity and gate
+randomness sliders. Functionality is frozen for 1.0 (D-018); the human lifted
+the freeze for these alone, by poll. Chosen:
+- **`vel_random` and `gate_random`, 0-100 %:** each arp note's velocity or
+  gate-derived length moves up or down by up to that share of itself
+  (symmetric around the setting, so the average feel stays put), clamped to
+  1-127 and to the 1-tick minimum (SPEC 5.2), with the ratchet cap kept.
+- **`random_curve`, 0-100 %, shared by both:** 0 = uniform; toward 100 the
+  values cluster near the setting (the mean of four byte-draws), like a human
+  player. Rejected: a bipolar curve reaching toward the extremes; a separate
+  curve per slider.
+- **Determinism by construction:** one seeded draw per note per lane (lanes
+  3 and 4), positioned by `kAbs`, the ratchet sub-note and the note's index
+  in style order, so output is identical at every block size and rate.
+  Chord-stage notes are never randomised (they follow the hands).
+- **Defaults 0**, so the output is byte-identical to the core without them;
+  the committed digests prove it.
+
+Spec: §4.4, §4.9 (new), §5.2, §10 lanes, row RN1; `spec/params.json` gains the
+three settings (50 in all). `spec/MANIFEST` is re-pinned in the same change.
+
 ## D-037 — The human's listening sign-off on the shipped core; post-chords after 1.0 (RATIFIED by the human, 2026-10-27)
 
 **Listening sign-off (horde's bar §6).** The human listened to 18 scenarios
@@ -979,3 +1002,16 @@ to quantize to the scale or not, with chance sliders for the chord and for
 each interval. Recorded in ROADMAP "After 1.0" with these notes; designed and
 prototyped in the lab once 1.0 ships. Rejected for now: a lab-only prototype,
 or lifting the freeze again ahead of horde's cutoff.
+
+## D-038 — The input limit with randomness on: re-measure on a quiet machine, then quote one figure (RATIFIED by poll, 2026-10-27)
+
+With all three randomness settings at 100 the heaviest settings-only load is
+the 112-note, ratchet-4 chord, at an estimated 1.80 % / 1.91 % after x4
+(native / two-word), so the 1,300 events/s quoted under D-033 (10 % headroom
+on B+/B++) no longer holds for every setting. The figures were measured on a
+busy machine and scaled, so they are estimates. Chosen: ship the sliders with
+the estimate labelled as such (`docs/horde-copy-in.md`), and **before the
+readiness notice goes to horde, re-measure on a quiet machine and quote one
+input figure that covers every setting, randomness included**. Rejected:
+quoting 1,300 with a randomness exception; optimising the two-word path first
+(unknown gain). Every settings-only load still fits the 2 % slice (D-031).
