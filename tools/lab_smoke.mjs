@@ -324,6 +324,30 @@ function g1Diverges(plants) {
   check(!diverges([]) && ref.length > 60, `G4: ${ref.length} events carry identical ticks at 44.1, 48, 96 and 192 kHz`);
 }
 
+// ---- 7b. G4 / SPEC 1.1 (D-039, E13): an input and an earlier off, pending on or grid step on one sample go in musical order -----------------
+// The C++ suite's known answers (tests/core/test_core.cpp testG4Order): each input sits less than one 48 kHz sample but at least one 96 kHz sample after
+// the event (8 kHz positions: whole samples at 48/96/192 kHz, rounded DOWN at 44.1 kHz and still after it), so before D-039 the input went first at 44.1
+// and 48 kHz only. The pending case compares the ons and the number of offs: the Panic's off there is deferred by the 1-sample minimum (E14).
+{
+  const at = (x, sr) => Math.floor(x * sr / 8000);
+  const one = (which, plants, sr) => {
+    const r = which === 0
+      ? run({ core: mkCore(plants), sr, block: 1024, total: at(5000, sr), bpm: 209, base: { rate: "1/32" }, ins: [K(0, "a", 60), K(0, "b", 67), O(at(3158, sr), "b")] })
+      : run(Object.assign({ core: mkCore(plants), sr, block: 1024, total: at(6000, sr), bpm: 108, ins: [K(0, "a", 60), { at: at(3889, sr), t: "panic" }] },
+          which === 1 ? { base: { pattern: "user", gate: 30 }, userPattern: { length: 1, steps: [{ ratchet: 2 }] } } : { base: { gate: 50 } }));
+    const o = ons(r).map(e => e.key + "@" + e.tick).join(" ");
+    return which === 0 ? tickStreamOf(r.evs) : which === 1 ? o + " / offs " + r.evs.filter(e => e.t === "off").length : tickStreamOf(r.evs) + " / T1 " + r.core.rows.T1 + " T7 " + (r.core.rows.T7 || 0);
+  };
+  const diverges = (which, plants) => { const ref = one(which, plants, 48000); return [44100, 96000, 192000].some(sr => one(which, plants, sr) !== ref); };
+  plant(diverges(0, ["inputFirstOnSample"]), "E13 detects an input taken before an earlier grid step on its sample (step 11)");
+  plant(diverges(1, ["inputFirstOnSample"]), "E13 detects an input taken before an earlier pending sub-note on its sample");
+  plant(diverges(1, ["inputYieldsStepOnly"]), "E13 detects an input that yields to the grid step alone (a Panic clears a sub-note due before it)");
+  plant(diverges(2, ["inputYieldsStepOnly"]), "E13 detects an input taken before an earlier off on its sample (the gate end counts as a Panic)");
+  check(!diverges(0, []) && /^on 67 \S+ \S+ \S+ 21120$/m.test(one(0, [], 48000)), "known answer (E13, step): a key released 0.70 tick after step 11 is still held there at 44.1 / 48 / 96 / 192 kHz (step 11 plays 67)");
+  check(!diverges(1, []) && one(1, [], 48000).includes("60@13440") && one(1, [], 48000).endsWith("offs 8"), "known answer (E13, pending): a Panic 0.38 tick after a ratchet sub-note finds it sounding at every rate (8 ons, 8 offs)");
+  check(!diverges(2, []) && one(2, [], 48000).endsWith("T1 4 T7 0"), "known answer (E13, off): a Panic 0.38 tick after a gate end finds the note already ended at every rate (4 gate ends, no Panic terminal)");
+}
+
 // ---- 8. G5: under +-1/32-beat host jitter every grid step is evaluated exactly once ---------
 {
   const lcg = s => (Math.imul(s, 1664525) + 1013904223) >>> 0;

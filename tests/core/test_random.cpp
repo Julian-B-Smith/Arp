@@ -556,14 +556,16 @@ Session mixSession(const Plant& pl) {
   s.ins = {K(0, "a", 60, 100), K(0, "b", 64, 70), K(0, "c", 67, 110), K(6500, "d", 72, 90), O(18000, "b"), K(24500, "e", 55, 80), O(40500, "a")};
   return s;
 }
-// `bySample`: the host's held positions re-derived from the rounded sample (SimHost::rescaled), the control the G4 hand-over check must catch.
+// `bySample`: the pre-T-007 host, its op samples rounded to the nearest and its held positions re-derived from them (SimHost::rescaled), the control the
+// G4 hand-over check must catch.
 Session atRate(Session s, int sr, bool bySample = false) {   // the same musical script at another rate (cf. test_core.cpp): positions in samples scale, those in musical units stay
-  auto sc = [sr](int at) { return static_cast<int>((static_cast<long long>(at) * sr + 4000) / 8000); };
+  auto sc = [sr](int at) { return static_cast<int>((static_cast<long long>(at) * sr) / 8000); };   // down, as test_core.cpp's atRate explains
   s.sr = sr;
   s.total = sc(s.total);
   for (auto& i : s.ins) i.at = sc(i.at);
   for (auto& c : s.cfg) c.at = sc(c.at);
-  if (s.host) s.host = s.host->rescaled(sr, sc, bySample);
+  auto nearest = [sr](int at) { return static_cast<int>((static_cast<long long>(at) * sr + 4000) / 8000); };   // the pre-T-007 host replay rounded op samples to the nearest
+  if (s.host) s.host = bySample ? s.host->rescaled(sr, nearest, true) : s.host->rescaled(sr, sc);
   return s;
 }
 std::string g1Diverges(const Plant& pl) {

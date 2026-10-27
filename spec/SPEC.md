@@ -1,6 +1,6 @@
 # Arp — 1.0 specification (RATIFIED 2026-10-23, r2.12)
 
-> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026); E8, E9 and E10 approved 2026-10-23 (D-027); E11 and E12 approved 2026-10-23 (D-028).; velocity and length randomness added 2026-10-27 (D-036, a recorded exception to the freeze).** This is a protected path: any change needs the human's
+> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026); E8, E9 and E10 approved 2026-10-23 (D-027); E11 and E12 approved 2026-10-23 (D-028).; velocity and length randomness added 2026-10-27 (D-036, a recorded exception to the freeze); erratum E13 approved 2026-10-27 (D-039).** This is a protected path: any change needs the human's
 > gate and a decision record. Revision history: r1 (2026-10-21) to r2.12 (2026-10-22); four independent reviews
 > (`docs/spec-review-r1..r4.md`).
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -107,6 +107,24 @@ Events at the same offset are emitted in this order:
 its own `NoteOn`. If its off falls on that sample, it is emitted one sample
 later (in the next block if needed). Every note therefore lasts at least one
 sample (H4).
+
+**What happens first inside one sample (erratum E13, D-039).** Within a
+sample, Arp handles its input events and its own due offs, pending ons
+(ratchet sub-notes, swung and straight ons, triggers) and grid steps in
+**musical order**:
+- An off, pending on or grid step whose exact position lies **strictly
+  before** the input's own position (the sample's position, `start + s·inc`)
+  is handled **before** the input.
+- Everything else at that sample comes after the input. That includes what
+  lies **exactly on** the sample: an input exactly on a step's tick goes
+  first, so a chord pressed on the beat plays that beat.
+- An off held back by the one-sample minimum has no position of its own and
+  counts as on the sample.
+
+Such events share the input's sample only because offsets take the ceiling
+(§2.3), and whether they do depends on the sample rate. So no other order
+keeps G4. This is the order of *handling*. The order of the *emitted*
+events at one offset is still the list above.
 
 ### 1.2 Identity (`intake/note-vocabulary.md`)
 - Input notes are matched by `ref`.

@@ -1427,7 +1427,7 @@ const ARP_PLANTS = ["dropRelease", "doubleRelease", "sameSampleOff", "clampOffse
   "regridAbsolute", "regridKAbs", "timeBarsCount", "offsetsPerStage", "stepOffsetReadsGlobal", "timeEntryNoStart", "inactiveReanchors", "timeStepsWhileRinging",
   "repeatsCountPatternPasses", "repeatsNeverStop", "chordNoDedupe", "chordEndsOnFirstSource", "arpIgnoresChord", "chordRestartAll",
   "chordRecomputeAtRelease", "t2AcrossStreams", "arpToggleEndsChord", "chordT6Restart", "sharedSoundingTable", "exhaustedStopsGuard", "onlyGestureResets", "morphRevives", "chordSyncPerEvent", "chordDedupeByChannelKey", "latchAtNextStep", "chordPlusZeroUnquantized", "chordSkipQuantize", "swingPerStep",
-  "repeatsPauseWhileEmpty", "keepSpilledRatchets",
+  "repeatsPauseWhileEmpty", "keepSpilledRatchets", "inputFirstOnSample", "inputYieldsStepOnly",
   "chordSyncBlockStartFirst", "adoptKeepsLastBar", "reanchorKeepsLastBar", "swingLatchUnanchored", "chordStalePressTime", "cOnlyAtStep", "edgeRevivesWhileEmpty", "swingSpentNoLatch", "edgeResetsCountWhileEmpty",
   "randomIgnoresCurve"];
 // Every discrete setting except `enabled` (which applies at offset 0, T4/T5) switches at the next
@@ -1727,12 +1727,23 @@ class ArpCore {
       // sub-note is pending; what is already scheduled still sounds and ends on time. Sync mode keeps 2.4's idle. Plant timeStepsWhileRinging: the old rule.
       const running = this.enabled && (this.clock === "host" || this.freeRunning) && !(P.exhaustedStopsGuard && this.exhausted) && !(this.timeMode && !this.refs.length && !P.timeStepsWhileRinging);   // plant: a spent arp stops consuming the once-guard (r4 H4)
       if (running && this.lastEvaluated === null) this.lastEvaluated = this._kAtOrAfter(this._posAt(cur)) - 1;
+      // On a tie the earlier kind wins: offs, then pending ons, then the grid step, and an input goes first of all at its sample, EXCEPT before what is
+      // earlier in the music (SPEC 1.1, D-039, erratum E13): an off, pending on or grid step on the input's sample whose exact position lies strictly
+      // before the input's own (the sample's position) goes first. It lands on that sample only because offsets take the ceiling (SPEC 2.3), and
+      // whether it does depends on the sample rate. Everything on the input's sample sits at or before the input, so "strictly before" is "not
+      // exactly on the sample": an input exactly on a step's tick still goes first. An off held back by the 1-sample minimum (or a dying note's)
+      // has no position of its own and counts as on the sample. Plant inputFirstOnSample: the pre-D-039 order; inputYieldsStepOnly: the step alone.
+      const inS = ii < ins.length ? ins[ii].s : Infinity, inPos = ii < ins.length ? this._posAt(inS) : null;
+      const musical = ii < ins.length && !P.inputFirstOnSample, allKinds = musical && !P.inputYieldsStepOnly;
       let t = Infinity, kind = -1, idx = -1;
-      if (ii < ins.length) { t = ins[ii].s; kind = 0; idx = ii; }
-      for (let q = 0; q < this.sounding.length; q++) { const s = this._offTime(this.sounding[q]); if (s < t) { t = s; kind = 1; idx = q; } }
+      for (let q = 0; q < this.sounding.length; q++) {
+        const x = this.sounding[q], s = this._offTime(x);
+        const positioned = x.offPos !== null && !x.dying && s === Math.max(0, this._ofs(x.offPos));   // not held back by the 1-sample minimum
+        if (s < t && (s < inS || (s === inS && allKinds && positioned && x.offPos < inPos))) { t = s; kind = 1; idx = q; }
+      }
       let pi = -1;
       for (let q = 0; q < this.pending.length; q++) if (pi < 0 || this.pending[q].pos < this.pending[pi].pos) pi = q;
-      if (pi >= 0) { const s = Math.max(0, this._ofs(this.pending[pi].pos)); if (s < t) { t = s; kind = 2; idx = pi; } }
+      if (pi >= 0) { const s = Math.max(0, this._ofs(this.pending[pi].pos)); if (s < t && (s < inS || (s === inS && allKinds && this.pending[pi].pos < inPos))) { t = s; kind = 2; idx = pi; } }
       if (running) {
         const stepPos = BigInt(this._gtick(this.lastEvaluated + 1)) * D, s = Math.max(0, this._ofs(stepPos));
         // SPEC 5.1 (E10): "at or after the step's on" includes a sub-note in the SAME sample as the step: the step is evaluated first so it can drop it (it has no NoteOn yet),
@@ -1742,8 +1753,9 @@ class ArpCore {
         // step's SWUNG on (on0), so a sub-note between the grid tick and the swung on survives and is emitted in its own time; only one at or after the swung on (straight
         // swing: the grid tick itself) is dropped, which is what E10 asks. In sync mode nothing drops, so the earlier-kind-wins order stands. Plant keepSpilledRatchets: the old order.
         const dropsTie = s === t && kind === 2 && this.timeMode && !P.keepSpilledRatchets && this.pending[idx].kind === "on" && !(this.pending[idx].pos < stepPos);
-        if (s < t || dropsTie) { t = s; kind = 3; }
+        if ((s < t || dropsTie) && (s < inS || (s === inS && musical && stepPos < inPos))) { t = s; kind = 3; }
       }
+      if (inS < t) { t = inS; kind = 0; idx = ii; }   // nothing earlier in the music is left on the input's sample
       if (kind < 0 || !(P.clampOffset ? t <= n : t < n)) break;
       if (t < cur) t = cur;
       cur = t;

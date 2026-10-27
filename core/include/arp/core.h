@@ -151,6 +151,9 @@ struct Plants {
   bool randomFromBlock = false;     // RN1 / G1: the draw position x is taken from the step's offset in its block instead of the grid (kAbs)
   bool randomIgnoresCurve = false;  // RN1: random_curve is read as 0 (always uniform)
   bool randomChordStage = false;    // RN1: chord-stage notes get the velocity randomness too
+  // ---- G4 order at one sample (D-039, erratum E13) ----
+  bool inputFirstOnSample = false;  // G4 / SPEC 1.1: at a shared sample an input goes before every off, pending on and grid step, even one earlier in the music (the pre-D-039 order)
+  bool inputYieldsStepOnly = false; // G4 / SPEC 1.1: the input yields to an earlier grid step only, not to an earlier off or pending on (a panic still clears a sub-note due before it)
 };
 #endif
 
@@ -331,7 +334,7 @@ class Core {
   void startBlockOffs();
   std::int64_t nextOffTime() const;
   bool offDueBy(const I128& pos, const I128& bound, std::int64_t t) const;
-  int takeDueOffs(std::int64_t t, int* out);
+  int takeDueOffs(std::int64_t t, int* out, const I128* before = nullptr);
   bool releaseSlot(int i, std::int32_t s);
   int& schedAt(int logical) { return sched_[static_cast<std::size_t>((schedHead_ + logical) & (kSchedRing - 1))]; }
   int schedAt(int logical) const { return sched_[static_cast<std::size_t>((schedHead_ + logical) & (kSchedRing - 1))]; }

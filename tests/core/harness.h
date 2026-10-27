@@ -123,6 +123,10 @@ inline bool setPlant(P& p, const std::string& name) {
     if (name == "randomIgnoresCurve") { p.randomIgnoresCurve = true; return true; }
   if constexpr (requires { p.randomChordStage; })
     if (name == "randomChordStage") { p.randomChordStage = true; return true; }
+  if constexpr (requires { p.inputFirstOnSample; })
+    if (name == "inputFirstOnSample") { p.inputFirstOnSample = true; return true; }   // D-039: the pre-D-039 order at one sample
+  if constexpr (requires { p.inputYieldsStepOnly; })
+    if (name == "inputYieldsStepOnly") { p.inputYieldsStepOnly = true; return true; }
   return false;
 }
 #endif
@@ -176,14 +180,16 @@ struct SimHost {
     segs.push_back(mk(at, playing.value_or(prev.playing), bpm.value_or(prev.bpm), seekBeats ? I128::mul(std::llround(*seekBeats * kTpq), D) : pos));
     std::stable_sort(segs.begin(), segs.end(), [](const Seg& a, const Seg& b) { return a.start < b.start; });
   }
-  // The same script at another sample rate, every sample position mapped through `sc`, every position the script NAMES kept exactly.
-  // A position the script holds or sets (a stop holds where it stopped, a start resumes from
-  // there, a seek names one) is this host's own exact position in the new rate's posNum units (x newSr / sr). Re-deriving it from the ROUNDED
-  // sample instead (the old replay of `ops`) made it a different musical position at 44.1 kHz, where 8 kHz positions are not whole samples
-  // (17500 -> 96468.75 -> 96469): a stop held tick 67200.17 there and 67200 at 48 kHz, so "the first grid step at or after" (SPEC 4.5) chose
-  // step 36 at one rate and 35 at the other (T-007, the edge fuzz's session 20). A tempo change while playing stays continuous at the new rate,
-  // as a real host is: its position there is not one the script names, so after one, positions at 44.1 kHz drift by up to half a sample of
-  // tempo difference until the next held or set position snaps them back. `bySample` keeps the old replay, for the control that must diverge.
+  // The same script at another sample rate, every musical position the script names kept EXACTLY. A transport op at 8 kHz sample a happens at
+  // time a / sr; at 48/96/192 kHz that is a whole sample (x6/x12/x24), at 44.1 kHz (x441/80) usually not. So the op takes effect at the first whole
+  // sample at or after it, ceil(a * newSr / sr), as a host does: playback starts ON a sample, at the position it was located to. A position the
+  // script holds or sets (a stop holds where it stopped, a start resumes from there, a seek names one) is this host's own exact position in the new
+  // rate's posNum units (x newSr / sr; the abort guards exactness). A tempo change while playing names no position: it stays continuous at the new rate.
+  // Why ceil (later): together with inputs and settings rounding DOWN (atRate, test_core.cpp), anything the script writes ON a grid line stays at
+  // or before that line, relative to the transport, at 44.1 kHz too; the transport starting half a sample early instead would put every later
+  // on-tick event half a sample late, past its step. Re-deriving held positions from the ROUNDED sample (the old replay of `ops`, kept as
+  // `bySample` for the control that must diverge) made them other musical positions at 44.1 kHz: a stop held tick 67200.17 instead of 67200
+  // (17500 -> 96469), so "the first grid step at or after" (SPEC 4.5) chose step 36 there and 35 at 48 kHz (T-007, the edge fuzz's session 20).
   std::shared_ptr<SimHost> rescaled(int newSr, const std::function<int(int)>& sc, bool bySample = false) const {
     auto h = std::make_shared<SimHost>(newSr, startBpm, startBeats, startPlaying);
     if (bySample) {
@@ -194,7 +200,7 @@ struct SimHost {
     for (std::size_t j = 1; j < segs.size(); ++j) {
       const Seg& prev = segs[j - 1];
       const Seg& s = segs[j];
-      const int at = sc(s.start);
+      const int at = static_cast<int>((static_cast<std::int64_t>(s.start) * newSr + sr - 1) / sr);   // ceil; positions are >= 0
       I128 base;
       if (s.playing && prev.playing && s.base == continued(prev, s.start)) {
         base = h->continued(h->segs.back(), at);
