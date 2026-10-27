@@ -55,5 +55,5 @@
 | Row | Status | Evidence |
 |---|---|---|
 | An independent critic review of the core and its oracles | met | Opus critic reviews at every milestone, sourced separately from the Sonnet author: M1a, M1b, M2a, M2b and its re-check, M3b and two re-checks, M3c; no HIGH open (`docs/spec-review-r*.md` for the spec; the traces for the core) |
-| The human's listening sign-off | **open** | to be recorded in ROADMAP |
+| The human's listening sign-off | met (2026-10-27) | 18 of 18 scenarios rendered from the shipped core judged "sounds right" (D-037); the randomness sliders (D-036) get their own listen when they land |
 | Its name cleared (B433) | **open** | ROADMAP Phase N |

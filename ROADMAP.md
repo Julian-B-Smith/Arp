@@ -174,6 +174,9 @@ A difference is investigated against the spec, which wins.
 Scoped at the post-1.0 gate with the human: where the step sequencer begins
 (Q-P1), the free rate in Hz, horde's FX-device use on MIDI-sidechain notes
 (ADR-254), and the generators (`seqgen`).
+- **Post-chords** (the human's idea, D-037): chords layered on TOP of each arp note (not before the arp, like the chord
+  stage), quantizable to the scale or not, with chance sliders for the chord and for each interval. Open design
+  questions: their own stream or `arp`; how they interact with ratchets, ties and gate; draw lanes for the chances.
 - **`landed`** — replay the order AND timing of the presses (D-012, deferred by D-014); the full
   design and its lab lessons are in `docs/deferred/landed.md`.
 
@@ -253,7 +256,8 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   (the user pattern in a module preset, per their ADR-169: embedded by value); whether the bar's "no input, no
   output" covers triggers that §2.5 fires with no keys under restart bar/free; who owns the face and undo; the
   factory-content format.
-- **With the human:** the listening sign-off; goldens cut per pattern; name clearance (Phase N, B433).
+- **With the human:** ~~the listening sign-off~~ **given 2026-10-27 (D-037)**, 18 of 18 on the shipped core (the
+  randomness sliders get their own listen); goldens cut per pattern; name clearance (Phase N, B433).
 - **Scope:** `core/`, `tests/core/`, `tools/`, `docs/`, the traces. **Out of scope:** any 1.0 feature (frozen).
 - **Acceptance criteria:** the M3 gate above.
 
