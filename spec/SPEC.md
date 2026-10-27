@@ -117,8 +117,12 @@ delivers an event written on a grid line at a whole sample. At 44.1 kHz half
 the 1/16 lines of 120 bpm fall on half samples, and a host that rounds to the
 nearest sample or up delivers a chord change a fraction of a sample after its
 step's tick. This order still plays it on that step. The price is stated in
-G4 (§11): an input genuinely less than one sample after an event can land on
-either side of it, depending on the sample rate.
+G4 (§11): an input up to two samples after an event can land on either side
+of it, depending on the sample rate and the host's rounding.
+- This is the order in which Arp *handles* events. The events it *emits* at
+  one offset keep the order listed above.
+- Among its own events at one sample, Arp handles offs, then pending ons,
+  then the grid step (§5.1 E10 excepted).
 
 ### 1.2 Identity (`intake/note-vocabulary.md`)
 - Input notes are matched by `ref`.
@@ -889,7 +893,7 @@ produce no extra and no missing terminal (LIBRARY L0001).
 | G1 | event absolute samples identical at block sizes 1, 7, 64, 512, 4096 | clamp offsets; accumulate the position in float |
 | G2 | ons land at `cdiv` of their exact position | round instead of ceil |
 | G3 | swing parity follows `kAbs`, not `k` | use `k` under `restart = chord` |
-| G4 | the **tick** of every event is identical at 44.1, 48, 96 and 192 kHz (samples differ by rate), for events whose causes lie **more than one sample apart** at every rate. An input within one sample after an off, pending on or grid step counts as on it (§1.1, E13), so near such a tie the order can depend on the rate | read a sample-rate-dependent value into tick math |
+| G4 | the **tick** of every event is identical at 44.1, 48, 96 and 192 kHz (samples differ by rate), for events whose causes lie **more than two samples apart** at every rate (enough for a host that rounds an event's time down, to the nearest sample or up). A cause is an input event, or a settings, transport or scale change, which takes effect at its block's first sample. An input within that distance after an off, pending on or grid step can count as on it (§1.1, E13), so near such a tie the order can depend on the rate | read a sample-rate-dependent value into tick math |
 | G5 | under re-base jitter (the host position perturbed by ±1/32 beat), every grid step is evaluated exactly once | drop the once-guard |
 | D1 | same seed → same stream; a different seed changes `random` / `shuffle` / `prob` output | put a time-varying value in the draw |
 | Q1 | every quantized key is in the **effective** scale (source, mode, anchor) and in 0–127 | skip quantize on chord steps |

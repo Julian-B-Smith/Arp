@@ -122,5 +122,9 @@
   2. Critic M1 of the first round (`tickStreamOf` is order-sensitive within one
      sample: two offs one tick apart sharing a sample only at 44.1 kHz above
      about 172 bpm). Not reached by any seed; left noted.
-  3. The G4 / §1.1 wording correction (H1 of the re-run critic), pending the
-     human.
+  3. (Resolved) The G4 / §1.1 wording correction (H1 of the re-run critic):
+     applied as proposed, on the Arp lead's decision within the human's choice
+     of (C). It is wording only, no behaviour: G4 covers causes more than two
+     samples apart, a "cause" is defined, and §1.1 gains its two
+     clarifications. The delivered-samples alternative was rejected; SPEC.md is
+     re-pinned (c23ade9f…). The 97 bpm rounded near-tie still pins it.
