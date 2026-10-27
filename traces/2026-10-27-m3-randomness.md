@@ -117,3 +117,12 @@ Changed in the follow-up: `core/include/arp/draw.h`, `core/src/core.cpp`, `docs/
 ### 7. Open questions
 - The two-word path is the one MSVC builds use; its tightest load is estimated at 1.91 %. Another 3-5 % would need per-note work in the pending queue (the off position is a 128-bit product per randomised note), not in the randomness arithmetic.
 - `CODEMAP.md` / `README.md` do not yet list `stream_digest_random*.txt`, `regen-random` or `--cpu-time` (out of scope here).
+
+## Lead integration and critic round (2026-10-27)
+
+- **Lead checks:** regenerated all four committed digests into the tree (`regen 0ef0903`, `regen-random ed943b2`): each `cmp`-identical, restored. `./verify full` exit 0 at `ed943b2`+follow-up and again at `d91e80f`.
+- **Merged `origin/main`** (#26 listening, #27 mailbox): DECISIONS conflict only (D-036 and D-037 both kept, in order).
+- **Listening piece 17** (`tests/core/render.cpp`): plain, velocity 60, + gate 60, + curve 100; played at velocity 80. `render_listening.sh --check` byte-identical twice; the manifest shows velocity spread narrowing under the bell and every note start on the grid.
+- **Independent critic (Opus, separate from the Sonnet author): APPROVE-WITH-NOTES, no HIGH.** Arithmetic and hoisting confirmed exact. M1 (the input caveat named B++ where the 112-note chord now binds) and L1/L2 fixed in `docs/horde-copy-in.md` and D-036's wording. M2 (n before the dedupe) and M3 (randomness across transport, time mode, latch, pedal, panic) closed by tests with plants (RN1 suite 527 per path; randomness digest 451 -> 760 runs, 0 old lines changed, cut from `ed943b2`). L3 (the lab mirrors one of three RN1 plants) and L4 (the private-name gate is skipped in a worktree) left as noted.
+- **Human decision D-038:** re-measure on a quiet machine, then quote one input figure covering every setting, before the readiness notice.
+- **Found by the edge fuzz, predates this branch:** a candidate G4 divergence at the free-clock -> host-clock hand-over (ROADMAP T-007 note), to diagnose before M3 closes.
