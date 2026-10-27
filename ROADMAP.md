@@ -255,6 +255,8 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   factory-content format.
 - **With the human:** the listening sign-off; goldens cut per pattern; name clearance (Phase N, B433).
 - **Scope:** `core/`, `tests/core/`, `tools/`, `docs/`, the traces. **Out of scope:** any 1.0 feature (frozen).
+- **Freeze exception (D-036, 2026-10-27):** velocity and gate randomness with a shared curve, on `m3/randomness`;
+  defaults 0 keep the output byte-identical. The listening renders include them before the sign-off.
 - **Acceptance criteria:** the M3 gate above.
 
 ## Open questions (blocking — ask the human or horde)

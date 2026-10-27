@@ -1,6 +1,6 @@
 # Arp — 1.0 specification (RATIFIED 2026-10-23, r2.12)
 
-> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026); E8, E9 and E10 approved 2026-10-23 (D-027); E11 and E12 approved 2026-10-23 (D-028).** This is a protected path: any change needs the human's
+> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026); E8, E9 and E10 approved 2026-10-23 (D-027); E11 and E12 approved 2026-10-23 (D-028).; velocity and length randomness added 2026-10-27 (D-036, a recorded exception to the freeze).** This is a protected path: any change needs the human's
 > gate and a decision record. Revision history: r1 (2026-10-21) to r2.12 (2026-10-22); four independent reviews
 > (`docs/spec-review-r1..r4.md`).
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -446,6 +446,13 @@ grid tick, using **that block's settings snapshot** (H6). For step `s = steps[j]
   `fixed`).
 - `out = clamp(fdiv(base · s.vel + 50, 100), 1, 127)`. That is
   round-half-up in integers.
+- **Velocity randomness (D-036).** With `vel_random` > 0, each arp note's
+  velocity then moves by up to that share of itself, up or down:
+
+      out' = clamp(out + fdiv(out · vel_random · U + 50000, 100000), 1, 127)
+
+  `U` is the note's random value (§4.9, lane 3). At `vel_random` = 0 nothing
+  changes. Chord-stage notes are never randomised: they follow the hands.
 
 ### 4.5 Restart: the anchor
 | `restart` | Anchor |
@@ -622,6 +629,24 @@ pattern plays **per chord**, then the arp stops until the next gesture start.
   - `C` uses `P` from the arp's held set **H′** (§14), not H (r4 L4).
 - Time mode counts the same way, in time steps.
 
+### 4.9 Note randomness: the draw and the curve (D-036)
+Each arp note gets its own random value `U` in permille, −1000…1000, one per
+lane: lane 3 for velocity, lane 4 for length.
+- The note's **draw position** is `x = kAbs · 1024 + sub · 256 + n`, where
+  `sub` is the ratchet sub-note (0–3) and `n` is the note's index in the
+  step's notes in style order, before any dedupe (0–255). So `x` depends only
+  on the grid, never on blocks or the sample rate.
+- `r = draw(seed, x, lane, epoch)` (§10), split into its four bytes `b0…b3`
+  (low byte first).
+- `U₁ = fdiv((2·b0 − 255) · 1000, 255)` is uniform; `U₄ = fdiv((2·(b0+b1+b2+b3)
+  − 1020) · 1000, 1020)` is the mean of four, a bell around 0.
+- **The curve** `random_curve` (0–100 %) blends them:
+  `U = fdiv(U₁ · (100 − random_curve) + U₄ · random_curve, 100)`. At 0 every
+  value up to the amount is equally likely; toward 100 most land near the
+  setting, with the occasional big one. The range never exceeds ±1000.
+- `vel_random`, `gate_random` and `random_curve` are continuous settings
+  (§9): they blend under morph and apply from the next evaluated step.
+
 ## 5. Note timing
 
 ### 5.1 Ons, swing and the pending queue
@@ -659,6 +684,15 @@ pattern plays **per chord**, then the arp stops until the next gesture start.
   - without ratchet, `len = max(1, fdiv(span · gate · s.gate, 10000))`;
   - with ratchet r, `len = max(1, fdiv(fdiv(span, r) · gate · s.gate, 10000))`,
     capped at `fdiv(span, r)`. Floor first, then gate.
+- **Length randomness (D-036).** With `gate_random` > 0, each arp note's
+  gate-derived length moves by up to that share of itself, up or down, by its
+  `U` from lane 4 (§4.9):
+
+      len' = max(1, len + fdiv(len · gate_random · U, 100000))
+
+  then the ratchet cap applies as above. For a tied note the same factor
+  applies to the tie's tail term `max(1, fdiv(span(kAbs+t) · gate · …))`. At
+  `gate_random` = 0 nothing changes; chord-stage notes are never randomised.
 - **Ties by look-ahead (H3).** When step kAbs plays, let `t ≥ 0` be the
   number of consecutive tie steps that follow it in the pattern data, read
   cyclically, with no regard to `prob`. When t > 0, the off tick of the
@@ -821,7 +855,8 @@ produce no extra and no missing terminal (LIBRARY L0001).
     draw(seed, x, lane, epoch) = mulberry32( seed ⊕ imul(x, 0x9E3779B1) ⊕ imul(lane, 0x85EBCA77) ⊕ imul(epoch, 0xC2B2AE3D) )
 
 - It takes the first output, in uint32 arithmetic, with `x` taken mod 2³².
-- **Lanes:** 0 is `random`, 1 is `shuffle`, 2 is `prob`.
+- **Lanes:** 0 is `random`, 1 is `shuffle`, 2 is `prob`, 3 is velocity
+  randomness and 4 is length randomness (§4.9, D-036).
 - No RNG state is carried between steps.
 
 **D1.** These must all match to give an identical output stream:
@@ -865,6 +900,7 @@ produce no extra and no missing terminal (LIBRARY L0001).
 | K1 | ties engage at gate 80 (`tied_legato` ≠ `none`) | evaluate ties at the tie step instead of by look-ahead |
 | C1 | at the event cap, no NoteOn is emitted without its NoteOff | drop the off-reserve |
 | A1 | `process` never allocates (C++ only: an allocation hook) | allocate in `process` |
+| RN1 | note randomness (§4.9): at `vel_random` = `gate_random` = 0 the output is byte-identical to the core without it; otherwise each arp note's change stays within ±amount and equals the formula with `U` from `draw(seed, x, lane, epoch)`; identical at every block size and sample rate; at curve 0 the values are uniform, at 100 clustered (variance about a quarter); chord-stage notes untouched | take `x` from the block instead of the grid; ignore the curve; randomise chord-stage notes |
 
 ---
 

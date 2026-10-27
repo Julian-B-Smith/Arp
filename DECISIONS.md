@@ -956,3 +956,26 @@ value. No key, range, default, kind or behaviour changes (proved field by
 field against the ratified file). A new check in `tools/core_params_check.py`
 requires all of it, with a plant. The lab's embedded copy is regenerated and
 `spec/MANIFEST` re-pinned in the same change, as D-023 requires.
+
+## D-036 — Velocity and gate randomness with a shared curve: a recorded exception to the freeze (RATIFIED by poll, 2026-10-27)
+
+During M3's listening sign-off the human asked for velocity and gate
+randomness sliders. Functionality is frozen for 1.0 (D-018); the human lifted
+the freeze for these alone, by poll. Chosen:
+- **`vel_random` and `gate_random`, 0-100 %:** each arp note's velocity or
+  gate-derived length moves up or down by up to that share of itself
+  (symmetric around the setting, so the average feel stays put), clamped to
+  1-127 and to the 1-sample minimum, with the ratchet cap kept.
+- **`random_curve`, 0-100 %, shared by both:** 0 = uniform; toward 100 the
+  values cluster near the setting (the mean of four byte-draws), like a human
+  player. Rejected: a bipolar curve reaching toward the extremes; a separate
+  curve per slider.
+- **Determinism by construction:** one seeded draw per note per lane (lanes
+  3 and 4), positioned by `kAbs`, the ratchet sub-note and the note's index
+  in style order, so output is identical at every block size and rate.
+  Chord-stage notes are never randomised (they follow the hands).
+- **Defaults 0**, so the output is byte-identical to the core without them;
+  the committed digests prove it.
+
+Spec: §4.4, §4.9 (new), §5.2, §10 lanes, row RN1; `spec/params.json` gains the
+three settings (50 in all). `spec/MANIFEST` is re-pinned in the same change.

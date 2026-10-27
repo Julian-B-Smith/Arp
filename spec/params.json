@@ -229,6 +229,42 @@
       "unit": "MIDI velocity (1–127)"
     },
     {
+      "key": "vel_random",
+      "label": "Velocity random",
+      "kind": "continuous",
+      "type": "percent",
+      "min": 0,
+      "max": 100,
+      "default": 0,
+      "ref": "SPEC §4.4, §4.9",
+      "unit": "%",
+      "note": "each arp note's velocity moves up or down by up to this share of itself, from the seeded draw (lane 3); 0 = none (D-036)"
+    },
+    {
+      "key": "gate_random",
+      "label": "Gate random",
+      "kind": "continuous",
+      "type": "percent",
+      "min": 0,
+      "max": 100,
+      "default": 0,
+      "ref": "SPEC §5.2, §4.9",
+      "unit": "%",
+      "note": "each arp note's length moves up or down by up to this share of itself, from the seeded draw (lane 4); 0 = none (D-036)"
+    },
+    {
+      "key": "random_curve",
+      "label": "Random curve",
+      "kind": "continuous",
+      "type": "percent",
+      "min": 0,
+      "max": 100,
+      "default": 0,
+      "ref": "SPEC §4.9",
+      "unit": "%",
+      "note": "the shape of both randomnesses: 0 = uniform (every value up to the amount equally likely); toward 100 = a bell around the setting (D-036)"
+    },
+    {
       "key": "restart",
       "label": "Restart",
       "kind": "discrete",
