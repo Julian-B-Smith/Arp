@@ -956,3 +956,26 @@ value. No key, range, default, kind or behaviour changes (proved field by
 field against the ratified file). A new check in `tools/core_params_check.py`
 requires all of it, with a plant. The lab's embedded copy is regenerated and
 `spec/MANIFEST` re-pinned in the same change, as D-023 requires.
+
+## D-037 — The human's listening sign-off on the shipped core; post-chords after 1.0 (RATIFIED by the human, 2026-10-27)
+
+**Listening sign-off (horde's bar §6).** The human listened to 18 scenarios
+rendered from the SHIPPED C++ core (`tools/render_listening.sh`,
+`lab/listen.html`; deterministic, 0 allocations in `process()`): 16 "sounds
+right" at once, and 2 "not sure" that became "sounds right" after
+explanation:
+- **Triggers (piece 14):** the clicks are the renderer's stand-in; in horde a
+  trigger is a signal event (lane 1-8 at a sample offset), never a sound.
+- **Dense (piece 16):** the buzzing "squeak" is the `roll_end` pattern's
+  4x ratchet inside a 1/32T step at 174 bpm, a note every ~7 ms (~139 Hz),
+  heard as a pitch. Arp does exactly what the pattern says; no rule limits
+  audio-rate ratchets (considered and not chosen).
+The velocity and gate randomness sliders (D-036) get their own listen when
+they land; this sign-off covers everything else in the 1.0 feature set.
+
+**Post-chords (the human's idea): after 1.0, by poll.** Chords layered on top
+of the arpeggio's notes (rather than before it, like the chord stage), able
+to quantize to the scale or not, with chance sliders for the chord and for
+each interval. Recorded in ROADMAP "After 1.0" with these notes; designed and
+prototyped in the lab once 1.0 ships. Rejected for now: a lab-only prototype,
+or lifting the freeze again ahead of horde's cutoff.
