@@ -54,3 +54,66 @@ Old core (`3f76354`, built in a scratch directory), new core with randomness at 
 - The bench report's "heaviest scenario built from settings alone" now names the randomness scenarios and reads OVER the slice (they are deliberate worst cases). Whether the report should keep them in that line or in a
   separate one is the lead's call; the docs figures for horde are unchanged by this dispatch.
 - With all three at 100 the heaviest loads exceed the 2 % slice after x4 (see CPU). horde's notice may want that stated, or the settings capped for those loads: not decided here.
+
+## Follow-up (same day, on `ed943b2`): the randomness path made cheap, pinned by a digest; regeneration from 0ef0903 kept working; the CPU envelope updated
+
+- **Queue item / why:** T-007, D-036 with D-031's rule that every settings-only load fits the 2 % slice. The first version cost x1.35-1.5 on the heaviest loads (B++ and the 112-note chord read 2.4-2.6 % after x4 against 1.9-2.0 % without). Authored by an implementer dispatch from the Arp lead session; working tree uncommitted, no git operation made (`git show` read-only, as the digest script does).
+
+### 1. The pin (before any optimisation)
+`tests/core/stream_digest_random.txt` (451 runs: every clean run of `tests/core/test_random.cpp`, numbered in the order made, hashed over every event field, step record and counter) and `tests/core/stream_digest_random_bench.txt`
+(the bench scenarios that use randomness, `arp_bench --digest-random`: 56 configurations) were generated from the **core of `ed943b2`** (`bash tools/core_digest.sh regen-random ed943b2`, new mode) BEFORE the core was touched, and are
+compared on every run: `arp_tests` / `arp_tests_fallback` (both int128 paths) and `core_test.sh` (both bench binaries). Each has its plant (a digest digit changed, a line missing; `--digest-random-perturb`: one field of one event). A new
+`testSweep` adds 202 sessions (every `random_curve` 0..100, every amount 0..100, chord x2 / x3 ratchets with an accent) so the digest covers every curve and amount, not only the ones the checks name. The 26 bench lines that existed
+when the file was first cut are unchanged in the final file (30 lines were added later for the new input families, again cut from `ed943b2`: `diff` shows 0 removed, 30 added; the RN1 file `cmp`-identical after the re-cut).
+**After each optimisation step the 451 runs and 56 configurations matched; they match in the final tree on both int128 paths and under UBSan.**
+
+### 2. What made it cheaper (core only; output byte-identical)
+- `kU`: U1 (256 entries) and U4 (1,021) as `constexpr` tables built from the spec's own `fdiv` formulas; the blend divides unsigned by 100 after adding the offset (`(mix + 100000) / 100 - 1000`), exact for negatives; at curve 0 and 100 only one table is read.
+- Velocity and length deltas: the floor division by 100000 done in unsigned arithmetic (`+13,000,000` offset for the velocity numerator, which is >= -12.65e6; sign split for the length delta). No `fdiv`, no remainder test.
+- `draw.h`: `drawBase` / `drawWith` (the same three multipliers, the draw split into "constant for the step" and "per note"). `evalStep` draws a sub-note's lane 3 and lane 4 for all its notes in two plain loops over 32-bit integers (the compiler vectorises them);
+  lane 3 only if `vel_random` > 0, lane 4 only if `gate_random` > 0 (kept from the first version). The plant `timeInDraw` keeps its stateful per-draw path.
+- Hoisted per sub-note: the on position's `I128::mul`, and the off position's unless the length is randomised; a randomised length that the ratchet cap brings back to the plain one (often, at a long gate) reuses it. This helps the loads without randomness too (two-word path about 5 % cheaper).
+- Rejected: a fast path in `I128Soft::mul` for small operands (no measurable gain on this machine, touches `int128.h` for every load: reverted); sharing one draw between the lanes (SPEC 4.9 and 10: lanes are separate draws); `I128` is not involved in the randomness arithmetic (all int64).
+
+### 3. Regeneration from `0ef0903` works again (`bash tools/core_digest.sh regen 0ef0903`)
+The M3a core cannot compile the tests that name the new `Settings` fields, so `core_digest.sh` now detects a core without `velRandom` and builds the suite and the bench with `-DARP_NO_RANDOM`, leaving out `test_random.cpp` and the few lines that name the fields
+(`test_core.cpp`, `harness.h`'s session fingerprint, `bench.cpp`'s randomness scenarios). Proof, run in this tree: the two committed files copied aside, `regen 0ef0903` run (1 min 20 s, "wrote tests/core/stream_digest.txt (1320 chunks) and
+tests/core/stream_digest_bench.txt (837 configurations)", header "generated from core/ at commit 0ef0903: ... core.cpp sha256 6bdfd594..."), then `cmp` on both: **identical**; `git status` shows no change to either file, so nothing needed restoring.
+
+### 4. CPU (Release, `-O3 -DNDEBUG`, Apple M3; load average 5-55 throughout, so absolute readings run about 1.4x above the quiet ones of 2026-10-25: B+ read 2.25 % where it read 1.54 %)
+Method: `ed943b2`'s core and the current one built from the same `bench.cpp`, native and two-word (`-DARP_FORCE_INT128_FALLBACK`), run **at the same moment** (two processes at once, so the contention is common), 4 passes (earlier trials with 3-6 passes agree), per configuration the least disturbed pass.
+Also `arp_bench --cpu-time` (new: the thread's CPU time instead of wall time, for comparing builds on a busy machine). x4 after, the **maximum over blocks 16 / 32 / 64 / 128 / 512 per rate**, before (`ed943b2`) -> after:
+
+| load | path | 44.1 kHz | 48 kHz | 96 kHz | 192 kHz |
+|---|---|---|---|---|---|
+| B++ + randomness 100 | native | 2.88 -> 2.36 | 2.89 -> 2.33 | 2.89 -> 2.41 | 2.97 -> 2.48 |
+| | two-word | 3.25 -> 2.52 | 3.29 -> 2.53 | 3.25 -> 2.60 | 3.22 -> 2.53 |
+| 112-note chord + randomness 100 | native | 3.24 -> 2.22 | 2.69 -> 2.14 | 3.06 -> 2.45 | 2.77 -> 2.38 |
+| | two-word | 3.10 -> 2.36 | 2.94 -> 2.36 | 3.19 -> 2.57 | 3.27 -> 2.54 |
+| A at ratchet 4 + randomness 100 | native | 2.79 -> 2.21 | 2.77 -> 2.25 | 2.77 -> 2.34 | 2.74 -> 2.26 |
+| | two-word | 3.26 -> 2.48 | 3.36 -> 2.45 | 3.28 -> 2.55 | 3.31 -> 2.54 |
+| B++ (no randomness, for the machine's state) | native | 2.18 -> 2.22 | 2.10 -> 2.11 | 2.33 -> 2.28 | 2.24 -> 2.31 |
+| | two-word | 2.42 -> 2.29 | 2.42 -> 2.29 | 2.47 -> 2.34 | 2.57 -> 2.44 |
+| 112-note chord (no randomness) | native | 1.85 -> 1.86 | 1.83 -> 1.85 | 1.89 -> 1.92 | 1.97 -> 1.99 |
+| | two-word | 2.11 -> 1.99 | 2.11 -> 1.99 | 2.23 -> 2.11 | 2.27 -> 2.14 |
+| A at ratchet 4 (no randomness) | native | 2.02 -> 2.13 | 2.06 -> 2.01 | 2.11 -> 2.27 | 2.18 -> 2.17 |
+| | two-word | 2.34 -> 2.34 | 2.31 -> 2.19 | 2.39 -> 2.36 | 2.46 -> 2.37 |
+
+Cost of randomness at 100 against the same load without it (per-configuration ratio, new core, same moment): B++ x1.08 native / x1.08 two-word (max 1.14); 112-note chord x1.20 / x1.20 (max 1.32 / 1.28); A at ratchet 4 x1.07 / x1.12 (max 1.15 / 1.23). The first version: x1.33 / 1.32, x1.46 / 1.42, x1.32 / 1.40.
+The loads without randomness did not get slower beyond noise (per-rate maxima moved -5 % to +7 %; the two-word path is about 5 % cheaper from the hoisting).
+**Quiet-machine estimate** (this session's reading x the load's documented quiet figure / this session's reading of the same load; the machine never read as quiet): B++ 1.69 % native / 1.81 % two-word at the worst configuration; the 112-note chord 1.80 % / 1.91 %;
+A at ratchet 4 1.60 % / 1.77 %. **Everything inside the 2 % slice; the tightest is 1.91 % (the 112-note chord, two-word path): 4.5 % of the slice to spare there, 10 % on the native path (1.80 %).** Not inside the 10 % headroom (1.8 %) the notice's input limit keeps on the two-word path. Estimates, not measurements on a quiet machine; the ratios are measured. Not min-spec verified.
+
+### 5. Input headroom (docs/horde-copy-in.md, "CPU envelope")
+New bench families `B++ chromatic transposed + randomness 100` (re-struck chord, 4 keys, flood; in `stream_digest_random_bench.txt`). An incoming event costs the same with randomness on (slope 8.5e-5 against 9.4e-5 % per event/s, noise); the load under it grows
+(B++ alone about 1.69 % native / 1.76-1.89 % two-word, quiet-equivalent). With the notice's per-event cost: **under the 1.8 % line, about 1,100 events/s native and between 450 and none two-word; the 2.0 % edge moves from 3,600 to about 3,100 (native) and 1,200-2,700 (two-word).** The quoted 1,300
+(D-033) is therefore NOT kept with randomness at 100 on the heaviest load; stated in the docs, the quoted figure itself NOT changed (the lead's call).
+
+### 6. Files / verify
+Changed in the follow-up: `core/include/arp/draw.h`, `core/src/core.cpp`, `docs/horde-copy-in.md` (sha table, CPU envelope), `tests/core/{bench.cpp,test_random.cpp,test_core.cpp,harness.h,CMakeLists.txt}`, `tools/{core_digest.sh,core_test.sh}`; new `tests/core/stream_digest_random.txt`, `tests/core/stream_digest_random_bench.txt`.
+`core_params_check.py`, `lab_smoke.mjs`, the lab and the spec are untouched in the follow-up. Verify: `bash tools/core_test.sh` exit 0 (517 passed, 0 failed per int128 path; the randomness digest, the main digests, both bench digests and the copy-in check green), `core_params_check.py` exit 0 / `--plant` exit 1,
+`node tools/lab_smoke.mjs` exit 0, `bash tools/core_sanitize.sh ubsan` exit 0, `./verify full` exit 0 (see the report for the lines).
+
+### 7. Open questions
+- The two-word path is the one MSVC builds use; its tightest load is estimated at 1.91 %. Another 3-5 % would need per-note work in the pending queue (the off position is a 128-bit product per randomised note), not in the randomness arithmetic.
+- `CODEMAP.md` / `README.md` do not yet list `stream_digest_random*.txt`, `regen-random` or `--cpu-time` (out of scope here).

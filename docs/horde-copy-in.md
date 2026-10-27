@@ -14,11 +14,11 @@ Keep the relative layout: `core/include` is the include root (`#include "arp/cor
 | `core/include/arp/arith.h` | 702d89b13848b554a6e32392f5f48a22bbdd157e8a531270f194e0a103f37162 |
 | `core/include/arp/bank_data.h` | 87876a9f7681733500c17e65463f043b1be4f5bda8a77aff5949347c3a4b3723 |
 | `core/include/arp/core.h` | 305a41e73dcd76790ecd183b4c5b55d5d68bb93eb0eddad8adcbf075d5da7ea0 |
-| `core/include/arp/draw.h` | 8ea2c17c6eb55baa621fd37659c7f19bcb6c46b0304d59870d371eca0ca8dc92 |
+| `core/include/arp/draw.h` | ed9060b7d13a854f3ed09d0011a0483136df387982d16efafbe65cd2e90c8985 |
 | `core/include/arp/int128.h` | bb2c26a4cea9e04015c18957bf81a0d76b10f332ba72c86416fa41065112b433 |
 | `core/include/arp/pattern.h` | 1ad8f47861d91587aa6df2b6180d85cfc7d611fc8001769d42547cf1714e3899 |
 | `core/include/arp/types.h` | b45f811cdc241a5bf3ab6d76d4cc9fb8b168cb195870cbfdb452afab6879133b |
-| `core/src/core.cpp` | a42b6b8cccb78f122bec15e3cbdb51efbefbb5e722d47fa91049288ef41eab17 |
+| `core/src/core.cpp` | 0efbfeb4d45f8caca175188ecf28c6e4d723e11d0170075b92a86d28f2e3f920 |
 
 - **Pinned at commit:** the commit that contains this file. horde records `git log -1 --format=%h -- core/ docs/horde-copy-in.md`
   in its copy-in PR; the sha256 column above is the authority (it is what `tools/core_test.sh` checks), the commit is the label.
@@ -51,7 +51,7 @@ Keep the relative layout: `core/include` is the include root (`#include "arp/cor
 
 What the readiness notice quotes. horde's slice for Arp is 2 % of a min-spec core. **The x4 figures are horde's min-spec heuristic (this machine's cost times 4), not min-spec verified:
 no min-spec hardware was measured.** Everything here is a Release build (`-O3 -DNDEBUG`, never `-ffast-math`) of the shipped core (no `ARP_PLANTS`) on an **Apple M3** (macOS, Apple clang 16, a shared
-machine), both int128 paths (native `__int128` and the two-word fallback), 44.1 / 48 / 96 / 192 kHz, blocks of 16 / 32 / 64 / 128 / 512 samples, measured 2026-10-25 (M3c, D-032).
+machine), both int128 paths (native `__int128` and the two-word fallback), 44.1 / 48 / 96 / 192 kHz, blocks of 16 / 32 / 64 / 128 / 512 samples, measured 2026-10-25 (M3c, D-032); the note-randomness rows were measured 2026-10-27 (D-036) and are labelled as such.
 "Raw" is the percentage of one core in real time; "x4" is raw times 4. Each configuration is the median of 15 repetitions of 1 s of audio; the table below takes, per configuration, the least disturbed
 of three interleaved passes (other work ran on the machine; a single pass read up to 1.7x higher). Reproduce: `bash tools/core_bench.sh --reps 15 --input-seconds 1` (the default run, which
 `./verify full` prints, takes fewer repetitions for the input scenarios and is noisier).
@@ -61,6 +61,23 @@ of three interleaved passes (other work ran on the machine; a single pass read u
 the 128 chord keys stay 128 distinct keys (a major scale folds them onto about 75). Measured edge, x4 at 192 kHz in blocks of 16, native / two-word: **B+ 1.54 % / 1.68 %; with six chord shifts 1.53 % / 1.68 %; with
 4 transposition steps (B++) 1.53 % / 1.69 %** (the single passes of the critic's re-measurement read 1.63 % / 1.73 %). Then the 112-note, ratchet-4 case 1.46 % / 1.59 %; D-031's load A (32 keys on 16 channels, 128 chord notes,
 8 transposition steps) 1.20 % / 1.27 %; load B 0.85 % / 0.91 %.
+
+**Note randomness at 100 (D-036): every settings-only load still fits.** `vel_random`, `gate_random` and `random_curve` at 100 make every sub-note of every note draw twice (velocity and length). It is the one
+feature that adds cost per note, so the bench runs the three heaviest loads with all three at 100 (`... with randomness` in `bash tools/core_bench.sh`; they are the only bench scenarios outside
+`tests/core/stream_digest_bench.txt`, they have `tests/core/stream_digest_random_bench.txt`). First version of the feature (`ed943b2`) cost x1.35-1.5 on those loads and read over the slice; the shipped one costs
+**x1.08 on B++ (up to x1.14 in one configuration), x1.20 on the 112-note chord (up to x1.32), x1.07-1.12 on A at ratchet 4 (up to x1.23)**, output byte-identical to the first version
+(`tests/core/stream_digest_random*.txt` pin it). At 0 the cost is nil (no draw is made) and the loads above are unchanged.
+
+| load, all three randomness settings at 100 | x4 at 192 kHz, block 16, native / two-word | worst of 4 rates x 5 blocks, native / two-word | cost against the same load without it |
+|---|---|---|---|
+| B++ | 1.69 % / 1.76 % | 1.69 % / 1.81 % | x1.08 (up to x1.14) |
+| the 112-note, ratchet-4 chord | 1.75 % / 1.86 % | 1.80 % / 1.91 % | x1.20 (up to x1.32) |
+| A at ratchet 4 | 1.54 % / 1.73 % | 1.60 % / 1.77 % | x1.07 native, x1.12 two-word (up to x1.23) |
+
+These are **estimates, not quiet-machine readings**: the machine never read as quiet on 2026-10-27 (the same B+ read 2.25 % where 2026-10-25 read 1.54 %), so each figure is this session's
+reading (least disturbed of 4 passes, the old and new builds run at the same moment, native and two-word, 44.1-192 kHz, blocks of 16 / 32 / 64 / 128 / 512) scaled by the same load's quiet figure above divided by
+this session's reading of it (B++ x0.68 / x0.69, the 112-note chord x0.73 / x0.74; A at ratchet 4 uses B++'s). The ratio column is measured and needs no scaling. **The worst is 1.91 % after x4 (the 112-note chord, two-word
+path); 1.80 % is the worst on the native path (the same load).** That is inside the slice with 4.5 % of it to spare on the two-word path and 10 % on the native one; it is not inside the 10 % headroom the notice's limit keeps. Not min-spec verified.
 
 **Dense incoming notes (D-032).** The cost of input is linear in its rate, so the number to quote is the cost of one incoming note event (a NoteOn or a NoteOff) and the room that is left. After M3c, per
 incoming event, **for the shapes measured** (the bench's input scenarios; before M3c in brackets). The cost depends on the shape and the load, not on one constant: the ranges cover every load measured, and a shape not
@@ -93,6 +110,13 @@ the quote keeps 10 % headroom instead. Over load A the same shapes hold to 9,000
 `(2 - L) / (c * 4e-7)` events per second, with `c` the cost per event in ns from the first table. A typical 16-key chord load costs well under 0.5 % after x4 (the bench's "heavy but playable" load: 0.13 %), which leaves
 1.5 %: about 60,000 events/s at 60 ns an event, 15,000 at 250 ns. These are stress rates, not playing rates (a chord re-struck at every 1/64 step at 999 bpm is about 17,000 events/s). The core stays correct at any rate;
 only the CPU grows.
+
+**With note randomness at 100 on the heaviest load (D-036), that limit shrinks, and the quoted 1,300 does not hold.** An incoming event costs the same with randomness on (the 4-keys-re-struck slope on B++ is 8.5e-5
+against 9.4e-5 % per event/s two-word, 192 kHz, block 16, this session: noise); what moves is the load under it. B++ alone goes from 1.53 % / 1.69 % to about 1.69 % / 1.76-1.89 % (native / two-word; the two-word range
+is the two ways it was measured, x1.04 in the settings-only passes and x1.12 in the 4-keys family). At the per-event cost the notice's own numbers imply (0.32 % of room at 3,600 events/s, about 9e-5 % per event/s):
+**under the 1.8 % line (10 % headroom) about 1,100 events/s on the native path and between 450 and none on the two-word path; the edge of the slice itself (2.0 %) moves from 3,600 to about 3,100 (native) and 1,200-2,700
+(two-word).** So with all three at 100 and a heavy load the 1,300 events/s figure should be read as about 1,100 (native) or under 450 (two-word); with randomness at 0, or on lighter loads (A at ratchet 4 with randomness:
+1.54-1.77 %), it stands. The same estimate method as above (a scaled reading, not a quiet-machine one); the bench families `B++ chromatic transposed + randomness 100` measure it (`bash tools/core_bench.sh --only "randomness 100"`).
 
 ## How this list is kept honest
 

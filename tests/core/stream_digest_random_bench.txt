@@ -1,0 +1,58 @@
+# arp bench stream digest of the note-randomness scenarios (tools/core_digest.sh regen-random): scenario <TAB> rate block events stream-hash counters-hash, from the SHIPPED core.
+# generated from core/ at commit ed943b2: core/src/core.cpp sha256 a42b6b8cccb78f122bec15e3cbdb51efbefbb5e722d47fa91049288ef41eab17, core/include/arp/core.h sha256 305a41e73dcd76790ecd183b4c5b55d5d68bb93eb0eddad8adcbf075d5da7ea0
+WORST CASE B++ with randomness: B++, vel_random = gate_random = random_curve = 100	48000 16 264623 140fa60c87e2b425 1953bfd023d6b30a
+WORST CASE B++ with randomness: B++, vel_random = gate_random = random_curve = 100	48000 4096 178816 70815c1a2645a709 3356287fc0d7bad9
+WORST CASE B++ with randomness: B++, vel_random = gate_random = random_curve = 100	192000 128 264623 87561a7abfa597b3 1953bfd023d6b30a
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	48000 32 477568 12acac32a0b7f0fb f181ddd927e4b862
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	48000 64 477568 5b81ae8af9022eaf f181ddd927e4b862
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	48000 128 477568 4bd5f016d3a37447 f181ddd927e4b862
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	48000 512 362032 11da37874f1751a4 33316cc8f2a05541
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	48000 4096 374256 6e7c73a98ed8ee36 296d9fc7cf8ed2e5
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	44100 32 477349 842b1d8a77d4971c e8e192edf7c6254a
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	44100 64 477349 458b95d818a173ec e8e192edf7c6254a
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	44100 128 471429 4bf69534d192c36a 8fa2560c2309112f
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	44100 512 332992 967ce9254ac84874 e30440fe32b4d9a9
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	44100 4096 341712 5fcf8f823a869dbb 0334a02d1cb98caa
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	96000 32 477568 6ddb5a0dbaa3dbc3 f181ddd927e4b862
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	96000 64 477568 f75a71f9cb489d57 f181ddd927e4b862
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	96000 128 477568 fa4c77d03be291af f181ddd927e4b862
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	96000 512 477568 2bb8de26d8290c9f f181ddd927e4b862
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	96000 4096 468608 73a0b37a328c4bb3 d633019a8016f8c4
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	192000 32 477568 b3eb994eea097530 f181ddd927e4b862
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	192000 64 477568 4d7f5ec18c4ffc94 f181ddd927e4b862
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	192000 128 477568 98cf18574bb5273c f181ddd927e4b862
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	192000 512 477568 ab99587cf79215d4 f181ddd927e4b862
+WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100	192000 4096 473760 52ac1782a9744f2b ce3be3c0e4ca85ca
+WORST CASE A at ratchet 4 with randomness: A (32 keys on 16 channels, 128 notes, 8 transposition steps, every on evicts) at ratchet 4, vel_random = gate_random = random_curve = 100	48000 16 264449 df94489d02ce9248 57ed62988f655720
+WORST CASE A at ratchet 4 with randomness: A (32 keys on 16 channels, 128 notes, 8 transposition steps, every on evicts) at ratchet 4, vel_random = gate_random = random_curve = 100	48000 4096 178816 b61723750ea71d1d 3b6b6343f875168b
+WORST CASE A at ratchet 4 with randomness: A (32 keys on 16 channels, 128 notes, 8 transposition steps, every on evicts) at ratchet 4, vel_random = gate_random = random_curve = 100	192000 128 264449 1d49186c7cbb6a30 57ed62988f655720
+INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	48000 16 264623 140fa60c87e2b425 1953bfd023d6b30a
+INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	48000 4096 178816 70815c1a2645a709 3356287fc0d7bad9
+INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	192000 128 264623 87561a7abfa597b3 1953bfd023d6b30a
+INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 16 272896 4a5fe03aeddb4fdd ac156938393c1f2d
+INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 4096 178816 1a97aa52a7c394eb e562403be4cd7c56
+INPUT re-struck chord: B++ chromatic transposed + randomness 100, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	192000 128 272896 d8c1f3dc0040bd1b ac156938393c1f2d
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	48000 16 264623 140fa60c87e2b425 1953bfd023d6b30a
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	48000 4096 178816 70815c1a2645a709 3356287fc0d7bad9
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	192000 128 264623 87561a7abfa597b3 1953bfd023d6b30a
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 16 255963 fab47a0c90917e61 b529e0e59407203a
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 4096 178992 5ced97e58c1ded39 5f4dc057d3d82c6f
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	192000 128 255962 38fb591aa295a566 76a5323ed7d51587
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 16 264475 a769a6a0fefa12ed 7fb2ae60404e21bd
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 4096 178992 4849d7b4ccd70d36 3c446f8f10c8c926
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	192000 128 264474 6e7b3d2d70ead9e6 8fc5e7d45b96c624
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 16 281531 a82515dc21336749 83ec509916d181fb
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 4096 178992 3bf3f9a27ff621ed 8182de6df07c3ef1
+INPUT 4 keys re-struck: B++ chromatic transposed + randomness 100, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	192000 128 281530 155a3195b28f00de 7ad0bfe4b6b32976
+INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	48000 16 66763 b4c984dbc48fda8e aa242d10b7ead112
+INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	48000 4096 62683 0e6c5ea886903bb4 138c786e63386d32
+INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	192000 128 66763 fb3de8b9e4477595 aa242d10b7ead112
+INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 17000 note events/s, chord stage off	48000 16 66763 b4c984dbc48fda8e 1af6e22a2cb1a9a6
+INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 17000 note events/s, chord stage off	48000 4096 62683 0e6c5ea886903bb4 885ea64775bc6193
+INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 17000 note events/s, chord stage off	192000 128 66763 fb3de8b9e4477595 1af6e22a2cb1a9a6
+INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage on	48000 16 264623 140fa60c87e2b425 1953bfd023d6b30a
+INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage on	48000 4096 178816 70815c1a2645a709 3356287fc0d7bad9
+INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage on	192000 128 264623 87561a7abfa597b3 1953bfd023d6b30a
+INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 17000 note events/s, chord stage on	48000 16 264623 140fa60c87e2b425 411a669a51d0397e
+INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 17000 note events/s, chord stage on	48000 4096 178816 70815c1a2645a709 4a9619b1b0fa80fc
+INPUT new-key flood: B++ chromatic transposed + randomness 100, 32 keys x 4 refs, presses on new keys at 17000 note events/s, chord stage on	192000 128 264623 87561a7abfa597b3 411a669a51d0397e

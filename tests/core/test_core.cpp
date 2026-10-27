@@ -28,7 +28,9 @@
 #include "test_m2a.h"
 #include "test_m2b.h"
 #include "test_m3.h"
+#ifndef ARP_NO_RANDOM   // tools/core_digest.sh builds the suite against cores older than D-036 (no note randomness) to regenerate the digests cut from them
 #include "test_random.h"
+#endif
 #include "test_digest.h"
 #include "test_input.h"
 #include "test_evict.h"
@@ -962,7 +964,9 @@ static void dumpDefaults() {
   ENUM("latch", s.latch, arp::kLatchNames);
   ENUM("vel_mode", s.velMode, arp::kVelModeNames);
   std::printf("vel_fixed=%d\n", s.velFixed);
+#ifndef ARP_NO_RANDOM
   std::printf("vel_random=%d\ngate_random=%d\nrandom_curve=%d\n", s.velRandom, s.gateRandom, s.randomCurve);
+#endif
   ENUM("restart", s.restart, arp::kRestartNames);
   std::printf("repeats=%d\n", s.repeats);
   ENUM("quantize", s.quantize, arp::kQuantizeNames);
@@ -1022,7 +1026,9 @@ int main(int argc, char** argv) {
   runM2aTests();
   runM2bTests();
   runM3Tests();
-  runRandomTests();   // D-036: its sessions are kept out of the committed digest (they did not exist when it was cut)
+#ifndef ARP_NO_RANDOM
+  runRandomTests();   // D-036: its sessions are kept out of the committed stream digest (they did not exist when it was cut); it has a digest of its own
+#endif
   testTiming();
   testUpModel();
   runEvictTests();

@@ -25,15 +25,16 @@ target_compile_options(arp_core_plants_soft PRIVATE ${ARP_WARN})
 
 # The committed stream digest (test_digest.cpp): the suite's output, hashed, from the pre-optimisation core (D-030).
 set(ARP_DIGEST_FILE ${CMAKE_CURRENT_SOURCE_DIR}/stream_digest.txt)
+set(ARP_RANDOM_DIGEST_FILE ${CMAKE_CURRENT_SOURCE_DIR}/stream_digest_random.txt)   # D-036: the randomness suite's own digest (test_random.cpp)
 add_executable(arp_tests ${ARP_TEST_SOURCES} $<TARGET_OBJECTS:arp_core_plants>)
 target_include_directories(arp_tests PRIVATE ${ARP_CORE_DIR}/include)
-target_compile_definitions(arp_tests PRIVATE ARP_PLANTS ARP_DIGEST_FILE="${ARP_DIGEST_FILE}")
+target_compile_definitions(arp_tests PRIVATE ARP_PLANTS ARP_DIGEST_FILE="${ARP_DIGEST_FILE}" ARP_RANDOM_DIGEST_FILE="${ARP_RANDOM_DIGEST_FILE}")
 target_compile_options(arp_tests PRIVATE ${ARP_WARN})
 target_link_libraries(arp_tests PRIVATE Threads::Threads)
 
 add_executable(arp_tests_fallback ${ARP_TEST_SOURCES} $<TARGET_OBJECTS:arp_core_plants_soft>)
 target_include_directories(arp_tests_fallback PRIVATE ${ARP_CORE_DIR}/include)
-target_compile_definitions(arp_tests_fallback PRIVATE ARP_PLANTS ARP_FORCE_INT128_FALLBACK ARP_DIGEST_FILE="${ARP_DIGEST_FILE}")
+target_compile_definitions(arp_tests_fallback PRIVATE ARP_PLANTS ARP_FORCE_INT128_FALLBACK ARP_DIGEST_FILE="${ARP_DIGEST_FILE}" ARP_RANDOM_DIGEST_FILE="${ARP_RANDOM_DIGEST_FILE}")
 target_compile_options(arp_tests_fallback PRIVATE ${ARP_WARN})
 target_link_libraries(arp_tests_fallback PRIVATE Threads::Threads)
 

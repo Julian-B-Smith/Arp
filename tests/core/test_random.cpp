@@ -9,8 +9,10 @@
 //   5. chord-stage notes are never randomised.   6. N1 / G1 / G4 / A1 over a session with all three settings non-zero, changing mid-session,
 //   and a seeded fuzz of NEW sessions.
 // Same charter as the other suites: each detector is preceded by its plant (a plant that does not fire is a FAIL); "known answer" assertions carry
-// no plant and say so. NONE of these sessions is recorded in the committed digest: they run through runOnce(), never run(), because the digest
-// was cut before the feature existed and must not move.
+// no plant and say so. NONE of these sessions is recorded in the committed stream digest (tests/core/stream_digest.txt): they run through runOnce(), never
+// run(), because that digest was cut from 0ef0903, before the feature existed, and must not move. They have a digest of their own, tests/core/stream_digest_random.txt
+// (cut from ed943b2, the first core with randomness, BEFORE it was optimised): every clean run of this file is hashed and compared, so a faster core must give the same bytes
+// at every setting. Regenerate it only for a change that is meant to move the randomness output: `bash tools/core_digest.sh regen-random [REV]`.
 //
 // 48 kHz unless a check says otherwise: at 48 kHz one tick is 1.56 samples, so every note's scheduled off tick is reported (an off less than a
 // sample after its on is deferred and carries no tick, SPEC 1.1). 120 bpm: a 1/16 step is 3,840 ticks = 6,000 samples.
@@ -32,12 +34,29 @@
 #ifndef ARP_DIGEST_FILE
 #error "ARP_DIGEST_FILE must name tests/core/stream_digest.txt (tests/core/CMakeLists.txt defines it)"
 #endif
+#ifndef ARP_RANDOM_DIGEST_FILE
+#error "ARP_RANDOM_DIGEST_FILE must name tests/core/stream_digest_random.txt (tests/core/CMakeLists.txt defines it)"
+#endif
 
 namespace arp_test {
 namespace {
 
 Change C(int at, std::function<void(Settings&)> f) { return Change{at, std::move(f)}; }
-constexpr std::int64_t kL16 = 3840;   // a 1/16 step in ticks (TPQ 15360)
+constexpr std::int64_t kL16 = 3840;
+
+// Every CLEAN run of this file (no plant, not an allocation-counting repeat) is hashed (every event field, step record and counter: stream_digest.h) and kept, numbered in
+// the order the checks make them, for the randomness digest at the end of runRandomTests().
+struct RunLine { std::string name; int sr = 0, block = 0; std::uint64_t events = 0, stream = 0, counters = 0; };
+std::vector<RunLine>& runLines() { static std::vector<RunLine> v; return v; }
+Run runR(const Session& s, int block) {
+  Run r = runOnce(s, block);
+  if (s.plants.empty() && !s.countAllocs) {
+    char n[32];
+    std::snprintf(n, sizeof n, "run %04zu", runLines().size());
+    runLines().push_back({n, s.sr, block, r.nEvents, r.digestStream, r.digestCounters});
+  }
+  return r;
+}   // a 1/16 step in ticks (TPQ 15360)
 
 // ---------------------------------------------------------------------------------------------------- the reference: SPEC 4.4 / 4.9 / 5.2 as written
 // Plain int64 and its own floor division: nothing here calls the core's arith.h or randomU. The draw is SPEC 10's, arp::draw (draw.h), whose
@@ -247,7 +266,7 @@ Sess litSess(std::uint32_t seed, int curve, int velR, int gateR) {
 Run play(const Sess& c, int block = 4096, const Plant& pl = {}) {
   Session s = c.s;
   s.plants = pl;
-  return runOnce(s, block);
+  return runR(s, block);
 }
 
 std::string joinI(const std::vector<std::int64_t>& v) {
@@ -292,7 +311,7 @@ void testByteIdentity() {
     curveOnly.base.randomCurve = 100;   // the curve is the shape of the dice and does nothing while both amounts are 0
     Session live = c.s;
     live.base.velRandom = 100; live.base.gateRandom = 100;
-    const Run a = runOnce(base, 4096), b = runOnce(curveOnly, 4096), d = runOnce(live, 4096);
+    const Run a = runR(base, 4096), b = runR(curveOnly, 4096), d = runR(live, 4096);
     diffRuns += d.digestStream != a.digestStream;
     sameRuns += a.digestStream == b.digestStream && a.digestCounters == b.digestCounters && a.nEvents > 50;
   }
@@ -446,7 +465,7 @@ Dist distribution(int curve, const Plant& pl) {
   s.base.order = Order::Chord; s.base.rate = Rate::R1_64; s.base.gate = 100; s.base.gateRandom = 100; s.base.randomCurve = curve; s.base.seed = 4;
   for (int i = 0; i < 8; ++i) s.ins.push_back(K(0, std::string(1, static_cast<char>('a' + i)).c_str(), 40 + 4 * i, 100));
   s.plants = pl;
-  const Run r = runOnce(s, 4096);
+  const Run r = runR(s, 4096);
   Dist d;
   std::string err;
   const std::vector<Obs> obs = observe(r, 960, [](std::int64_t) { return 1; }, err);
@@ -506,7 +525,7 @@ Session stageSession(int velR, int gateR, int curve, const Plant& pl) {
 }
 void testChordStage() {
   std::puts("RN1: chord-stage notes follow the hands: never randomised");
-  const Run off = runOnce(stageSession(0, 0, 0, {}), 64), on = runOnce(stageSession(100, 100, 40, {}), 64), planted = runOnce(stageSession(100, 100, 40, {"randomChordStage"}), 64);
+  const Run off = runR(stageSession(0, 0, 0, {}), 64), on = runR(stageSession(100, 100, 40, {}), 64), planted = runR(stageSession(100, 100, 40, {"randomChordStage"}), 64);
   const std::string chordOff = stageStream(off, true), chordOn = stageStream(on, true), chordPlanted = stageStream(planted, true);
   plant(chordOff != chordPlanted && !chordOff.empty(), "plant randomChordStage: chord-stage notes randomised, and the chord-stage stream differs from the unrandomised one");
   check(!chordOff.empty() && chordOff == chordOn, "chord-stage notes are identical with vel_random = gate_random = 100 (same samples, keys, velocities, ticks, offs): " + std::to_string(std::count(chordOn.begin(), chordOn.end(), '\n')) + " chord-stage events");
@@ -548,18 +567,18 @@ Session atRate(Session s, int sr) {   // the same musical script at another rate
 }
 std::string g1Diverges(const Plant& pl) {
   const Session s = mixSession(pl);
-  const Run ref = runOnce(s, 4096);
+  const Run ref = runR(s, 4096);
   if (ref.evs.size() < 150) return "too few events";
   const std::string want = streamOf(ref);
   for (int blk : {512, 64, 7, 1})
-    if (streamOf(runOnce(s, blk)) != want) return "absolute samples differ at block " + std::to_string(blk);
+    if (streamOf(runR(s, blk)) != want) return "absolute samples differ at block " + std::to_string(blk);
   return "";
 }
 std::string g4Diverges(const Plant& pl) {
   std::string ref;
   for (int sr : {48000, 44100, 96000, 192000}) {
     Session s = atRate(mixSession(pl), sr);
-    const Run r = runOnce(s, 1024);
+    const Run r = runR(s, 1024);
     if (r.evs.size() < 150) return "too few events at " + std::to_string(sr);
     const std::string t = tickStreamOf(r);
     if (ref.empty()) ref = t; else if (t != ref) return "ticks (or velocities) differ at " + std::to_string(sr) + " Hz";
@@ -572,28 +591,28 @@ void testInvariants() {
   const std::string pg1 = g1Diverges({"randomFromBlock"});
   plant(!pg1.empty(), "G1 detects a draw position taken from the block (plant randomFromBlock): " + pg1);
   const std::string g1 = g1Diverges({});
-  const Run base = runOnce(mixSession({}), 64);
+  const Run base = runR(mixSession({}), 64);
   check(g1.empty(), "G1: the session's " + std::to_string(base.evs.size()) + " events (velocity and length randomness, ratchets, ties, a chord step, tempo change, six settings changes) have identical absolute samples and velocities at blocks 4096 / 512 / 64 / 7 / 1" + (g1.empty() ? "" : " - " + g1));
   const std::string pg4 = g4Diverges({"srTickMath"});
   plant(!pg4.empty(), "G4 detects a sample-rate-dependent value in tick math on the randomness session: " + pg4);
   const std::string g4 = g4Diverges({});
   check(g4.empty(), "G4: the randomness session has identical event ticks, velocities and lengths at 44.1 / 48 / 96 / 192 kHz" + (g4.empty() ? "" : " - " + g4));
   Session pd = mixSession({"dropRelease"});
-  plant(!n1(runOnce(pd, 64)).empty(), "N1 detects a dropped release on the randomness session");
+  plant(!n1(runR(pd, 64)).empty(), "N1 detects a dropped release on the randomness session");
   check(n1(base).empty(), "N1: exactly one NoteOff per NoteOn, at least a sample later, over the randomness session (lengths that reach 1 tick included)");
   // N1 where the randomness lands lengths on the minimum: 1/64 notes of 1-2 ticks at 8 kHz (fractions of a sample: the off is deferred a sample, SPEC 1.1)
   Session tiny = minSess().s;
   tiny.sr = 8000; tiny.total = 40000;
-  plant(!n1(runOnce([&] { Session p = tiny; p.plants = {"sameSampleOff"}; return p; }(), 64)).empty(), "N1 detects a 1-tick note whose off lands on its own on sample");
-  check(n1(runOnce(tiny, 64)).empty() && n1(runOnce(tiny, 7)).empty(), "N1: 1-tick randomised notes at 8 kHz (a fraction of a sample long) still end exactly once, a sample after their on");
-  auto allocs = [](const Plant& pl) { Session s = mixSession(pl); s.countAllocs = true; return runOnce(s, 64).allocs; };
+  plant(!n1(runR([&] { Session p = tiny; p.plants = {"sameSampleOff"}; return p; }(), 64)).empty(), "N1 detects a 1-tick note whose off lands on its own on sample");
+  check(n1(runR(tiny, 64)).empty() && n1(runR(tiny, 7)).empty(), "N1: 1-tick randomised notes at 8 kHz (a fraction of a sample long) still end exactly once, a sample after their on");
+  auto allocs = [](const Plant& pl) { Session s = mixSession(pl); s.countAllocs = true; return runR(s, 64).allocs; };
   plant(allocs({"allocInProcess"}) > 0, "A1 detects an allocation in process() on the randomness session");
   check(allocs({}) == 0, "A1: no operator-new inside process() over the randomness session, settings changes included");
   // randomness moves a note's velocity and length and nothing else: the same session with both amounts forced to 0 has the very same ons (sample, key, tick, step)
   Session z = mixSession({});
   z.base.velRandom = 0; z.base.gateRandom = 0;
   for (Change& c : z.cfg) { auto f = c.f; c.f = [f](Settings& x) { f(x); x.velRandom = 0; x.gateRandom = 0; }; }
-  const Run rz = runOnce(z, 64);
+  const Run rz = runR(z, 64);
   auto onSig = [](const Run& r) { std::string o; for (const Rec& e : onsOf(r)) o += std::to_string(e.a) + " " + std::to_string(e.key) + " " + std::to_string(e.tick) + " " + std::to_string(e.ord) + "\n"; return o; };
   const std::string withR = onSig(base), without = onSig(rz);
   check(withR == without && !withR.empty() && streamOf(rz) != streamOf(base), "randomness moves velocity and length only: the ons (sample, key, tick, step) of the randomness session equal those of the same session with both amounts at 0, while the streams differ");
@@ -659,26 +678,108 @@ void testFuzz() {
   std::string first;
   for (std::uint32_t id = 0; id < kSessions; ++id) {
     const Session s = fuzzSession(id, {});
-    const Run ref = runOnce(s, 4096);
+    const Run ref = runR(s, 4096);
     notes += static_cast<int>(onsOf(ref).size());
     const std::string want = streamOf(ref);
     for (int blk : {512, 64, 7})
-      if (streamOf(runOnce(s, blk)) != want) { ++g1Bad; if (first.empty()) first = "session " + std::to_string(id) + " at block " + std::to_string(blk); }
+      if (streamOf(runR(s, blk)) != want) { ++g1Bad; if (first.empty()) first = "session " + std::to_string(id) + " at block " + std::to_string(blk); }
     n1Bad += !n1(ref).empty();
     Session z = s;   // the same session with randomness off must differ (the settings do something)
     z.base.velRandom = 0; z.base.gateRandom = 0;
     for (Change& c : z.cfg) { auto f = c.f; c.f = [f](Settings& x) { f(x); x.velRandom = 0; x.gateRandom = 0; }; }
-    drifted += streamOf(runOnce(z, 4096)) != want;
+    drifted += streamOf(runR(z, 4096)) != want;
   }
   int planted = 0;
   for (std::uint32_t id = 0; id < kSessions && !planted; ++id) {
     Session s = fuzzSession(id, {"randomFromBlock"});
     if (s.base.velRandom == 0 && s.base.gateRandom == 0) continue;
-    planted += streamOf(runOnce(s, 4096)) != streamOf(runOnce(s, 7));
+    planted += streamOf(runR(s, 4096)) != streamOf(runR(s, 7));
   }
   plant(planted > 0, "the fuzz reads red on a draw position taken from the block (plant randomFromBlock)");
   check(g1Bad == 0 && n1Bad == 0 && notes > 500, "fuzz: " + std::to_string(kSessions) + " seeded sessions (all 16 orders, bank and user patterns, ratchets, ties, the chord stage, swing, three random settings changing mid-session): " + std::to_string(notes) + " notes, absolute samples identical at blocks 4096 / 512 / 64 / 7, N1 holds" + (first.empty() ? "" : " - " + first));
   check(drifted > kSessions / 2, "fuzz: switching randomness off changes the stream in " + std::to_string(drifted) + " of the sessions (so the sessions use it)");
+}
+
+// ---------------------------------------------------------------------------------------------------- every curve and every amount (for the digest below)
+// 101 sessions that differ only in random_curve (0..100) and 101 that differ only in the amounts (0..100), each a chord x2 ratchets step with an accent, so every U the formulas can
+// produce for a sub-note and a note index is drawn. They carry no check of their own beyond "they play": their job is to be hashed into the randomness digest, which is what
+// pins a faster implementation of the curve and the divisions to the same bytes at EVERY setting, not only the ones the checks above name.
+void testSweep() {
+  std::puts("RN1: a sweep of every curve and every amount (hashed into the randomness digest)");
+  int notes = 0;
+  for (int pass = 0; pass < 2; ++pass)
+    for (int v = 0; v <= 100; ++v) {
+      Session s;
+      s.sr = 8000; s.total = 14000;
+      s.base.pattern = Pattern::User; s.base.gate = 70; s.base.seed = 1000 + static_cast<std::uint32_t>(v) * 7 + static_cast<std::uint32_t>(pass);
+      UserPattern u;
+      u.length = 2;
+      u.steps[0].pick = kPickChord; u.steps[0].ratchet = 2; u.steps[0].vel = 120;
+      u.steps[1].pick = kPickChord; u.steps[1].ratchet = 3; u.steps[1].gate = 160;
+      s.userPattern = u;
+      s.ins = {K(0, "a", 55, 20), K(0, "b", 64, 100), K(0, "c", 67, 127)};
+      if (pass == 0) { s.base.randomCurve = v; s.base.velRandom = 100; s.base.gateRandom = 100; }
+      else { s.base.randomCurve = (v * 37) % 101; s.base.velRandom = v; s.base.gateRandom = 100 - v; }
+      notes += static_cast<int>(onsOf(runR(s, 64)).size());
+    }
+  check(notes > 202 * 20, "the sweep plays: " + std::to_string(notes) + " notes over 202 sessions");
+}
+
+// ---------------------------------------------------------------------------------------------------- the randomness digest
+// One line per clean run of this file, in the order made: `name <TAB> sr block events stream-hash counters-hash`. The committed file is tests/core/stream_digest_random.txt.
+std::vector<std::string> digestTextLines() {
+  std::vector<std::string> v;
+  for (const RunLine& l : runLines())
+    v.push_back(l.name + "\t" + std::to_string(l.sr) + " " + std::to_string(l.block) + " " + std::to_string(l.events) + " " + hex16(l.stream) + " " + hex16(l.counters));
+  return v;
+}
+std::vector<std::string> committedDigestLines(const std::string& text) {
+  std::vector<std::string> v;
+  std::size_t from = 0;
+  while (from < text.size()) {
+    std::size_t to = text.find('\n', from);
+    if (to == std::string::npos) to = text.size();
+    const std::string l = text.substr(from, to - from);
+    if (!l.empty() && l[0] != '#') v.push_back(l);
+    from = to + 1;
+  }
+  return v;
+}
+// "" when equal, else why not (the first few differing runs, by name).
+std::string digestDiff(const std::vector<std::string>& got, const std::vector<std::string>& want) {
+  std::string out;
+  int shown = 0;
+  if (got.size() != want.size()) out += "the file has " + std::to_string(want.size()) + " runs, the suite made " + std::to_string(got.size()) + "; ";
+  for (std::size_t i = 0; i < got.size() && i < want.size(); ++i)
+    if (got[i] != want[i] && shown++ < 3) out += "run " + got[i].substr(0, got[i].find('\t')) + " differs (" + got[i].substr(got[i].find('\t') + 1) + " vs " + want[i].substr(want[i].find('\t') + 1) + "); ";
+  return out;
+}
+void testDigest() {
+  std::puts("RN1: the randomness digest: a faster core gives the same bytes at every setting");
+  const std::vector<std::string> got = digestTextLines();
+  if (std::getenv("ARP_RANDOM_DIGEST_WRITE") != nullptr) {   // regeneration: tools/core_digest.sh regen-random; the check fails on purpose so it cannot stay switched on
+    if (std::FILE* f = std::fopen(ARP_RANDOM_DIGEST_FILE, "w")) {
+      std::fprintf(f, "# arp randomness digest v1 (tests/core/test_random.cpp): every clean run of the RN1 suite, in the order made. Columns: name <TAB> sample-rate block events stream-hash counters-hash\n");
+      std::fprintf(f, "# (every event field, step record and counter: tests/core/stream_digest.h). Cut from the first core with randomness (ed943b2), before it was optimised.\n");
+      if (const char* note = std::getenv("ARP_DIGEST_NOTE")) std::fprintf(f, "# %s\n", note);
+      for (const std::string& l : got) std::fprintf(f, "%s\n", l.c_str());
+      std::fclose(f);
+    }
+    check(false, "ARP_RANDOM_DIGEST_WRITE is set: wrote " + std::to_string(got.size()) + " runs to the randomness digest; rerun without it to check");
+    return;
+  }
+  const std::vector<std::string> want = committedDigestLines(slurp(ARP_RANDOM_DIGEST_FILE));
+  if (want.empty()) { check(false, "the randomness digest tests/core/stream_digest_random.txt is missing or empty"); return; }
+  // plants first: one hash bit flipped in one run, and a file missing its last run, are both named
+  std::vector<std::string> flipped = want;
+  const std::size_t at = want.size() / 2;
+  flipped[at][flipped[at].size() - 1] = flipped[at].back() == '0' ? '1' : '0';
+  std::vector<std::string> shorter = want;
+  shorter.pop_back();
+  const std::string d1 = digestDiff(got, flipped), d2 = digestDiff(got, shorter);
+  plant(d1.find(got[at].substr(0, got[at].find('\t'))) != std::string::npos && !d2.empty(), "a randomness-digest line with one hash digit changed is named (" + got[at].substr(0, got[at].find('\t')) + "), and a digest missing its last run is caught");
+  const std::string d = digestDiff(got, want);
+  check(d.empty(), "randomness digest: all " + std::to_string(got.size()) + " clean runs of the RN1 suite (known answers, bounds, distribution, chord stage, the mixed session at five block sizes and four rates, the fuzz, the curve and amount sweep) hash to the committed digest cut from ed943b2 " + d);
 }
 
 }  // namespace
@@ -692,6 +793,8 @@ void runRandomTests() {
   testChordStage();
   testInvariants();
   testFuzz();
+  testSweep();
+  testDigest();
 }
 
 }  // namespace arp_test
