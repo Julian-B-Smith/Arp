@@ -1,5 +1,5 @@
 # arp bench stream digest (tools/core_digest.sh): scenario <TAB> rate block events stream-hash counters-hash, from the SHIPPED core over the benchmark's scenarios.
-# generated from core/ at commit 0ef0903: core/src/core.cpp sha256 6bdfd5940d48885706de0cebb873272686f58e3a1aff9af1894be6b076407bff, core/include/arp/core.h sha256 1b8873952ff09f037a6475d77bf787af6b2e5e2696f6fbdadb45ccb3bfb4a41e
+# generated from core/ at commit 73ba26b: core/src/core.cpp sha256 5fd238fb367ccfee0d602b5bc70c3e52a4b6f2f6ebadf2732d475592809781f9, core/include/arp/core.h sha256 b9505f9e05bb2666dedaa6a3100903d43793d2bebb8cfa8da403f203eeca7cd5
 idle: no keys held, 1/16 @120	48000 32 0 cbf29ce484222325 ed46cb7923bdab04
 idle: no keys held, 1/16 @120	48000 64 0 cbf29ce484222325 ed46cb7923bdab04
 idle: no keys held, 1/16 @120	48000 128 0 cbf29ce484222325 ed46cb7923bdab04
@@ -672,36 +672,36 @@ WORST CASE B++: B+ with 4 transposition steps of 2 semitones	192000 128 264623 b
 INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	48000 16 264449 1111fee2d47891bb 57ed62988f655720
 INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	48000 4096 178816 fb53ab45e613ae42 3b6b6343f875168b
 INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	192000 128 264449 0ad1da978a68854f 57ed62988f655720
-INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.125x per 1/64 step (off and on in one sample)	48000 16 265490 88d57a71a4d174ec 97edd25109672fe3
-INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.125x per 1/64 step (off and on in one sample)	48000 4096 178816 ea5159cd206ee1a2 5cd3feb4cc1ff13e
-INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.125x per 1/64 step (off and on in one sample)	192000 128 265490 6f08a00c33f94288 97edd25109672fe3
-INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.25x per 1/64 step (off and on in one sample)	48000 16 269714 61d210b888fa20e8 ed25b2f33b61cc53
-INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.25x per 1/64 step (off and on in one sample)	48000 4096 178816 701998d8c17473f5 81e71e2e5a6a37ca
-INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.25x per 1/64 step (off and on in one sample)	192000 128 269714 0a800f4f4c359814 ed25b2f33b61cc53
-INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.5x per 1/64 step (off and on in one sample)	48000 16 271832 2c8c37416b0a0652 5649ae4c3479bb3e
-INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.5x per 1/64 step (off and on in one sample)	48000 4096 178816 6d3f9d6bbd8ebff3 004c99e8b88dd5c6
-INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.5x per 1/64 step (off and on in one sample)	192000 128 271832 deb91ba55b205b1e 5649ae4c3479bb3e
-INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 16 272896 3900be978f622c4a 5980827781fdc5f1
-INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 4096 178816 fde39cda52e3b33b 2cd69ae20e1562c1
-INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	192000 128 272896 5211d4df850be9ed 5980827781fdc5f1
+INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.125x per 1/64 step (off and on in one sample)	48000 16 265325 31f6f3e71c9f50ec ac483b8969818c7f
+INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.125x per 1/64 step (off and on in one sample)	48000 4096 178816 b72612f95ef8c364 703d5328d60dd416
+INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.125x per 1/64 step (off and on in one sample)	192000 128 265426 0359079ab8bbf9a6 f16f425ed75d17fe
+INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.25x per 1/64 step (off and on in one sample)	48000 16 269549 4314b78212b08543 ed2153907df55cfb
+INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.25x per 1/64 step (off and on in one sample)	48000 4096 178816 4c4affc80e656f81 657065265baf8b52
+INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.25x per 1/64 step (off and on in one sample)	192000 128 269650 25a90c4163ea5a49 61855b06456351e3
+INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.5x per 1/64 step (off and on in one sample)	48000 16 271445 26c366d5609aafb9 c984e9fe43bb1f80
+INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.5x per 1/64 step (off and on in one sample)	48000 4096 178816 ab89fc1a32041d90 91953bdc6752a966
+INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 0.5x per 1/64 step (off and on in one sample)	192000 128 271362 4621045ef9440a67 e192ada02c0c7989
+INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 16 272512 92b885cc9a502bc5 58faf4b41300fc00
+INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 4096 178816 12d9425aed932d66 bb34c495531f0dcd
+INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	192000 128 272296 c0b8cd5c270bbb2d 36dd2efedb75422c
 INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 2x per 1/64 step (off and on in one sample)	48000 16 272896 3900be978f622c4a 782e9dc9f66f87cc
 INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 2x per 1/64 step (off and on in one sample)	48000 4096 178816 fde39cda52e3b33b 4d075e9d5fbf27f0
 INPUT re-struck chord: A at ratchet 4, all 32 keys re-struck 2x per 1/64 step (off and on in one sample)	192000 128 272896 5211d4df850be9ed 782e9dc9f66f87cc
 INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	48000 16 264449 1111fee2d47891bb 57ed62988f655720
 INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	48000 4096 178816 fb53ab45e613ae42 3b6b6343f875168b
 INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	192000 128 264449 0ad1da978a68854f 57ed62988f655720
-INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 16 255761 6ab0ea51f2e5e395 003e420c3f90a355
-INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 4096 178992 b7a3bd5f11de25dc 1650da281405aed3
-INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	192000 128 255761 8f65c8ef12e0127d 003e420c3f90a355
-INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 16 264273 6143c59c50f77253 f07f75a362b87ad2
-INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 4096 178992 bca35039e6135048 ba52f6f55390283b
-INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	192000 128 264273 91d9fe659c1f6cf7 f07f75a362b87ad2
-INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 16 281329 8dc18816a0631f00 fd40ef4233dd4c24
-INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 4096 178992 e2a93db5e7b4de20 e874cd6462540252
-INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	192000 128 281329 8c5074ae595e947c fd40ef4233dd4c24
-INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 8x per 1/64 step (on one sample after the off)	48000 16 315441 aa8eef62d688baa7 037f3559ff9eb224
-INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 8x per 1/64 step (on one sample after the off)	48000 4096 178992 4f736909b26fb85e 71516dcee901e2e4
-INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 8x per 1/64 step (on one sample after the off)	192000 128 315441 143000c01c4a7493 037f3559ff9eb224
+INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 16 255937 7a03f68089f61141 5a99fddfbc0e5305
+INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 4096 178992 5b30e229d049a907 4eded356f7a88f4b
+INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	192000 128 255937 07e8345dcaf3d949 5a99fddfbc0e5305
+INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 16 264449 2d1a1245e28fea43 a0b42212a121d4a2
+INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 4096 178992 db2870b7dd0f9e74 a8bcd644eb005df8
+INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	192000 128 264449 6e9ef4294bdab1ff a0b42212a121d4a2
+INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 16 281505 72b014e28e1120d0 8d9a04aa5da97ef4
+INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 4096 178992 898713d35ac7ed9d 4761c531a909d4e1
+INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	192000 128 281505 245f9a9cf8c77a6c 8d9a04aa5da97ef4
+INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 8x per 1/64 step (on one sample after the off)	48000 16 315617 46311182ef74da7f e1d2ac0a3b0ad3d4
+INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 8x per 1/64 step (on one sample after the off)	48000 4096 178992 202bd7542dfb459e 4f14783a3aa5e427
+INPUT 4 keys re-struck: A at ratchet 4, 4 of the 32 keys re-struck 8x per 1/64 step (on one sample after the off)	192000 128 315617 72763d548b4b4693 e1d2ac0a3b0ad3d4
 INPUT new-key flood: A at ratchet 4, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	48000 16 66789 42722ebef5793391 5084492f82f139d0
 INPUT new-key flood: A at ratchet 4, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	48000 4096 62711 bb1b334b87e76096 692b1af7426b98db
 INPUT new-key flood: A at ratchet 4, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	192000 128 66789 5c8e9da2fffa25d6 5084492f82f139d0
@@ -741,15 +741,15 @@ INPUT new-key flood: A at ratchet 4, 32 keys x 4 refs, presses on new keys at 17
 INPUT re-struck chord: A at ratchet 1, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	48000 16 66234 fb78256d95e64535 81a4699ea7d98b48
 INPUT re-struck chord: A at ratchet 1, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	48000 4096 62256 50243c1af5d78584 8f7934747b4a8ecc
 INPUT re-struck chord: A at ratchet 1, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	192000 128 66234 9f004fefb123c08e 81a4699ea7d98b48
-INPUT re-struck chord: A at ratchet 1, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 16 68352 8321508f821f4432 74b90925066c8148
-INPUT re-struck chord: A at ratchet 1, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 4096 64256 14fb54a0124a518b e90d483446e507b4
-INPUT re-struck chord: A at ratchet 1, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	192000 128 68352 32abd41d471908a5 74b90925066c8148
+INPUT re-struck chord: A at ratchet 1, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 16 68256 6693de4df0461e69 4c2a59bbe36cdc8c
+INPUT re-struck chord: A at ratchet 1, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 4096 64166 9bdbbcf2957a8e85 1a96dd92fee5eb10
+INPUT re-struck chord: A at ratchet 1, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	192000 128 68202 ca7eef692faa03fb 9ee0e756d8b76d59
 INPUT 4 keys re-struck: A at ratchet 1, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	48000 16 66234 fb78256d95e64535 81a4699ea7d98b48
 INPUT 4 keys re-struck: A at ratchet 1, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	48000 4096 62256 50243c1af5d78584 8f7934747b4a8ecc
 INPUT 4 keys re-struck: A at ratchet 1, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	192000 128 66234 9f004fefb123c08e 81a4699ea7d98b48
-INPUT 4 keys re-struck: A at ratchet 1, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 16 95994 d5b0bf2081bd5102 56060c2c63c7640d
-INPUT 4 keys re-struck: A at ratchet 1, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 4096 90192 481d46001ca714b5 f9bad4fe480fd8a3
-INPUT 4 keys re-struck: A at ratchet 1, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	192000 128 95994 63faba8f1703d285 43312b6d6bc8b808
+INPUT 4 keys re-struck: A at ratchet 1, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 16 96058 982c710b15a47159 c6c3810c9ba23435
+INPUT 4 keys re-struck: A at ratchet 1, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 4096 90256 3d333df2ab626525 f437baa6bf72520b
+INPUT 4 keys re-struck: A at ratchet 1, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	192000 128 96058 2fc534ebf994a572 82d40ce9180c5b9c
 INPUT new-key flood: A at ratchet 1, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	48000 16 16610 25d90628b6e4335a e228780228899437
 INPUT new-key flood: A at ratchet 1, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	48000 4096 15608 fef0301668826f79 fd2ff15b53451745
 INPUT new-key flood: A at ratchet 1, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	192000 128 16610 0a3b12901d739ccf e228780228899437
@@ -777,21 +777,21 @@ INPUT 1 of 4 refs re-struck: A at ratchet 4 with six chord shifts +1..+6, 32 key
 INPUT re-struck chord: B+ chromatic, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	48000 16 272896 41122a15bfe99283 710d213a2e3ad9b7
 INPUT re-struck chord: B+ chromatic, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	48000 4096 178816 0869b2b8179636b2 7e0d3270135ac474
 INPUT re-struck chord: B+ chromatic, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	192000 128 272896 0df108bd9f18bb50 710d213a2e3ad9b7
-INPUT re-struck chord: B+ chromatic, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 16 272896 d698eafa15bb121a ac156938393c1f2d
-INPUT re-struck chord: B+ chromatic, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 4096 178816 a56528d5976cae4b e562403be4cd7c56
-INPUT re-struck chord: B+ chromatic, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	192000 128 272896 2f765e9b5acb850d ac156938393c1f2d
+INPUT re-struck chord: B+ chromatic, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 16 272896 7a077dbf70c00f5a ac156938393c1f2d
+INPUT re-struck chord: B+ chromatic, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 4096 178816 31a08b7c0bb26b7c e562403be4cd7c56
+INPUT re-struck chord: B+ chromatic, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	192000 128 272896 d629a85f27f5d2da ac156938393c1f2d
 INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	48000 16 272896 41122a15bfe99283 710d213a2e3ad9b7
 INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	48000 4096 178816 0869b2b8179636b2 7e0d3270135ac474
 INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	192000 128 272896 0df108bd9f18bb50 710d213a2e3ad9b7
-INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 16 264343 4d4e45db2c40c9a8 7d9de0085e12358a
-INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 4096 178992 575ec89e0f269991 d286d24f0088a3dc
-INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	192000 128 264343 24126f98b311cd20 7d9de0085e12358a
-INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 16 272855 253ffae1723d7aa8 f7abf8f0368a7d1d
-INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 4096 178992 f7fd997d1fd6ce8e be37b7b271538462
-INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	192000 128 272855 00ee4ab720b71220 f7abf8f0368a7d1d
-INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 16 289911 fc27fa7909ac8960 e24932dcaa8811af
-INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 4096 178992 4914a62a48b56301 4cc33960cbd1e3d8
-INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	192000 128 289911 f5430bc88ec1f088 e24932dcaa8811af
+INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 16 264517 281d4a4afb8f9a27 cb01f128cd5fa37f
+INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 4096 178992 6272065e5fd4e744 6afffbd907690906
+INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	192000 128 264517 4aa66da602f6cd02 cb01f128cd5fa37f
+INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 16 273029 f3992d25ba36db4f 68aecf6389ebf0bc
+INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 4096 178992 dd25b29b52da88b6 c83a41587aa7cb0d
+INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	192000 128 273029 44dce5574e9978ea 68aecf6389ebf0bc
+INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 16 290085 75cd5edfba2a3cbf bbd9f8322d9a0b5a
+INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	48000 4096 178992 0b1090e6dee02698 410cde2738032b1d
+INPUT 4 keys re-struck: B+ chromatic, 4 of the 32 keys re-struck 4x per 1/64 step (on one sample after the off)	192000 128 290085 86021116e6703cf2 bbd9f8322d9a0b5a
 INPUT new-key flood: B+ chromatic, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	48000 16 68459 d64d5e00ce227e11 55dc058a359c7f7e
 INPUT new-key flood: B+ chromatic, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	48000 4096 64283 605da6324c1029fa 935a77de93e29e36
 INPUT new-key flood: B+ chromatic, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	192000 128 68459 236fc6d5d567d2a1 55dc058a359c7f7e
@@ -813,18 +813,18 @@ INPUT new-key flood: B+ chromatic, 32 keys x 4 refs, presses on new keys at 1700
 INPUT re-struck chord: B++ chromatic transposed, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	48000 16 264623 8a160e51c9f2dfc4 1953bfd023d6b30a
 INPUT re-struck chord: B++ chromatic transposed, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	48000 4096 178816 bc2b59554e5f14ba 3356287fc0d7bad9
 INPUT re-struck chord: B++ chromatic transposed, all 32 keys re-struck 0x per 1/64 step (off and on in one sample)	192000 128 264623 ba6b7e2d0c759092 1953bfd023d6b30a
-INPUT re-struck chord: B++ chromatic transposed, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 16 272896 d698eafa15bb121a ac156938393c1f2d
-INPUT re-struck chord: B++ chromatic transposed, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 4096 178816 a56528d5976cae4b e562403be4cd7c56
-INPUT re-struck chord: B++ chromatic transposed, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	192000 128 272896 2f765e9b5acb850d ac156938393c1f2d
+INPUT re-struck chord: B++ chromatic transposed, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 16 272176 824f1f8f6128be89 049703f9020bb5ab
+INPUT re-struck chord: B++ chromatic transposed, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	48000 4096 178816 b45004012ed812aa 94311cc8fe44fdea
+INPUT re-struck chord: B++ chromatic transposed, all 32 keys re-struck 1x per 1/64 step (off and on in one sample)	192000 128 271771 048c0e7527a46a6a 91704341eac6d6ff
 INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	48000 16 264623 8a160e51c9f2dfc4 1953bfd023d6b30a
 INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	48000 4096 178816 bc2b59554e5f14ba 3356287fc0d7bad9
 INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 0x per 1/64 step (on one sample after the off)	192000 128 264623 ba6b7e2d0c759092 1953bfd023d6b30a
-INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 16 255963 36ee12b987fbdbe8 b529e0e59407203a
-INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 4096 178992 7d5b802b855f1a3b 5f4dc057d3d82c6f
-INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	192000 128 255962 4b54967d27fa3678 76a5323ed7d51587
-INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 16 264475 a0af7795198a94f0 7fb2ae60404e21bd
-INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 4096 178992 639d9c834d2d14ef 3c446f8f10c8c926
-INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	192000 128 264474 013beb1eff4cb254 8fc5e7d45b96c624
+INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 16 256136 998cd232cb230a68 69c477dc613878d1
+INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	48000 4096 178992 ce726a38dacf90af 96f8e7c33b438975
+INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 1x per 1/64 step (on one sample after the off)	192000 128 256137 cefb5f8e509af7fa d4d1c0bae5845f1c
+INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 16 264648 bccbe3a115cf0c78 dc6ba962c9807bde
+INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	48000 4096 178992 8d7f90ff526fc38f 514a3b1d8b53c7fa
+INPUT 4 keys re-struck: B++ chromatic transposed, 4 of the 32 keys re-struck 2x per 1/64 step (on one sample after the off)	192000 128 264649 99b07a42496ab6fe 4052249286ef40df
 INPUT new-key flood: B++ chromatic transposed, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	48000 16 66763 2185d4816de0de40 aa242d10b7ead112
 INPUT new-key flood: B++ chromatic transposed, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	48000 4096 62683 169d8c0e3a488d5c 138c786e63386d32
 INPUT new-key flood: B++ chromatic transposed, 32 keys x 4 refs, presses on new keys at 0 note events/s, chord stage off	192000 128 66763 3da88a6eaa5b828b aa242d10b7ead112

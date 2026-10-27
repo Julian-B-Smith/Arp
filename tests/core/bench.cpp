@@ -170,7 +170,7 @@ std::vector<Scenario> scenarios() {
   });
   add("WORST CASE B++: B+ with 4 transposition steps of 2 semitones", [loadBHeavy](Scenario& s) { loadBHeavy(s); s.st.steps = 4; s.st.stepSize = 2; s.lightDigest = true; });
   // D-036: note randomness at its most expensive, 100 % on all three settings: every sub-note of every note draws twice (velocity and length) and blends two
-  // integer curves. These two have NO entry in tests/core/stream_digest_bench.txt (cut from 0ef0903, which has no randomness, and not regenerated): `noDigest`; they have
+  // integer curves. These two have NO entry in tests/core/stream_digest_bench.txt (cut from 0ef0903, which has no randomness; from 73ba26b since D-039): `noDigest`; they have
   // their own, tests/core/stream_digest_random_bench.txt (`arp_bench --digest-random`). The cores before D-036 have no such settings: ARP_NO_RANDOM (tools/core_digest.sh) leaves them out.
 #ifndef ARP_NO_RANDOM
   const char* const kNoDigestWhy = "D-036: the committed bench digest was cut from 0ef0903, which has no note randomness";
@@ -472,14 +472,14 @@ Result measure(const Scenario& sc, int sr, int block, const Params& base, double
 // `perturb` is the must-fail control: it changes one field of one event in what is HASHED (never in the core), and the diff must see it.
 constexpr double kDigestSeconds = 2.0, kLightDigestSeconds = 1.0;
 
-// `randomOnly`: the scenarios the main digest leaves out (noDigest: they use note randomness, which the file cut from 0ef0903 cannot hold) - their own file, cut from ed943b2.
+// `randomOnly`: the scenarios the main digest leaves out (noDigest: they use note randomness, which the file cut from 0ef0903 could not hold) - their own file, cut from ed943b2 (from 73ba26b since D-039).
 void digestAll(bool perturb, bool randomOnly) {
   struct Cfg { int sr, block; };
   std::vector<Cfg> full, light;
   for (int sr : {48000, 44100, 96000, 192000})
     for (int block : {32, 64, 128, 512, 4096}) full.push_back({sr, block});
   light = {{48000, 16}, {48000, 4096}, {192000, 128}};   // the heavy D-032 loads: the rate, a tiny and a huge block; the engine is block-partition independent, the matrix above proves that
-  if (randomOnly) std::printf("# the note-randomness scenarios only (D-036; tools/core_digest.sh regen-random): cut from ed943b2, the first core with randomness, before it was optimised\n");
+  if (randomOnly) std::printf("# the note-randomness scenarios only (D-036; tools/core_digest.sh regen-random): cut from ed943b2, the first core with randomness, before it was optimised; from 73ba26b since D-039\n");
   std::printf("# arp bench stream digest: scenario <TAB> rate block events stream-hash counters-hash (%.0f s of audio each, %.0f s for the heavy input scenarios; tests/core/stream_digest.h)\n", kDigestSeconds, kLightDigestSeconds);
   for (const Scenario& sc : scenarios()) {
     if ((sc.noDigest != nullptr) != randomOnly) continue;

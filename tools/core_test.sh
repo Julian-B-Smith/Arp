@@ -108,7 +108,7 @@ done
 # field, step record and counter), against tests/core/stream_digest_bench.txt, generated from the pre-optimisation core. Both int128 paths must match
 # the one file. The plant comes first: the same run with ONE field of ONE event changed in what is hashed (never in the core) must differ.
 # Run twice: the M3 corpus (cut from 0ef0903) and the scenarios that use note randomness (D-036: stream_digest_random_bench.txt, cut from ed943b2, the first core with randomness,
-# before it was optimised; left out of the first file because 0ef0903 cannot hold them).
+# before it was optimised; left out of the first file because 0ef0903 cannot hold them). Both are cut from 73ba26b since D-039 (a decided output change).
 digest_rc=0
 bench_digest_check() {   # <file> <digest flag> <perturb flag> <what the file holds>
   local file="$1" dflag="$2" pflag="$3" what="$4" bin
@@ -129,8 +129,8 @@ bench_digest_check() {   # <file> <digest flag> <perturb flag> <what the file ho
     fi
   done
 }
-bench_digest_check "$repo/tests/core/stream_digest_bench.txt" --digest --digest-perturb "settings-only scenarios x 4 rates x 5 block sizes, 2 s each; the heavy input scenarios x 3 rate / block pairs, 1 s each, cut from 0ef0903"
-bench_digest_check "$repo/tests/core/stream_digest_random_bench.txt" --digest-random --digest-random-perturb "the note-randomness scenarios, cut from ed943b2"
+bench_digest_check "$repo/tests/core/stream_digest_bench.txt" --digest --digest-perturb "settings-only scenarios x 4 rates x 5 block sizes, 2 s each; the heavy input scenarios x 3 rate / block pairs, 1 s each, cut from 73ba26b (D-039)"
+bench_digest_check "$repo/tests/core/stream_digest_random_bench.txt" --digest-random --digest-random-perturb "the note-randomness scenarios, cut from 73ba26b (D-039)"
 [ "$digest_rc" = 0 ] || rc=1
 
 # The copy-in list (docs/horde-copy-in.md): the file list audited, then the listed files alone built into the shipped-library smoke.

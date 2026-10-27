@@ -1,7 +1,8 @@
 // test_random.cpp - RN1 (SPEC 4.4, 4.9, 5.2, 11; D-036): velocity and gate randomness with a shared curve.
-//   1. byte-identity at 0:   with vel_random = gate_random = 0 the output is the core-without-it's. The proof is the COMMITTED digests (generated
-//                            from 0ef0903, a core that has no randomness; the suite's own "stream digest" check and the bench digest); here also
-//                            a same-session comparison and a check that the digest file still says where it was cut.
+//   1. byte-identity at 0:   with vel_random = gate_random = 0 the output is the core-without-it's. The proof was the COMMITTED digests (generated
+//                            from 0ef0903, a core that has no randomness; the suite's own "stream digest" check and the bench digest) until D-039
+//                            moved the output on purpose; they are now cut from 73ba26b (D-039), whose output with its one change switched off
+//                            reproduced the 0ef0903 digests byte for byte. Here also a same-session comparison and a check of where the digest was cut.
 //   2. known answers:        exact velocity and length of every note of several sessions against a reference written HERE from SPEC 4.4 / 4.9 /
 //                            5.2 (integer math, own floor division) and, for a few notes, against literals computed by a separate Python
 //                            implementation of the same text (tools/lab_smoke.mjs checks the same literals against the lab's JS).
@@ -10,8 +11,8 @@
 //   and a seeded fuzz of NEW sessions.
 // Same charter as the other suites: each detector is preceded by its plant (a plant that does not fire is a FAIL); "known answer" assertions carry
 // no plant and say so. NONE of these sessions is recorded in the committed stream digest (tests/core/stream_digest.txt): they run through runOnce(), never
-// run(), because that digest was cut from 0ef0903, before the feature existed, and must not move. They have a digest of their own, tests/core/stream_digest_random.txt
-// (cut from ed943b2, the first core with randomness, BEFORE it was optimised): every clean run of this file is hashed and compared, so a faster core must give the same bytes
+// run(), because that digest was cut from 0ef0903, before the feature existed (and is cut from 73ba26b since D-039). They have a digest of their own, tests/core/stream_digest_random.txt
+// (cut from ed943b2, the first core with randomness, BEFORE it was optimised; from 73ba26b since D-039): every clean run of this file is hashed and compared, so a faster core must give the same bytes
 // at every setting. Regenerate it only for a change that is meant to move the randomness output: `bash tools/core_digest.sh regen-random [REV]`.
 //
 // 48 kHz unless a check says otherwise: at 48 kHz one tick is 1.56 samples, so every note's scheduled off tick is reported (an off less than a
@@ -296,12 +297,14 @@ std::string slurp(const char* path) {
 void testByteIdentity() {
   std::puts("RN1: at vel_random = gate_random = 0 the output is byte-identical to the core without the feature");
   // The committed digests ARE the check: tests/core/stream_digest.txt and stream_digest_bench.txt were generated from 0ef0903, which has no
-  // randomness, and are NOT regenerated for this change; the suite's "stream digest" check (every run of the suite, on both int128 paths) and
-  // tools/core_test.sh's bench digest compare this core to them. What this test adds: the digests still say where they were cut, and the
+  // randomness, and were not regenerated for D-036; the suite's "stream digest" check (every run of the suite, on both int128 paths) and
+  // tools/core_test.sh's bench digest compared this core to them. D-039 (an input yields its sample to what is earlier in the music) moved the
+  // output on purpose, so they are cut from 73ba26b now; that core with the D-039 order switched off reproduced the 0ef0903 digests byte for byte
+  // (trace 2026-10-27-g4-handover), so byte-identity at 0 carries over. What this test adds: the digests still say where they were cut, and the
   // curve alone changes nothing.
-  plant(digestCutFrom("# generated from core/ at commit 3f76354: core/src/core.cpp sha256 0") != "0ef0903", "a digest header naming another commit is not taken for the pre-randomness one");
+  plant(digestCutFrom("# generated from core/ at commit 3f76354: core/src/core.cpp sha256 0") != "73ba26b", "a digest header naming another commit is not taken for the D-039 one");
   const std::string cut = digestCutFrom(slurp(ARP_DIGEST_FILE));
-  check(cut == "0ef0903", "the committed stream digest was cut from 0ef0903 (a core without randomness) and has not been regenerated: header says \"" + cut + "\"");
+  check(cut == "73ba26b", "the committed stream digest was cut from 73ba26b (D-039's core; before it, 0ef0903, a core without randomness) and has not been regenerated since: header says \"" + cut + "\"");
   std::vector<Sess> all = {chordSess(0, 0, 0, 11), ratchetSess(), tieSess(), minSess()};
   int sameRuns = 0, diffRuns = 0;
   for (Sess& c : all) {
@@ -981,7 +984,7 @@ void testDigest() {
   if (std::getenv("ARP_RANDOM_DIGEST_WRITE") != nullptr) {   // regeneration: tools/core_digest.sh regen-random; the check fails on purpose so it cannot stay switched on
     if (std::FILE* f = std::fopen(ARP_RANDOM_DIGEST_FILE, "w")) {
       std::fprintf(f, "# arp randomness digest v1 (tests/core/test_random.cpp): every clean run of the RN1 suite, in the order made. Columns: name <TAB> sample-rate block events stream-hash counters-hash\n");
-      std::fprintf(f, "# (every event field, step record and counter: tests/core/stream_digest.h). Cut from the first core with randomness (ed943b2), before it was optimised.\n");
+      std::fprintf(f, "# (every event field, step record and counter: tests/core/stream_digest.h). Cut from the first core with randomness (ed943b2), before it was optimised; from 73ba26b since D-039.\n");
       if (const char* note = std::getenv("ARP_DIGEST_NOTE")) std::fprintf(f, "# %s\n", note);
       for (const std::string& l : got) std::fprintf(f, "%s\n", l.c_str());
       std::fclose(f);
@@ -1000,7 +1003,7 @@ void testDigest() {
   const std::string d1 = digestDiff(got, flipped), d2 = digestDiff(got, shorter);
   plant(d1.find(got[at].substr(0, got[at].find('\t'))) != std::string::npos && !d2.empty(), "a randomness-digest line with one hash digit changed is named (" + got[at].substr(0, got[at].find('\t')) + "), and a digest missing its last run is caught");
   const std::string d = digestDiff(got, want);
-  check(d.empty(), "randomness digest: all " + std::to_string(got.size()) + " clean runs of the RN1 suite (known answers, bounds, distribution, chord stage, the mixed session at five block sizes and four rates, the fuzz, the curve and amount sweep) hash to the committed digest cut from ed943b2 " + d);
+  check(d.empty(), "randomness digest: all " + std::to_string(got.size()) + " clean runs of the RN1 suite (known answers, bounds, distribution, chord stage, the mixed session at five block sizes and four rates, the fuzz, the curve and amount sweep) hash to the committed digest (cut from ed943b2; from 73ba26b since D-039) " + d);
 }
 
 }  // namespace
