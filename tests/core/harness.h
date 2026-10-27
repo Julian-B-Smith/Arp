@@ -5,11 +5,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -163,10 +165,9 @@ struct SimHost {
     for (const Seg& s : segs) if (s.start <= i) g = &s;
     return *g;
   }
-  I128 posAt(int i) const {
-    const Seg& g = segAt(i);
-    return g.playing ? g.base + I128::mul(i - g.start, g.tm * kTpq) : g.base;
-  }
+  // The position this host would reach at sample `i` if segment `g` simply kept going (its continuation).
+  I128 continued(const Seg& g, int i) const { return g.playing ? g.base + I128::mul(i - g.start, g.tm * kTpq) : g.base; }
+  I128 posAt(int i) const { return continued(segAt(i), i); }
   // A transport change at sample `at`: any of play/stop, seek (in beats), tempo.
   void set(int at, std::optional<bool> playing, std::optional<double> seekBeats = std::nullopt, std::optional<double> bpm = std::nullopt) {
     ops.push_back({at, playing, seekBeats, bpm});
@@ -175,10 +176,35 @@ struct SimHost {
     segs.push_back(mk(at, playing.value_or(prev.playing), bpm.value_or(prev.bpm), seekBeats ? I128::mul(std::llround(*seekBeats * kTpq), D) : pos));
     std::stable_sort(segs.begin(), segs.end(), [](const Seg& a, const Seg& b) { return a.start < b.start; });
   }
-  // The same script at another sample rate, every sample position mapped through `sc`.
-  std::shared_ptr<SimHost> rescaled(int newSr, const std::function<int(int)>& sc) const {
+  // The same script at another sample rate, every sample position mapped through `sc`, every musical position kept EXACTLY.
+  // Only a sample can be rounded, never a position. A position the script holds or sets (a stop holds where it stopped, a start resumes from
+  // there, a seek names one) is this host's own exact position in the new rate's posNum units (x newSr / sr). Re-deriving it from the ROUNDED
+  // sample instead (the old replay of `ops`) made it a different musical position at 44.1 kHz, where 8 kHz positions are not whole samples
+  // (17500 -> 96468.75 -> 96469): a stop held tick 67200.17 there and 67200 at 48 kHz, so "the first grid step at or after" (SPEC 4.5) chose
+  // step 36 at one rate and 35 at the other (T-007, the edge fuzz's session 20). A tempo change while playing stays continuous at the new rate,
+  // as a real host is: its position there is not one the script names. `bySample` keeps the old replay, for the control that must diverge.
+  std::shared_ptr<SimHost> rescaled(int newSr, const std::function<int(int)>& sc, bool bySample = false) const {
     auto h = std::make_shared<SimHost>(newSr, startBpm, startBeats, startPlaying);
-    for (const Op& o : ops) h->set(sc(o.at), o.playing, o.seekBeats, o.bpm);
+    if (bySample) {
+      for (const Op& o : ops) h->set(sc(o.at), o.playing, o.seekBeats, o.bpm);
+      return h;
+    }
+    const std::int64_t g = std::gcd(static_cast<std::int64_t>(newSr), static_cast<std::int64_t>(sr)), up = newSr / g, down = sr / g;
+    for (std::size_t j = 1; j < segs.size(); ++j) {
+      const Seg& prev = segs[j - 1];
+      const Seg& s = segs[j];
+      const int at = sc(s.start);
+      I128 base;
+      if (s.playing && prev.playing && s.base == continued(prev, s.start)) {
+        base = h->continued(h->segs.back(), at);
+      } else {
+        const std::int64_t q = s.base.floorDiv(down);
+        if (!(I128::mul(q, down) == s.base)) { std::fprintf(stderr, "SimHost::rescaled: position not exact at %d Hz\n", newSr); std::abort(); }
+        base = I128::mul(q, up);
+      }
+      h->segs.push_back(mk(at, s.playing, s.bpm, base));
+    }
+    for (const Op& o : ops) h->ops.push_back({sc(o.at), o.playing, o.seekBeats, o.bpm});
     return h;
   }
   Transport at(int i) const {
