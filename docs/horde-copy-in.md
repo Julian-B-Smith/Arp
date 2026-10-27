@@ -111,12 +111,13 @@ the quote keeps 10 % headroom instead. Over load A the same shapes hold to 9,000
 1.5 %: about 60,000 events/s at 60 ns an event, 15,000 at 250 ns. These are stress rates, not playing rates (a chord re-struck at every 1/64 step at 999 bpm is about 17,000 events/s). The core stays correct at any rate;
 only the CPU grows.
 
-**With note randomness at 100 on the heaviest load (D-036), that limit shrinks, and the quoted 1,300 does not hold.** An incoming event costs the same with randomness on (the 4-keys-re-struck slope on B++ is 8.5e-5
-against 9.4e-5 % per event/s two-word, 192 kHz, block 16, this session: noise); what moves is the load under it. B++ alone goes from 1.53 % / 1.69 % to about 1.69 % / 1.76-1.89 % (native / two-word; the two-word range
-is the two ways it was measured, x1.04 in the settings-only passes and x1.12 in the 4-keys family). At the per-event cost the notice's own numbers imply (0.32 % of room at 3,600 events/s, about 9e-5 % per event/s):
-**under the 1.8 % line (10 % headroom) about 1,100 events/s on the native path and between 450 and none on the two-word path; the edge of the slice itself (2.0 %) moves from 3,600 to about 3,100 (native) and 1,200-2,700
-(two-word).** So with all three at 100 and a heavy load the 1,300 events/s figure should be read as about 1,100 (native) or under 450 (two-word); with randomness at 0, or on lighter loads (A at ratchet 4 with randomness:
-1.54-1.77 %), it stands. The same estimate method as above (a scaled reading, not a quiet-machine one); the bench families `B++ chromatic transposed + randomness 100` measure it (`bash tools/core_bench.sh --only "randomness 100"`).
+**With note randomness at 100 (D-036), the quoted 1,300 does not hold on the heaviest loads, and the figure to quote is re-measured before the readiness notice (D-038).** An incoming event costs the same with
+randomness on (the 4-keys-re-struck slope on B++ is 8.5e-5 against 9.4e-5 % per event/s, two-word, 192 kHz, block 16, this session: noise); what moves is the load under it. **With randomness at 100 the heaviest
+settings-only load is no longer B++ but the 112-note, ratchet-4 chord** (1.80 % / 1.91 % in the table above, native / two-word), and on it **no room is left under the 1.8 % line (10 % headroom) on either path**;
+the 2.0 % edge itself is at roughly 2,000 events/s (native) and 1,000 (two-word), if its per-event slope is B++'s (that load has no measured input family). On B++ with randomness (1.69 % / 1.76-1.89 %; the two-word range is
+the two ways it was measured, x1.04 in the settings-only passes and x1.12 in the 4-keys family) the room under 1.8 % is roughly 1,100-1,200 events/s native and 0-450 two-word, at a slope of 9-10e-5 % per event/s.
+With randomness at 0, or on lighter loads (A at ratchet 4 with randomness: 1.54-1.77 %), the 1,300 stands. All of this is the scaled estimate described above, not a quiet-machine reading; the human's
+choice (D-038) is to re-measure on a quiet machine and then quote one figure that covers every setting. The bench families `... + randomness 100` measure it (`bash tools/core_bench.sh --only "randomness 100"`).
 
 ## How this list is kept honest
 

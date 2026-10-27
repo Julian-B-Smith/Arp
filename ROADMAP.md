@@ -261,6 +261,8 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 - **Scope:** `core/`, `tests/core/`, `tools/`, `docs/`, the traces. **Out of scope:** any 1.0 feature (frozen).
 - **Freeze exception (D-036, 2026-10-27):** velocity and gate randomness with a shared curve, on `m3/randomness`;
   defaults 0 keep the output byte-identical. The listening renders include them before the sign-off.
+  Every load still fits 2 % x4 (worst 1.91 %, the 112-note chord, two-word path; estimates from a busy machine). **Before the
+  readiness notice: re-measure on a quiet machine and quote one input figure covering every setting (D-038).** Listening piece 17.
 - **Acceptance criteria:** the M3 gate above.
 
 ## Open questions (blocking — ask the human or horde)

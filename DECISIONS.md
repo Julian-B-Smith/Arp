@@ -965,7 +965,7 @@ the freeze for these alone, by poll. Chosen:
 - **`vel_random` and `gate_random`, 0-100 %:** each arp note's velocity or
   gate-derived length moves up or down by up to that share of itself
   (symmetric around the setting, so the average feel stays put), clamped to
-  1-127 and to the 1-sample minimum, with the ratchet cap kept.
+  1-127 and to the 1-tick minimum (SPEC 5.2), with the ratchet cap kept.
 - **`random_curve`, 0-100 %, shared by both:** 0 = uniform; toward 100 the
   values cluster near the setting (the mean of four byte-draws), like a human
   player. Rejected: a bipolar curve reaching toward the extremes; a separate
@@ -1002,3 +1002,16 @@ to quantize to the scale or not, with chance sliders for the chord and for
 each interval. Recorded in ROADMAP "After 1.0" with these notes; designed and
 prototyped in the lab once 1.0 ships. Rejected for now: a lab-only prototype,
 or lifting the freeze again ahead of horde's cutoff.
+
+## D-038 — The input limit with randomness on: re-measure on a quiet machine, then quote one figure (RATIFIED by poll, 2026-10-27)
+
+With all three randomness settings at 100 the heaviest settings-only load is
+the 112-note, ratchet-4 chord, at an estimated 1.80 % / 1.91 % after x4
+(native / two-word), so the 1,300 events/s quoted under D-033 (10 % headroom
+on B+/B++) no longer holds for every setting. The figures were measured on a
+busy machine and scaled, so they are estimates. Chosen: ship the sliders with
+the estimate labelled as such (`docs/horde-copy-in.md`), and **before the
+readiness notice goes to horde, re-measure on a quiet machine and quote one
+input figure that covers every setting, randomness included**. Rejected:
+quoting 1,300 with a randomness exception; optimising the two-word path first
+(unknown gain). Every settings-only load still fits the 2 % slice (D-031).
