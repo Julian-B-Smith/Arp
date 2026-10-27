@@ -428,6 +428,24 @@ std::vector<Scenario> buildScenarios() {
     all.push_back(std::move(s));
   }
 
+  {  // 17 (D-036: the randomness sliders, added after the 18-piece sign-off)
+    Scenario s = make("17-randomness", "Velocity and gate randomness, uniform then bell",
+        "The baseline arpeggio, two bars at each setting. First plain, then velocity randomness at 60: the loudness of each note "
+        "wanders around its own level, evenly spread. Then gate randomness at 60 too: the notes also get longer and shorter. "
+        "Then the curve at 100 (bell): the same amounts, but most notes stay near the setting and only a few stray far, "
+        "like a human player. The timing of every note start must never move; only loudness and length.");
+    s.hold(0.5, 32.5, {60, 64, 67, 71}, 80);   // played at 80, so +60 % mostly stays under the 127 ceiling
+    s.change(8.5, [](Settings& x) { x.velRandom = 60; });
+    s.change(16.5, [](Settings& x) { x.gateRandom = 60; });
+    s.change(24.5, [](Settings& x) { x.randomCurve = 100; });
+    s.label(0.5, "plain");
+    s.label(8.5, "velocity 60, uniform");
+    s.label(16.5, "velocity and gate 60, uniform");
+    s.label(24.5, "velocity and gate 60, bell");
+    s.lengthBeats = 33.5;
+    all.push_back(std::move(s));
+  }
+
   return all;
 }
 
@@ -475,6 +493,9 @@ Flat flat(const Settings& s) {
   e("latch", kLatchNames[static_cast<std::size_t>(s.latch)]);
   e("vel_mode", kVelModeNames[static_cast<std::size_t>(s.velMode)]);
   n("vel_fixed", s.velFixed);
+  n("vel_random", s.velRandom);
+  n("gate_random", s.gateRandom);
+  n("random_curve", s.randomCurve);
   e("restart", kRestartNames[static_cast<std::size_t>(s.restart)]);
   n("repeats", s.repeats);
   e("quantize", kQuantizeNames[static_cast<std::size_t>(s.quantize)]);
