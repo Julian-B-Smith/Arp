@@ -24,3 +24,5 @@ Where things are. Update in the same change that moves them.
 | `tools/core_bench.sh`, `tools/core_sanitize.sh`, `tools/core_digest.sh` | The Release benchmark (reported in `./verify full`), the suite under ASan/TSan/UBSan (CI), the digest regenerator |
 | `docs/horde-copy-in.md` | The files horde copies, their sha256, build notes and the CPU envelope |
 | `tools/gen_bank.py` | Generates `core/include/arp/bank_data.h` from the bank JSON (`--check` for drift) |
+| `docs/manual/` | The user-manual page for horde's section "The arpeggiator": `arp.md` (prose for musicians; its settings table is GENERATED between markers) and `figures.json` (the registry of its `[[FIG/TAB/AUD:arp.*]]` placeholders, in horde's shape) |
+| `tools/gen_manual_params.py` | Generates the manual's settings table from `spec/params.json` + `spec/bank/starter.json` (`--write`), checks the page against it plus placeholders/status lines/wording (`--check`), and runs the must-fail plants (`--plant`, exit 1 = controls work). Not in `./verify` (human gate) |

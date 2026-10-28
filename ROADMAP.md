@@ -266,6 +266,18 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 - **G4 at the clock hand-over: RESOLVED 2026-10-27 (D-039).** The edge fuzz's session 20 was the test host's (it replayed
   stops at rounded samples); the host is fixed and G4 is strict over the fuzz. The critic then found input-vs-step order inside
   one sample was unspecified (E13): input first is kept (option C), and G4 covers causes more than two samples apart.
+- **The manual page (horde's bar §5, SHOULD; started 2026-10-28).** Arp writes the content of horde's manual section
+  "The arpeggiator" (horde `docs/manual/17-midi-and-mpe.md`, PENDING there); horde copies it in later through a filing.
+  Acceptance criteria:
+  1. `docs/manual/arp.md`, in horde's manual conventions (horde `docs/manual/README.md`): written for musicians, never asks
+     the reader to open the spec; settings in **bold** by their display names (`spec/params.json` `label`), the panel path
+     marked *(page pending)* until GUI 3 exists; horde's units and status lines; figure and audio placeholders in horde's
+     `[[FIG:…]]` / `[[TAB:…]]` / `[[AUD:…]]` form, listed in `docs/manual/figures.json`.
+  2. Every behaviour it states is ruled in `spec/` (cite the section in a comment, not in the prose); nothing invented.
+  3. The settings reference table is GENERATED from `spec/params.json` (name, range, default, unit or choices), with a
+     check that the page's table equals the generator's output and a plant that makes the check red.
+  4. An independent Opus critic review for accuracy against the spec, no HIGH open.
+  The check runs in `./verify fast` (`manual_gate`), approved by the human by poll 2026-10-28.
 - **Acceptance criteria:** the M3 gate above.
 
 ## Open questions (blocking — ask the human or horde)
