@@ -47,3 +47,8 @@
 - **Open questions:** unchanged from the first trace except Q-H3, Q-H5, Q-H6 and Q-H7, which horde answered; the
   step-field labels, named scales for the own scale, the factory presets (Q-H10 waits on horde's B550), the final
   input-rate figure (D-038) and the editor's place on the page remain OPEN.
+
+## Lead close (2026-10-28)
+- Critic re-review of 644620c..9d44c8f: all four HIGHs closed, **no HIGH**, APPROVE-WITH-NOTES. The one MEDIUM (a pedal-tails clause in a READY section that depends on horde's unbuilt RC-6.7) and the LOWs (pass length in played notes, the CODEMAP exit code) fixed by the lead; "Last verified" dated with the review.
+- `manual_gate` in `./verify` (approved by the human 2026-10-28) accepts the plant run only at exit 3 with the exact line "every plant was detected".
+- `docs/horde-1.0-bar.md`: the manual row is met on Arp's side.

@@ -48,7 +48,7 @@
 | A face in GUI 3's design system | horde's | horde builds it (D-034 Q-H9) from `spec/params.json`'s names, units, formats and enum labels (D-035) |
 | Undo covers every control edit | horde's | horde's, one step per control gesture; a trigger makes none (D-034 Q-H9) |
 | Factory content: an init and the starter bank | **open** | Arp authors them as horde preset files (D-034 Q-H10) once horde sends the preset format (their B550). The content exists as data: the init is `spec/params.json`'s defaults; the bank is `spec/bank/starter.json` (11 patterns, compiled in) over the 16 order styles |
-| A manual page (SHOULD) | open | not started |
+| A manual page (SHOULD) | met (Arp's side) | `docs/manual/arp.md`, the content of horde's section "The arpeggiator" in horde's manual conventions; its settings table is generated from `spec/params.json` and checked in `./verify fast` with plants; an independent review for accuracy (two rounds, no HIGH). Copied into horde's manual by a filing; five questions stay open there (named own scales, step-field labels, factory presets, the input-rate figure, the editor's place) |
 
 ## 6. It is signed off
 

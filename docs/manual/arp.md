@@ -4,8 +4,8 @@
 
 Purpose: explain Arp, horde's note processor: what it does to the notes you play, every control it has, and how the controls combine, in the words of the panel. Arp is the simple arpeggiator of horde 1.0 together with a pattern bank, patterns you build yourself, a chord stage and seeded randomness.
 
-<!-- The tool is tools/gen_manual_params.py --check. The lead adds the review's date to the line below. -->
-Last verified: the settings table, the figure and audio placeholders, the status lines and the wording rules (no spec citations or internal names in the prose) are checked by a tool; the accuracy of the prose is reviewed by hand. Panel paths are marked *(page pending)* until the interface page for Arp exists.
+<!-- The tool is tools/gen_manual_params.py --check (in ./verify fast). Re-date the review when the prose changes. -->
+Last verified: the settings table, the figure and audio placeholders, the status lines and the wording rules (no spec citations or internal names in the prose) are checked by a tool; the accuracy of the prose was reviewed by hand against the ratified behaviour on 2026-10-28 (an independent review, two rounds). Panel paths are marked *(page pending)* until the interface page for Arp exists.
 
 ## What Arp does
 
@@ -256,7 +256,7 @@ The notes of the chord stage are never randomised: they follow your hands. The r
 
 Status: READY-TO-WRITE — SPEC §4.7, D-014
 
-**Steps** repeats the whole pattern shifted. A pass is one full cycle of the order style: `Up` over three held notes is three steps, `Up-down` over three is four, and `Random` counts as many steps as there are held notes. After one pass the next pass is shifted by **Step size**; after **Steps** shifted passes, it drops back to the unshifted pass and begins again. **Steps** runs from 0 to 8 and defaults to 0, which is no transposition. **Step size** runs from −48 to +48 and defaults to +12; a negative size shifts down. **Step unit** chooses `Semitones` or `Scale degrees`.
+**Steps** repeats the whole pattern shifted. A pass is one full cycle of the order style: `Up` over three held notes is three played notes, `Up-down` over three is four, and `Random` counts as many as there are held notes (rests, ties and picks in the pattern make a pass longer in steps). After one pass the next pass is shifted by **Step size**; after **Steps** shifted passes, it drops back to the unshifted pass and begins again. **Steps** runs from 0 to 8 and defaults to 0, which is no transposition. **Step size** runs from −48 to +48 and defaults to +12; a negative size shifts down. **Step unit** chooses `Semitones` or `Scale degrees`.
 
 For example, `Up` over C E G with **Steps** 2 and a **Step size** of +7 semitones plays C E G, then G B D, then D F♯ A, then C E G again.
 
@@ -280,7 +280,7 @@ Status: READY-TO-WRITE — SPEC §3, D-000 Open 3
 
 Switching **Latch** to `Off` lets go of every latched note at once; keys you are still holding stay.
 
-The sustain pedal holds Arp's input: keys you let go of while the pedal is down stay in the pattern until you lift the pedal (or stay latched, if **Latch** is on). The pedal is one pedal for all channels. Arp takes the pedal for itself and does not pass it on to the engine, so Arp's own notes never pile up as tails.
+The sustain pedal holds Arp's input: keys you let go of while the pedal is down stay in the pattern until you lift the pedal (or stay latched, if **Latch** is on). The pedal is one pedal for all channels. Arp takes the pedal for itself and does not pass it on to the engine, so Arp adds no pedal tails of its own.
 
 <!-- SPEC §3 (DOWN / PEDAL / LATCHED; replace drops every LATCHED ref at a gesture start; append toggles a latched key out; pedal global in 1.0; CC 64 consumed), §13 item 6 (a press that joins a non-empty latched set neither re-anchors nor re-bases), §13 item 12 / §14 (latch applies at once). -->
 
