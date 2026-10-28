@@ -1,0 +1,272 @@
+{
+  "about": "Registry of every figure, diagram, table, screenshot and audio example the Arp manual page (docs/manual/arp.md) needs, in horde's docs/manual/figures.json shape so horde can merge the entries when it copies the page in (chapter = arp). One entry per [[FIG:id]] / [[TAB:id]] / [[AUD:id]] placeholder in the page; tools/gen_manual_params.py --check keeps the two in step. The settings reference is NOT a placeholder: it is generated into the page between its markers. Field meanings and statuses: horde docs/manual/README.md.",
+  "entries": [
+    {
+      "id": "arp.panel",
+      "kind": "screenshot",
+      "chapter": "arp",
+      "purpose": "Show the reader where the Arp controls are.",
+      "content": "The Arp page of horde's interface with the module on, a chord held and the default settings; the on switches, Order, Pattern, Rate, Latch and the chord stage visible.",
+      "source": "GUI 3 Arp page, once built (the panel path is marked *(page pending)* in the text); Arp ROADMAP T-007",
+      "depends_on": [
+        "gui3",
+        "arps"
+      ],
+      "status": "needed",
+      "generated": false
+    },
+    {
+      "id": "arp.quick-start",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear the default arpeggio before changing anything.",
+      "content": "About 16 beats: a held C, E, G, B played Up in even sixteenths at the default settings.",
+      "source": "tests/core/render.cpp scenario 01-baseline (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §4.2, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.order-styles",
+      "kind": "table",
+      "chapter": "arp",
+      "purpose": "Show what each of the 16 order styles plays over the same held notes.",
+      "content": "One row per Order choice (by its display name): the note sequence one full cycle plays over four held notes C, E, G, B (a chord or dyad shown as bracketed notes), and the cycle length for one, two and four held notes.",
+      "source": "spec/SPEC.md §4.2 order table; check the sequences against the order tour (tests/core/render.cpp scenarios 02a-order-tour-1 and 02b-order-tour-2) or the lab's pattern view; Arp rulings: SPEC §4.2, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.order-tour",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear all 16 order styles over one chord.",
+      "content": "Two files of eight bars each: the same four held notes in all 16 orders, one bar per order, labelled.",
+      "source": "tests/core/render.cpp scenario 02a-order-tour-1 and 02b-order-tour-2 (two files, one entry) (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §4.2, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.pattern-tour",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear the 11 bank patterns.",
+      "content": "Two files: one bar per pattern over a rising arpeggio, from Plain to Trigger pulse (the trigger clicks are the renderer's stand-in for a signal event).",
+      "source": "tests/core/render.cpp scenario 03a-pattern-tour-1 and 03b-pattern-tour-2 (two files, one entry) (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §4.3, spec/bank/starter.json, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.step-fields",
+      "kind": "diagram",
+      "chapter": "arp",
+      "purpose": "Show what one pattern step carries.",
+      "content": "One step drawn as a card with its fields and ranges: play, tie, velocity 0-200 %, gate 1-200 %, step -8..+8, chance 0-100 %, ratchet 1-4, trigger 0-8, pick (order, 1-8, low, high, chord); the pattern-level step size and unit beside it.",
+      "source": "spec/SPEC.md §4.3 and spec/bank/starter.json `fields`; Arp rulings: SPEC §4.3, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": false
+    },
+    {
+      "id": "arp.ratchets-ties-chance",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear a roll, a tie and a chance step.",
+      "content": "Three patterns over the baseline: Roll at the end, Tied legato at the default gate, Sparse chance (the same on every render).",
+      "source": "tests/core/render.cpp scenario 13-ratchets-ties-chance (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §4.3, SPEC §5.2, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.pattern-editor",
+      "kind": "screenshot",
+      "chapter": "arp",
+      "purpose": "Show how to build and save a pattern of your own.",
+      "content": "The step editor with a 16-step pattern open: each step's fields, the pattern's step size and unit, and the library of saved patterns.",
+      "source": "Not designed: where the editor lives in horde and how presets carry the user pattern are with horde (Q-H6); the lab's build-your-own editor (lab/arp-lab.html) is only a listening twin; Arp rulings: Q-H6, ROADMAP T-007",
+      "depends_on": [
+        "gui3",
+        "arps",
+        "ADR-169"
+      ],
+      "status": "pending-design",
+      "generated": false
+    },
+    {
+      "id": "arp.user-pattern",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear a pattern they could build.",
+      "content": "A saved user pattern, Broken chord stabs, over a held chord.",
+      "source": "tests/core/render.cpp scenario 04-user-pattern (the lab/patterns/broken-chord-stabs.json pattern) (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §4.6, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.time-mode",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear Time mode and a smooth Step time sweep.",
+      "content": "The Step time gliding from 250 ms to 25 ms and back with no transport needed: the arp accelerates into a buzz and slows down, with no gap or burst.",
+      "source": "tests/core/render.cpp scenario 10-time-mode (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §2.6, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.swing",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear the three swing settings.",
+      "content": "Two bars each at straight (50.0 %), triplet feel (66.7 %) and the maximum (75.0 %).",
+      "source": "tests/core/render.cpp scenario 05-swing (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §5.1, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.randomness",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear Velocity random, Gate random and the curve.",
+      "content": "Two bars each: plain, Velocity random 60, plus Gate random 60, then the curve at 100 (the bell); note starts never move.",
+      "source": "tests/core/render.cpp scenario 17-randomness (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §4.9, D-036, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.transposition",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear transposition steps in semitones and in scale degrees.",
+      "content": "Three steps of +12 semitones, then two steps of +2 scale degrees in C major, each dropping back to the start.",
+      "source": "tests/core/render.cpp scenario 06-transposition (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §4.7, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.latch-pedal",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear Latch (Replace and Add) and the sustain pedal.",
+      "content": "Latch Replace (a second chord replaces the first), Latch Add (a pressed note is added, pressed again it is removed), then the sustain pedal down and up.",
+      "source": "tests/core/render.cpp scenario 15-latch-pedal (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §3, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.restart",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear where the pattern begins under each Restart value.",
+      "content": "A three-three-two pattern over a chord pressed late in the bar with a beat click: New chord, Bar, Free.",
+      "source": "tests/core/render.cpp scenario 12-restart (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §4.5, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.repeats",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear Repeats.",
+      "content": "Repeats 2: each chord arpeggiated twice then silence until the next chord; then Repeats at forever.",
+      "source": "tests/core/render.cpp scenario 11-repeats (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §4.8, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.scale-quantize",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear Quantize in Scale and Chord root.",
+      "content": "A six-note cluster as played, snapped to A minor, then the movable shape following the lowest held note.",
+      "source": "tests/core/render.cpp scenario 07-scale-quantize (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §6, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.chord-stage",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear the chord stage under the arp.",
+      "content": "One note at a time becomes a chord (major third and fifth, then an octave added) that sounds steadily while the arp plays its notes.",
+      "source": "tests/core/render.cpp scenario 08-chord-stage (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §14, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    },
+    {
+      "id": "arp.chord-generator",
+      "kind": "audio",
+      "chapter": "arp",
+      "purpose": "Let the reader hear Arp as a chord generator.",
+      "content": "Arp on off, Chord on: a short melody comes out as chords lasting as long as each key; major, then minor.",
+      "source": "tests/core/render.cpp scenario 09-chord-generator (rendered by bash tools/render_listening.sh from the shipped core; the files land in the gitignored build/listen/); Arp rulings: SPEC §14, ROADMAP T-007",
+      "depends_on": [
+        "arps",
+        "B391"
+      ],
+      "status": "ready-to-make",
+      "generated": true
+    }
+  ]
+}

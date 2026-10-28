@@ -67,6 +67,7 @@ structure_gate() {
            core/CMakeLists.txt core/include/arp/core.h core/src/core.cpp tools/core_test.sh tools/core_params_check.py \
            core/include/arp/pattern.h core/include/arp/bank_data.h tools/gen_bank.py tests/core/test_m1b.cpp \
            docs/horde-copy-in.md tools/core_bench.sh tools/core_sanitize.sh \
+           docs/manual/arp.md docs/manual/figures.json tools/gen_manual_params.py \
            .gitattributes .github/workflows/ci.yml; do
     [ -e "$f" ] || { echo "verify: structure — missing $f" >&2; ok=1; }
   done
@@ -167,6 +168,22 @@ core_gate() {
   return $ok
 }
 
+# The manual page (horde's bar §5, T-007; the human approved this gate 2026-10-28): docs/manual/arp.md's settings
+# table must be what tools/gen_manual_params.py generates from spec/params.json, every placeholder must have its
+# figures.json entry, every section one status line, and the prose no spec jargon. Each check is proven on a plant
+# first (`--plant` must exit 3 and print "every plant was detected"), so a blind check reads red here, never green. ~0.1 s.
+manual_gate() {
+  # Success is exit 3 AND the exact line: a Python crash exits 1, so exit 1 must never read as "every plant caught".
+  python3 tools/gen_manual_params.py --plant >"$HARNESS_DIR/manual_plant.out" 2>&1
+  [ $? -eq 3 ] && grep -qx 'every plant was detected' "$HARNESS_DIR/manual_plant.out" ||
+    { echo "verify: manual — the plant run did not prove every check (a plant missed, or the tool crashed):" >&2
+    sed 's/^/    /' "$HARNESS_DIR/manual_plant.out" | head -10 >&2; return 1; }
+  python3 tools/gen_manual_params.py --check >"$HARNESS_DIR/manual.out" 2>&1 && return 0
+  echo "verify: manual page drifted from spec/params.json (regenerate: python3 tools/gen_manual_params.py --write):" >&2
+  grep -E 'FAIL|RED' "$HARNESS_DIR/manual.out" | head -10 | sed 's/^/    /' >&2
+  return 1
+}
+
 # CPU and memory (M3, D-029): the Release benchmark of the shipped core, REPORTED and never gated on its
 # numbers (the human's standing rule: CPU is measured, never a gate). Its exit code is the real-time
 # contract only (no allocation in process()/reset(), no NoteOff lost, the memory figure matching its
@@ -193,6 +210,7 @@ fast() {
   spec_gate         || ok=1  # spec/ is RATIFIED (D-022): pinned bytes
   lab_smoke_gate    || ok=1  # Phase A: the lab twin's invariants, each proven on a plant
   core_gate         || ok=1  # M1a: the C++ core's invariant suite (both int128 paths), each proven on a plant
+  manual_gate       || ok=1  # T-007: the manual page's generated table and lint, each proven on a plant
   return $ok
 }
 
