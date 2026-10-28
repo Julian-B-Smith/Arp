@@ -53,4 +53,8 @@ The preset format gates our factory presets (B550), the last M3 build item.
   - the opening now matches item 7;
   - two stale trace lines.
 
+**Critic round 3: APPROVE-WITH-NOTES, no HIGH and no MEDIUM.** Both LOW notes
+were applied: item 5's heading now says "could change", and D-040 carries
+item 7's conditions.
+
 **Verify.** See the commit (`./verify fast`).

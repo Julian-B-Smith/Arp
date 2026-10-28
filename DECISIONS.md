@@ -1069,7 +1069,9 @@ them in `integrations/hypersaw/`.
     `enabled` (SPEC §14). Two arps share a chord set only if all of these
     match.
   - With 1.0 as it is, horde can already leave Arp 2's `chord` stream
-    unrouted, so no chord note sounds twice.
+    unrouted, so no chord note sounds twice. This holds under the conditions
+    in reply item 7: the same input, the same panic, reset and prepare
+    calls, and the same morph resolution on both cores.
 - **Q-H12, by poll:** agree with horde. The tag stays `arp`, and horde stamps
   the instance number; identity is (instance, id).
 - **Q-H13 presets, by poll:** whether one preset per arp or one for both, and

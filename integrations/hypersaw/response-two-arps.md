@@ -51,7 +51,7 @@ requirement, and 1.0 needs nothing now.
    - One core's counter is shared by its `arp` and `chord` notes.
    - horde must key an Arp note by (instance, id), never by id alone. This
      ties into Q-H12.
-5. **The chord stage: what has to change after 1.0.**
+5. **The chord stage: what could change after 1.0.**
    - The spec already describes the chord stage as a second note processor,
      placed before the arp (SPEC §14). In the code, though, the stage and the
      arp live in one `Core` object, and the arp reads the stage's chord set
