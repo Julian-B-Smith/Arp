@@ -25,6 +25,8 @@ move; `status:` is lifecycle; neither does the other's job.
 | HYPERSAW (their tree) | `integrations/arp/response-spinup.md` (seq 2) and `response-triggers.md` (seq 4) | answered Q-H1, Q-H2, Q-H3; ball Arp, nothing owed; read and recorded 2026-10-22 (D-015) |
 | HYPERSAW (their tree) | `integrations/arp/response-chord-stream.md` (seq 6) | Q-H7 yes, as three toggles (their ADR-272); asked whether the played note is in `chord`; answered in our seq 7 (D-029) |
 | HYPERSAW (their tree) | `integrations/arp/response-m3.md` (seq 8, 2026-10-25) | answered Q-H5, Q-H6, Q-H8, Q-H9, Q-H10 and the tee (their ADR-282); ball Arp, nothing owed until our readiness notice; owes us the preset format (B550). Read and recorded 2026-10-27 (D-034) |
+| HYPERSAW | `integrations/hypersaw/brief-two-arps.md` (seq 9, 2026-10-27) | post-1.0: two arps behind one chord stage; Q-H11 to Q-H13. **Responded** in `response-two-arps.md` (seq 11, 2026-10-28): no global state, nothing changes for 1.0; tag `arp` plus an instance number stamped by horde; the preset split after 1.0 (D-040); ball HYPERSAW |
+| HYPERSAW | `integrations/hypersaw/notice-preset-format.md` (seq 10, 2026-10-27) | the module-preset format for our factory presets (B550, their ADR-294). **Responded** in `response-preset-format.md` (seq 12, 2026-10-28): fits except enums, which we ask them to carry by name (all 11, as our manifest says); one question on `basis`; 50 keys, not 47 (D-040); ball HYPERSAW, then ours (the presets) |
 | — | (earlier) | horde's spin-up packet arrived as `SPINUP-BRIEF.md` + `intake/`, not as a mailbox brief |
 
 ## Outbound threads

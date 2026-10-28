@@ -1051,3 +1051,57 @@ Rejected: (B) step first (a chord on the beat misses it at every rate); the
 distance measured on delivered samples (it hides the host's rounding).
 SPEC §1.1 and row G4 amended; `docs/spec-errata.md` E13 applied;
 `spec/MANIFEST` re-pinned.
+
+## D-040 — horde's two-arp brief and preset format answered: `arp` plus an instance number; the two-arp preset split after 1.0; every enum carried by name (RATIFIED by poll, 2026-10-28)
+
+horde filed two messages on 2026-10-27: a post-1.0 brief for two arps behind
+one chord stage (seq 9, Q-H11 to Q-H13), and the preset format for our
+factory presets (seq 10, B550). Our replies are seq 11 and seq 12, beside
+them in `integrations/hypersaw/`.
+
+- **Q-H11 (facts, no poll):** the shipped core has no global state. Its only
+  statics are compiled into test builds alone. Seed, draws and step clock are
+  per instance. Output ids are a per-instance counter, so two cores collide
+  on ids. The chord stage lives inside the one `Core` object, so separating
+  it so it feeds two arps is post-1.0 work. **1.0 changes nothing.**
+  - The chord set depends on more than the `chord_*` keys: also the arp's
+    `quantize`, scale settings, the global scale, `latch`, the pedal and
+    `enabled` (SPEC §14). Two arps share a chord set only if all of these
+    match.
+  - With 1.0 as it is, horde can already leave Arp 2's `chord` stream
+    unrouted, so no chord note sounds twice. This holds under the conditions
+    in reply item 7: the same input, the same panic, reset and prepare
+    calls, and the same morph resolution on both cores.
+- **Q-H12, by poll:** agree with horde. The tag stays `arp`, and horde stamps
+  the instance number; identity is (instance, id).
+- **Q-H13 presets, by poll:** whether one preset per arp or one for both, and
+  where the chord stage's settings live, is decided in the post-1.0 design.
+  Triggers and the user pattern are per arp (facts).
+- **Preset format, by two polls:** horde's format stores enums by index.
+  - `pattern` (bank ids plus `user`) and `rate` (division names by length)
+    are not append-only lists. Adding a bank pattern shifts `user`'s index,
+    and adding a division shifts the shorter ones. The first poll chose to
+    ask horde for names over freezing the lists.
+  - The critic then found that our ratified `spec/params.json` `note` already
+    says "Enums are stored by NAME", for all 11. The second poll chose to
+    ask for **all 11 enums by name**, which keeps that line true without a
+    spec amendment.
+  - We suggested the names travel beside the `Preset`, as ADR-294 does for
+    blobs; the shape is horde's.
+  - Names protect presets, not automation. A stepped host value is
+    index / (n − 1) (IF-11), so any enum list that grows, even at its end,
+    moves its automation values. We raised this with horde as theirs to
+    answer.
+  - We keep the nine literal enum lists append-only only so that code
+    reading an index never sees an old value change meaning.
+  - We asked horde what `basis` a factory preset carries (we proposed 0).
+  - We corrected the key count to 50 (D-036 added three).
+
+Rejected:
+- freezing `pattern` and `rate` by appending out of natural order (a spec
+  amendment that keeps index storage);
+- names for those two only, which would contradict the manifest's "stored by
+  NAME" line for the other nine.
+Names keep both our manifest and the "divisions are stored by name" rule
+literal. Factory presets wait on horde's
+answer to items 2 and 3.
