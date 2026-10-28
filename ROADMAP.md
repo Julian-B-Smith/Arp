@@ -274,6 +274,8 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
      marked *(page pending)* until GUI 3 exists; horde's units and status lines; figure and audio placeholders in horde's
      `[[FIG:…]]` / `[[TAB:…]]` / `[[AUD:…]]` form, listed in `docs/manual/figures.json`.
   2. Every behaviour it states is ruled in `spec/` (cite the section in a comment, not in the prose); nothing invented.
+     horde's own behaviour may rest on horde's recorded answers (D-015, D-034; lead's ruling 2026-10-28, after the critic
+     asked); a part horde has not built yet (the stream-scoped pedal, their RC-6.7) carries a PENDING status.
   3. The settings reference table is GENERATED from `spec/params.json` (name, range, default, unit or choices), with a
      check that the page's table equals the generator's output and a plant that makes the check red.
   4. An independent Opus critic review for accuracy against the spec, no HIGH open.

@@ -17,16 +17,16 @@ Arp sits on the instrument's note input, ahead of the engine. You play and hold 
 
 Four things hold whatever you set:
 
-- **The beat comes from the DAW.** Steps fall on the DAW's grid, so the arp stays in time with the song. Buffer size and sample rate make no difference to what you hear, and a bounce plays what you heard live. (Time mode is the exception: it runs on a clock of its own.)
+- **The beat comes from the DAW.** Steps fall on the DAW's grid, so the arp stays in time with the song. Buffer size makes no difference to what you hear, and neither does sample rate, with one exception: a note you play within a fraction of a millisecond of a step can land just before or just after that step, depending on the sample rate and how the DAW rounds the note's time. A bounce matches what you heard live, with the same exception. (Time mode runs on a clock of its own, not the DAW's.)
 - **Every note Arp starts ends exactly once.** Letting go of a key, changing the pattern, stopping the transport, switching Arp off or sending a panic never leaves a note hanging.
 - **Nothing is left to chance.** Random order, random choices and randomised velocity and length all come from the **Seed**, so the same playing with the same settings gives the same notes every time.
 - **Arp plays notes at their plain pitch.** It never bends them. Pitch bend you play passes through to the engine untouched.
 
-<!-- SPEC §1.2 (base keys only, never bends), §7 N1, §10 D1, §2.3 G1 -->
+<!-- SPEC §1.2 (base keys only, never bends), §7 N1, §10 D1, §2.3 G1; the sample-rate exception is G4 (§11) and §1.1 "Inside one sample, an input comes first" (E13, D-039): G4 covers causes more than two samples apart. -->
 
-Each oscillator in horde chooses its note source with three toggles *(name pending)*: the notes you play, the arp, and the chord stage. Switch on the played notes and the arp together on one oscillator to hear your keys alongside the arp, or give the arp to one oscillator and the chord to another. With **Chord** on, the note you play is part of the chord stage's output as well, so an oscillator set to the chord stage alone plays the whole chord. Arp itself never plays your keys back; horde passes them on before Arp.
+Each oscillator in horde chooses its note source with three toggles *(name pending)*: the notes you play, the arp, and the chord stage. Switch on the played notes and the arp together on one oscillator to hear your keys alongside the arp, or give the arp to one oscillator and the chord to another. With **Chord** on, the chord stage's output contains the key you play as well as the notes added to it, so an oscillator set to the chord stage alone plays the whole chord. Apart from that, Arp never plays your keys back; horde passes them on before Arp.
 
-<!-- SPEC §1 Streams (D-009, horde ADR-270): arp and chord streams; the player's held notes reach the engine through horde's own tee, never through Arp. Q-H7 answered by horde (seq 6, their ADR-272): three toggles per source, ROADMAP "Open questions"; D-029: with the chord stage on, the played note goes out as `chord` too (SPEC §14, the +0 slot), so a source on Chord alone plays the whole chord; D-034: the tee is confirmed. The toggles' panel names are horde's and not yet given. -->
+<!-- SPEC §1 Streams (D-009, horde ADR-270): arp and chord streams; the player's held notes reach the engine through horde's own tee, never through Arp. Q-H7 answered by horde (seq 6, their ADR-272): three toggles per source, ROADMAP "Open questions"; D-029: with the chord stage on, the played note goes out as `chord` too (SPEC §14; the played note is always in the chord set and is not one of the six intervals), so a source on Chord alone plays the whole chord; D-034: the tee is confirmed. The toggles' panel names are horde's and not yet given. -->
 
 ## Quick start
 
@@ -34,12 +34,12 @@ Status: READY-TO-WRITE — SPEC §3, §4.2, §7 T4/T5, §13.17
 
 [[FIG:arp.panel]]
 
-1. Switch **Arp module** on (**Arp** › **Arp module**, *page pending*). It starts off. **Arp on** is already on.
-2. Hold a chord. Arp plays the notes you hold from the lowest to the highest and round again, in sixteenth notes (**Rate** 1/16), starting on the next step of the DAW's grid. The DAW can be playing or stopped.
+1. Switch **Arp › Arp module** *(page pending)* on. It starts off. **Arp on** is already on.
+2. Hold a chord. Arp plays the notes you hold from the lowest to the highest and round again, in sixteenth notes (**Rate** 1/16). With the DAW playing, it starts on the next step of the DAW's grid; with the DAW stopped, the first step lands on your key press.
 3. Let go. The arp stops; notes already sounding finish their length.
 4. Try **Order** to change the way through the notes, **Pattern** to change the rhythm, and **Latch** set to `Replace` to keep the chord going after you let go.
 
-<!-- SPEC §4.2 `up`, §2.1 default rate, §4.5 restart on a new chord, §3 held set, §7 T3; params.json defaults; §3 "While disabled" (keys are tracked while off, so switching on with a chord held plays it). -->
+<!-- SPEC §4.2 `up`, §2.1 default rate, §4.5 restart on a new chord, §2.4 H7a (a stopped DAW: step 0 on the press), §3 held set, §7 T3; params.json defaults; §3 "While disabled" (keys are tracked while off, so switching on with a chord held plays it). -->
 
 [[AUD:arp.quick-start]]
 
@@ -55,7 +55,7 @@ Arp has three switches, from the whole down to the part:
 
 - **Arp module** is the whole of Arp. Off, horde sends your keys around Arp, and every note Arp has started (arp and chord) ends at once. It takes effect at the instant you change it, not at the next step.
 - **Arp on** is the arpeggiator alone. Off, the arp's notes end at once and no more are played; the chord stage is not touched.
-- **Chord** is the chord stage (see below). With **Chord** on and **Arp on** off, Arp is a plain chord generator: each key you press sounds as a chord, for exactly as long as you hold it.
+- **Chord** is the chord stage (see below). With **Chord** on and **Arp on** off, Arp is a plain chord generator: each key you press sounds as a chord, for as long as the key is held (by your finger, the pedal or the latch).
 
 With **Chord** and **Arp on** both on, the arp plays the notes of the chords the stage builds. With both off, Arp plays nothing.
 
@@ -88,7 +88,7 @@ Status: READY-TO-WRITE — SPEC §4.2, D-011, D-012a, D-021
 - `Converge`: the lowest, then the highest, then the second lowest, the second highest, working in towards the middle. `Diverge`: the same read backwards, starting near the middle and finishing on the lowest note.
 - `Pedal low`: the lowest note between every other note, going up (low, second, low, third, ...). `Pedal high`: the highest note between every other note, going down.
 - `Chord then walk`: the whole chord, then each note one by one from the lowest, then the chord again.
-- `Stride`: the lowest note on its own, then all the other notes together as a chord. With one key held, the chord is that key an octave higher.
+- `Stride`: the lowest note on its own, then all the other notes together as a chord. With only one key held, it alternates that key with the same key an octave higher.
 - `Chord between notes`: the chord, a single note, the chord, the next note, and so on up.
 - `Pairs`: two neighbouring notes at a time, sliding up one note each step. With one key held, that note alone.
 
@@ -141,22 +141,22 @@ Every step, in the bank or in your own pattern, carries the same fields.
 
 [[FIG:arp.step-fields]]
 
-- **Play**: whether the step sounds.
-- **Tie**: instead of a new note, the note before is held on through this step. Ties work at any **Gate**. A tie straight after a rest does nothing.
-- **Velocity** (0 to 200 %): scales the velocity of the step's note. The result stays within 1 to 127.
-- **Gate** (1 to 200 %): scales this step's length against the global **Gate**.
-- **Step** (−8 to +8): shifts the step's pitch by that many times the pattern's own step size, in semitones or scale degrees. At the default step size of +12 semitones, one step is an octave. The pattern's own step size is separate from the **Step size** setting, which is for transposition steps.
-- **Chance** (0 to 100 %): how often the step plays. The result comes from the **Seed**, so it repeats.
-- **Ratchet** (1 to 4): plays the step's note that many times, evenly spaced across the step.
-- **Trigger** (0 to 8): fires one of Arp's eight triggers (0 fires none). See Triggers below.
-- **Pick**: which held note or notes the step plays. `Order` (the default) plays the next note of the order style. A number from 1 to 8 plays the 1st to 8th lowest held note, counting round again if fewer are held. `Low` and `High` play the lowest and highest. `Chord` plays every held note.
+- *Play*: whether the step sounds.
+- *Tie*: instead of a new note, the note before is held on through this step. Ties work at any **Gate**. A tie straight after a rest does nothing.
+- *Velocity* (0 to 200 %): scales the velocity of the step's note. The result stays within 1 to 127.
+- *Gate* (1 to 200 %): scales this step's length against the global **Gate**.
+- *Step* (−8 to +8): shifts the step's pitch by that many times the pattern's own step size, in semitones or scale degrees. At the default step size of +12 semitones, one step is an octave. The pattern's own step size is separate from the **Step size** setting, which is for transposition steps.
+- *Chance* (0 to 100 %): how often the step plays. The result comes from the **Seed**, so it repeats.
+- *Ratchet* (1 to 4): plays the step's note that many times, evenly spaced across the step.
+- *Trigger* (0 to 8): fires one of Arp's eight triggers (0 fires none). See Triggers below.
+- *Pick*: which held note or notes the step plays. `Order` (the default) plays the next note of the order style. A number from 1 to 8 plays the 1st to 8th lowest held note, counting round again if fewer are held. `Low` and `High` play the lowest and highest. `Chord` plays every held note.
 
 <!-- SPEC §4.3 (fields and ranges; pick encoding §4.6), §5.2 (ties by look-ahead at any gate; a tie after a rest acts as a rest), §8 (triggers). The editor's own field labels are not in params.json (see OPEN in "Build your own"). -->
 <!-- OPEN: the labels GUI 3 will give the step fields are not ruled; the names above are descriptive. -->
 
-Ratchets and ties change a note's length, not the beat: a tied note carries on through the tied steps and ends inside the last of them, as the gate says, and a ratcheted step's notes share the step's span, so the next step still lands on the grid.
+Ratchets and ties change a note's length, not the beat: a tied note carries on through the tied steps and ends where the gate of the last tied step says (at a gate above 100 % that is past the end of that step), and a ratcheted step's notes share the step's span, so the next step still lands on the grid.
 
-<!-- SPEC §5.1 (ratchet sub-note i starts at on + i*span/r), §5.2. -->
+<!-- SPEC §5.1 (ratchet sub-note i starts at on + i*span/r), §5.2 (tie tail: off = on(kAbs+t) + span(kAbs+t) * gate * step gate, so a gate above 100 % ends past the last tied step; a ratchet's length is capped at its slice). -->
 
 [[AUD:arp.ratchets-ties-chance]]
 
@@ -164,7 +164,7 @@ Ratchets and ties change a note's length, not the beat: a tied note carries on t
 
 Status: READY-TO-WRITE — SPEC §4.6, D-011, D-016
 
-Choose `Build your own` in **Pattern** to play your own pattern, of up to 16 steps with every field above. A new pattern starts as eight plain steps. Besides the steps it has two settings of its own: a step size (−48 to +48, default +12) and whether that size counts in semitones or scale degrees; they scale each step's **Step** field.
+Choose `Build your own` in **Pattern** to play your own pattern, of up to 16 steps with every field above. A new pattern starts as eight plain steps. Besides the steps it has two settings of its own: a step size (−48 to +48, default +12) and whether that size counts in semitones or scale degrees; they scale each step's *Step* field.
 
 [[FIG:arp.pattern-editor]]
 
@@ -173,7 +173,7 @@ Your pattern is saved inside Arp's module preset, not as a parameter you can aut
 A library keeps named copies of patterns you like, so you can recall one into the editor.
 
 <!-- SPEC §4.6 (shape, default 8 plain steps, preset data not parameters, applies from the first step evaluated after the change, validation clamps, morph, library = named saved copies, step_size/step_unit pattern-level fields). -->
-<!-- Q-H6 answered by horde (seq 8, D-034, their ADR-169): the user pattern is saved by value inside Arp's module preset, one blob per preset, and each morph corner may carry its own, flipping at the morph threshold. -->
+<!-- Q-H6 answered by horde (seq 8, D-034, their ADR-169): the user pattern is saved by value inside Arp's module preset, one blob per preset, and each morph corner may carry its own, flipping at the morph threshold. SPEC §4.6's "one pattern per preset" is per module preset: a corner holds Arp's module preset. -->
 <!-- OPEN: where the pattern editor and the library sit on Arp's page is not designed (GUI 3); arp.pattern-editor stays pending-design. -->
 
 [[AUD:arp.user-pattern]]
@@ -188,15 +188,15 @@ Arp has two ways to set the speed of its steps: **Rate mode** `Sync` (the defaul
 
 Status: READY-TO-WRITE — SPEC §2.1, §2.4, §9, §1.3
 
-In `Sync`, **Rate** sets the length of a step in note values, from 2/1 down to 1/64, with triplets (a `T` after the value, for example 1/8T) and dotted values (for example 3/16, shown with its dotted name 1/8D). The default is 1/16. The step grid is the DAW's own: a step always falls on the same place in the song, whatever the buffer size, and follows tempo changes. Tempo is held between 20 and 999 bpm.
+In `Sync`, **Rate** sets the length of a step in note values, from 2/1 down to 1/64, with triplets (a `T` after the value, for example 1/8T) and dotted values (for example 3/16, shown with its dotted name 1/8D). **Rate** defaults to 1/16. The step grid is the DAW's own: a step always falls on the same place in the song, whatever the buffer size, and follows tempo changes. Tempo is held between 20 and 999 bpm.
 
 Changing **Rate** while the arp is running takes effect at the next step of the old rate, so with a long rate such as 2/1 the change can lag by up to eight beats. Notes already sounding keep their length.
 
 <!-- SPEC §2.1 (22 divisions, TPQ), §1.3 (tempo clamp 20-999), §9 Q-A1 (a rate change applies at the next step of the old rate; up to 8 beats at 2/1), T15; params.json `rate` (dotted aliases). -->
 
-When the DAW is stopped, Arp keeps playing: its steps count from your key press at the last tempo the DAW gave (120 bpm if it gave none), and stop once nothing is held, sounding or waiting. When the DAW starts, stops, jumps or loops, the notes sounding at that moment end and the arp starts afresh from the new position.
+When the DAW is stopped, Arp keeps playing: its steps count from your key press at the last tempo the DAW gave (120 bpm if it gave none), and stop once nothing is held, sounding or waiting. When the DAW starts, stops, jumps or loops, the arp's notes sounding at that moment end and the arp starts afresh from the new position. Notes of the chord stage are not affected.
 
-<!-- SPEC §2.4 (the free clock: runs from a gesture start until idle, at the current tempo else 120), §7 T6. -->
+<!-- SPEC §2.4 (the free clock: runs from a gesture start until idle, at the current tempo else 120), §7 T6, §14 (chord notes ignore transport edges). -->
 
 ### Time mode
 
@@ -208,7 +208,7 @@ You can sweep **Step time** while playing. The arp speeds up or slows down smoot
 
 In `Time` there are no bars, so **Restart** has nothing to count against and is greyed out: the pattern starts afresh at every new chord. With no keys held, no steps run, so nothing plays and no triggers fire.
 
-Switching **Rate mode** ends the notes sounding at that moment and starts the pattern again.
+Switching **Rate mode** ends the arp's notes sounding at that moment (not the chord's) and starts the pattern again.
 
 <!-- SPEC §2.6 (L = step_time_us 10,000-2,000,000; both ms and Hz; fires from the key press; smooth change, no burst, E7; restart inert, r3 HIGH-2; no step while H is empty, E5; switching rate_mode = release-all then re-anchor, T19), §11 TM1-TM3. Swing in time mode: §2.6 "every §2.3 and §5 formula (offsets, swing, ...) applies unchanged". -->
 
@@ -218,7 +218,7 @@ Switching **Rate mode** ends the notes sounding at that moment and starts the pa
 
 Status: READY-TO-WRITE — SPEC §5.1, §5.2
 
-**Gate** sets how long each note sounds as a share of its step: 1 to 200 %, default 80 %. Below 100 % the notes are separate; at 100 % they touch; above 100 % they overlap, which gives a legato line. If a new note starts on a key that is still sounding, the old note ends and the new one starts at the same moment. Each step's own gate scales this setting. With ratchets, the gate is a share of each repeat, not of the whole step.
+**Gate** sets how long each note sounds as a share of its step: 1 to 200 %, default 80 %. Below 100 % the notes are separate; at 100 % they touch; above 100 % they overlap, which gives a legato line. If a new note starts on a key that is still sounding, the old note ends and the new one starts at the same moment. Each step's own gate scales this setting. With ratchets, the gate is a share of each repeat, not of the whole step, and a repeat never runs past its own slice, so ratcheted notes do not overlap.
 
 **Swing** delays every second step: 50.0 % is straight, 66.7 % is a triplet feel and 75.0 % is the maximum. Swing follows the DAW's grid, so the same steps are swung however the pattern is restarted. A swing change applies from the next pair of steps, so the two steps of a pair always share one swing value.
 
@@ -256,7 +256,7 @@ The notes of the chord stage are never randomised: they follow your hands. The r
 
 Status: READY-TO-WRITE — SPEC §4.7, D-014
 
-**Steps** repeats the whole pattern shifted. After one full pass through the order style (every held note, once), the next pass is shifted by **Step size**; after **Steps** shifted passes, it drops back to the unshifted pass and begins again. **Steps** runs from 0 (no transposition, the default) to 8. **Step size** runs from −48 to +48 and defaults to +12; a negative size shifts down. **Step unit** chooses `Semitones` or `Scale degrees`.
+**Steps** repeats the whole pattern shifted. A pass is one full cycle of the order style: `Up` over three held notes is three steps, `Up-down` over three is four, and `Random` counts as many steps as there are held notes. After one pass the next pass is shifted by **Step size**; after **Steps** shifted passes, it drops back to the unshifted pass and begins again. **Steps** runs from 0 to 8 and defaults to 0, which is no transposition. **Step size** runs from −48 to +48 and defaults to +12; a negative size shifts down. **Step unit** chooses `Semitones` or `Scale degrees`.
 
 For example, `Up` over C E G with **Steps** 2 and a **Step size** of +7 semitones plays C E G, then G B D, then D F♯ A, then C E G again.
 
@@ -280,12 +280,19 @@ Status: READY-TO-WRITE — SPEC §3, D-000 Open 3
 
 Switching **Latch** to `Off` lets go of every latched note at once; keys you are still holding stay.
 
-The sustain pedal holds Arp's input: keys you let go of while the pedal is down stay in the pattern until you lift the pedal (or stay latched, if **Latch** is on). The pedal is one pedal for all channels. Arp takes the pedal for itself and does not pass it on to the engine, so Arp's own notes never pile up as tails. horde's own sustain pedal holds only the notes you play directly, not the arp's or the chord's, whose holding is this one.
+The sustain pedal holds Arp's input: keys you let go of while the pedal is down stay in the pattern until you lift the pedal (or stay latched, if **Latch** is on). The pedal is one pedal for all channels. Arp takes the pedal for itself and does not pass it on to the engine, so Arp's own notes never pile up as tails.
 
 <!-- SPEC §3 (DOWN / PEDAL / LATCHED; replace drops every LATCHED ref at a gesture start; append toggles a latched key out; pedal global in 1.0; CC 64 consumed), §13 item 6 (a press that joins a non-empty latched set neither re-anchors nor re-bases), §13 item 12 / §14 (latch applies at once). -->
-<!-- Q-H5 answered (D-034, horde ADR-282): horde's sustain pedal holds the notes you play directly only, once horde builds that behaviour (their RC-6.7); the arp's and the chord's notes are held by Arp's input hold. Nothing changes in horde's 1.0 until Arp's core lands. -->
 
 [[AUD:arp.latch-pedal]]
+
+### horde's own sustain pedal
+
+Status: PENDING — D-034, horde RC-6.7
+
+Once horde builds this behaviour, horde's own sustain pedal will hold only the notes you play directly. It will not hold the arp's or the chord's notes: their holding is Arp's, described above.
+
+<!-- Q-H5 answered by horde (D-034, their ADR-282): the engine's sustain pedal holds `direct` voices only once the stream behaviour is built (their RC-6.7, round 36); `chord` and `arp` voices are held by Arp's input hold. Not built yet, so this is what horde will do, and the section stays PENDING (lead's ruling). -->
 
 ## Restart
 
@@ -293,13 +300,15 @@ Status: READY-TO-WRITE — SPEC §4.5, §9 Q-A2, D-000 Open 4
 
 **Restart** decides which step of the pattern plays first; it never moves when steps fall, which is always the grid.
 
-- `New chord`: the pattern starts from its beginning, on the next grid step, whenever you start a new chord (a key pressed with nothing held). It also starts again when you switch Arp on, when the DAW jumps or loops, and when **Rate** changes.
+- `New chord`: the pattern starts from its beginning, on the next grid step, whenever you start a new chord (a key pressed with nothing held). It also starts again when you switch **Arp module** on, when the DAW jumps or loops, and when **Rate** changes.
 - `Bar`: the pattern starts again at the first grid step of every bar, by the DAW's bars and time signature. If the rate does not divide the bar evenly, the first step at or after the bar line starts it.
-- `Free`: the pattern runs along with the song and does not start again on a new chord; a new chord simply joins at whatever step is next. It starts again only when the DAW jumps, loops, starts or stops.
+- `Free`: with the DAW playing, the pattern runs along with the song and does not start again on a new chord; a new chord simply joins at whatever step is next. It starts again only when the DAW jumps, loops, starts or stops.
 
-Changing **Restart** takes effect from the next step. Into `Bar` or `Free` the pattern restarts at once; into `New chord` it keeps going until your next new chord. In `Time` mode **Restart** is greyed out and every new chord starts the pattern afresh.
+With the DAW stopped there is no song to follow, so `Bar` and `Free` behave like `New chord`: every new chord starts the pattern from its beginning, on your key press.
 
-<!-- SPEC §4.5 (the anchor table; bars from barStartBeats or the time signature; 10 of 22 rates do not divide a bar), §9 Q-A2, §2.6 (restart inert in time mode). Free: "re-anchors only on a jump or a clock switch"; the order position then carries on (m is reset only at an anchor). -->
+Changing **Restart** takes effect from the next step. Into `Bar` the pattern re-aligns to the current bar, and into `Free` to the song position, and in both the order starts again from its first note; into `New chord` the pattern keeps going until your next new chord. In `Time` mode **Restart** is greyed out and every new chord starts the pattern afresh.
+
+<!-- SPEC §4.5 (the anchor table; bars from barStartBeats or the time signature; 10 of 22 rates do not divide a bar), §9 Q-A2, §2.6 (restart inert in time mode). Free: "re-anchors only on a jump or a clock switch"; the order position then carries on (m is reset only at an anchor). With the transport stopped, §2.4 H7a and §13.7: every gesture start re-bases the free clock and anchors (anchorK := 0, m := 0 under chord and free; bars recomputed under bar), so bar and free act as chord. §9 Q-A2: into bar or free the anchor is recomputed and m := 0. -->
 
 [[AUD:arp.restart]]
 
@@ -311,9 +320,9 @@ Status: READY-TO-WRITE — SPEC §4.8, D-018
 
 One repeat is one full cycle of everything: the pattern, the order style through every held note, and the transposition passes all coming round together. So 2 repeats of `Up` over C E G with the `Plain` pattern plays C E G C E G, then silence. A bigger chord or more **Steps** make each repeat longer.
 
-The count starts when you start a chord, whatever **Restart** is set to. When it has run out, the arp stays silent until you start a new chord or add a key to the notes already held, which starts the count again. Neither letting go nor changing **Repeats**, **Steps** or **Pattern** revives it. Notes already sounding finish by their gates.
+The count starts when you start a chord, whatever **Restart** is set to. When it has run out, the arp stays silent until you start a new chord or add a key to the notes already held, which starts the count again. If keys are held or latched when the DAW starts, stops, jumps or loops, the count starts again then too. Neither letting go nor changing **Repeats**, **Steps** or **Pattern** revives it. A used-up arp plays no notes and fires no triggers; notes already sounding finish by their gates.
 
-<!-- SPEC §4.8 (C = full cycle; the count runs from the gesture start; exhausted is a latched flag cleared by a gesture start or any NoteOn that adds a key; morphs of repeats, steps or pattern never revive it; E9, E11, E12), T20. -->
+<!-- SPEC §4.8 (C = full cycle; the count runs from the gesture start; exhausted is a latched flag cleared by a gesture start or any NoteOn that adds a key, and by T6/T7 while H' is non-empty (E12: a transport start, stop, jump or loop with keys held or latched); spent steps emit no notes and no triggers; morphs of repeats, steps or pattern never revive it; E9, E11, E12), T20. -->
 
 [[AUD:arp.repeats]]
 
@@ -321,7 +330,7 @@ The count starts when you start a chord, whatever **Restart** is set to. When it
 
 Status: READY-TO-WRITE — SPEC §6, §4.7, D-010, D-020
 
-**Quantize** pulls the notes Arp plays into a scale. One switch governs the whole of Arp: while it is on, everything Arp emits, the arp's notes, the chord stage's notes and the note you played, is in the scale.
+**Quantize** pulls the notes Arp plays into a scale. One switch governs the whole of Arp: while it is on, every note Arp emits is in the scale, the arp's notes and the chord stage's notes (the chord stage's copy of the key you played included). The keys you play, which reach the engine around Arp, are not snapped.
 
 - `Off`: notes are played as they are.
 - `Scale`: each note moves to the nearest note of the scale. Notes already in the scale are unchanged.
@@ -337,9 +346,9 @@ Status: READY-TO-WRITE — SPEC §6, D-010
 
 **Scale** chooses where the scale comes from. `horde's scale` (the default) is horde's own global scale: Arp reads it and never changes it. `Arp's own` uses a scale kept in Arp, in exactly the same shape as horde's: a root (**Own scale root**, C to B) and twelve switches (**Own scale: +0** to **+11**), one for each note from the root up. A switch for a note that is on means that note, in every octave, is in the scale. The own scale starts as C major.
 
-A change of scale applies from the next step and never moves a sounding note. The settings of one scale (**Quantize**, **Scale**, **Own scale root** and the twelve switches) move together under morph, so a morph between two scales never passes through a hybrid of both.
+A change of scale reaches the arp from the next step and never moves an arp note that is already sounding. The chord stage follows at once: its changed notes are re-voiced immediately. The settings of one scale (**Quantize**, **Scale**, **Own scale root** and the twelve switches) move together under morph, so a morph between two scales never passes through a hybrid of both.
 
-<!-- SPEC §6 (the schema {root, mask}; the mask is relative to the root; scale_source global | own; default own scale C major; one morph group, r2 M2; "A scale change never moves a sounding note"). -->
+<!-- SPEC §6 (the schema {root, mask}; the mask is relative to the root; scale_source global | own; default own scale C major; one morph group, r2 M2; "A scale change never moves a sounding note" is the arp's rule; the chord stage re-maps at offset 0 on a scale-setting change, §14). -->
 <!-- OPEN: whether Arp's page offers a list of named scales (major, dorian, ...) for the own scale, as horde's own scale control does, is not ruled; params.json carries the names only as UI vocabulary (ui_scale_names). Not described here. -->
 
 ### How notes are snapped
@@ -366,7 +375,7 @@ Each of the six slots, **Chord interval 1** to **Chord interval 6**, has an on s
 
 [[AUD:arp.chord-stage]]
 
-With **Quantize** on, every chord note is snapped into the scale, the key you played included; where a snap is a tie, it goes to the lower note. In `Scale degrees` the interval is counted from the nearest scale note to the key you played; with **Quantize** off, or with all twelve notes of the scale off, a degree is one semitone. Notes that would fall outside the keyboard are left out.
+With **Quantize** on, every chord note is snapped into the scale, the chord's copy of the key you played included; where a snap is a tie, it goes to the lower note. In `Scale degrees` the interval is counted from the nearest scale note to the key you played; with **Quantize** off, or with all twelve notes of the scale off, a degree is one semitone. Notes that would fall outside the keyboard are left out.
 
 The chord follows only your keys, the pedal and the latch. It ignores the DAW's transport and the arp's on and off. If two held keys produce the same chord note, it plays once and ends only when the last key that made it is let go. If you change an interval, the unit or the scale while holding keys, only the notes that changed are re-voiced, at once, and the others keep sounding.
 
@@ -382,16 +391,16 @@ Status: READY-TO-WRITE — SPEC §8, §2.5, D-007
 
 A step can fire one of eight triggers (1 to 8). A trigger is not a sound: it is a signal event that horde can use to act on another module (for example, to clear one), at the exact moment of the step. horde lists the eight triggers as event sources named Arp · T1 to Arp · T8; how to route them is covered in the modulation chapter. A trigger fires at the step's first note, once, even if the step is a ratchet. A step with no note (a rest, or no keys held) can still fire its trigger, and a trigger waits for its **Chance** like a note does.
 
-While the DAW is playing, a step with a trigger fires even with no keys held when **Restart** is `Bar` or `Free`, so `Trigger pulse` keeps ticking. With `New chord` nothing fires until the first chord. With the DAW stopped, and in `Time` mode, nothing fires while no keys are held.
+While the DAW is playing, a step with a trigger fires even with no keys held when **Restart** is `Bar` or `Free`, so `Trigger pulse` keeps ticking. With `New chord` nothing fires until the first chord. With the DAW stopped, a trigger-only step can still fire after you let go, until Arp goes idle (while notes you released are still sounding or waiting). In `Time` mode nothing fires once no keys are held.
 
-<!-- SPEC §8 (lane = s.trig at the step's first on; no state, no terminal), §4.3 (a trigger-only step fires if `fires`), §2.5 (steps run only when the clock runs; H11; under restart = chord there is no anchor before the first gesture; time mode idle while H empty). -->
+<!-- SPEC §8 (lane = s.trig at the step's first on; no state, no terminal), §4.3 (a trigger-only step fires if `fires`), §2.5 (steps run only when the clock runs; H11; under restart = chord there is no anchor before the first gesture; time mode idle while H empty; §2.4 the free clock runs until idle, i.e. also while released notes still sound). -->
 <!-- Q-H3 answered by horde (D-015, ADR-267 A1): Trigger{lane 1-8, sampleOffset}; horde shows the lanes as event sources "Arp · T1–T8". Routing is in horde's modulation chapter. -->
 
 ## Seed
 
 Status: READY-TO-WRITE — SPEC §10, §4.9, D-036
 
-**Seed** is a whole number from 0 to 4,294,967,295 (default 0). Everything Arp leaves to chance, `Random` and `Shuffle` orders, a step's **Chance**, **Velocity random** and **Gate random**, is drawn from it, never from the moment or the machine. The same playing, settings, transport and **Seed** give the same notes every time; a different **Seed** gives a different take of the same randomness. The result is the same at every buffer size and sample rate.
+**Seed** is a whole number from 0 to 4,294,967,295 (default 0). Everything Arp leaves to chance, `Random` and `Shuffle` orders, a step's **Chance**, **Velocity random** and **Gate random**, is drawn from it, never from the moment or the machine. The same playing, settings, transport and **Seed** give the same notes every time; a different **Seed** gives a different take of the same randomness. The result is the same at every buffer size, and at every sample rate apart from the exception described at the top of this page (a note played within a fraction of a millisecond of a step).
 
 While the DAW is stopped, each new chord starts a new run of random choices, so playing the same chord twice does not repeat the same random run.
 
@@ -401,11 +410,11 @@ While the DAW is stopped, each new chord starts a new run of random choices, so 
 
 Status: READY-TO-WRITE — SPEC §9, D-021
 
-Every Arp setting can be a target of horde's morph. **Gate**, **Swing**, **Fixed velocity**, **Velocity random**, **Gate random**, **Random curve** and **Step time** blend smoothly between corners. Every other setting switches at a point on the way, to the corner that clearly leads, and takes effect from the next step; the notes already sounding are never cut. Morphing the choice of **Pattern** to `Build your own` works like any choice. A morph never revives an arp that has run out of **Repeats**.
+Every Arp setting can be a target of horde's morph. **Gate**, **Swing**, **Fixed velocity**, **Velocity random**, **Gate random**, **Random curve** and **Step time** blend smoothly between corners. Every other setting switches at a point on the way, to the corner that clearly leads. Most take effect from the next step and never cut a sounding note. A few act at the moment they change and can end or re-voice notes that are sounding: **Arp module**, **Arp on** (which ends the arp's notes), **Rate mode** (which ends the arp's notes and starts the pattern again), **Latch**, and **Chord** with its unit, intervals and the scale settings (which re-voice the chord's notes). Morphing the choice of **Pattern** to `Build your own` works like any choice. A morph never revives an arp that has run out of **Repeats**.
 
 The table at the end says, for each setting, whether it blends or switches.
 
-<!-- SPEC §9 (continuous vs discrete settings; Q-A1: the leading corner must exceed the current by 0.05, so it does not flutter at the half-way point; applies from the next evaluated step), T8/T9, §4.8 (morphs of repeats, steps or pattern never revive). Arp module, Arp on, Chord and the chord settings apply at the instant of the change, §14. -->
+<!-- SPEC §9 (continuous vs discrete settings; Q-A1: the leading corner must exceed the current by 0.05, so it does not flutter at the half-way point; applies from the next evaluated step), T8/T9, §4.8 (morphs of repeats, steps or pattern never revive). T4/T5 (Arp module), §13.14 / §14 (Arp on, Chord and the chord settings, the scale settings for the chord stage: offset 0), T19 / §2.6 (Rate mode), §13 item 12 (Latch). -->
 
 ## Tips
 
@@ -415,7 +424,7 @@ Status: READY-TO-WRITE — SPEC §4.3, §4.7, §5.2, §14, D-037
 - **A chord that moves, an arp that stays:** switch **Chord** on, give one oscillator the chord stage alone and another the arp alone with their note source toggles *(name pending)*, then play single keys.
 - **Humanise:** a little **Velocity random** and **Gate random**, with **Random curve** raised, keeps most notes near the setting and lets a few stray.
 - **Different takes:** change **Seed** to get a different run from `Random`, `Shuffle`, a step's **Chance** and the randomness sliders.
-- **Play once:** set **Repeats** to 1 and **Latch** to `Replace` to tap a chord and have it play through once.
+- **Play once:** set **Repeats** to 1 and **Latch** to `Replace` to tap a chord and have it play through once. While the chord stays latched, it plays again each time the DAW starts, stops, jumps or loops.
 - **An arp that ignores the song:** use **Rate mode** `Time` and sweep **Step time** for accelerandos.
 - **A scale that follows the chord:** **Quantize** `Chord root` moves the scale with the lowest note you hold.
 - **Buzz from ratchets:** a roll at a fast rate and tempo (for example four repeats inside a 1/32T step at 174 bpm) is a note every few milliseconds and is heard as a pitch. That is the pattern doing what it says; nothing limits it.

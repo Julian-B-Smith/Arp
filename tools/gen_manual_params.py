@@ -7,13 +7,16 @@ typed by hand, so the page cannot disagree with the spec.
 
   python3 tools/gen_manual_params.py --write   rewrite the table between the markers
   python3 tools/gen_manual_params.py --check   exit 0 if the page equals the generator's output (and the page's
-                                               placeholders, status lines and wording pass); else print why, exit 1
-  python3 tools/gen_manual_params.py --plant   the must-fail controls: perturb one thing in memory per detector;
-                                               exit 1 = every detector went red (the controls work), exit 2 = a
-                                               detector missed its plant (the check cannot be trusted)
+                                               placeholders, status lines, wording and stated numbers pass); else
+                                               print why, exit 1
+  python3 tools/gen_manual_params.py --plant   the must-fail controls: perturb one thing in memory per detector.
+                                               Exit 3 and the line "every plant was detected" = every detector went
+                                               red (the controls work). Exit 3 is deliberate: a Python crash exits 1,
+                                               so it cannot pass for success. Exit 2 = a detector missed its plant
+                                               (or a setup error); anything else = broken.
 
-Exit 2 also means a setup error (a marker is missing, an unmapped unit). Standard library only. Not wired into
-./verify: that is a human gate.
+Exit 2 also means a setup error (a marker is missing, an unmapped unit). Standard library only. Run by
+./verify fast (manual_gate): the plants first, then the check.
 """
 from __future__ import annotations
 
@@ -276,6 +279,12 @@ def figure_problems(page: str, figs: dict) -> list[str]:
             probs.append(f"{e['id']}: unknown status {e['status']!r}")
         if not isinstance(e["depends_on"], list) or not e["depends_on"]:
             probs.append(f"{e['id']}: depends_on must be a non-empty list")
+        else:
+            # horde's tools/manual_scaffold_check.py accepts only an H2-PLAN part id, a ROADMAP row (Bnnn) or an
+            # ADR-nnn heading; SPEC and Arp decision references belong in `source`.
+            for d in e["depends_on"]:
+                if not (isinstance(d, str) and re.fullmatch(r"B\d+|ADR-\d+|[a-z][a-z0-9]*", d)):
+                    probs.append(f"{e['id']}: depends_on {d!r} is not a horde part id, Bnnn row or ADR-nnn (put it in `source`)")
         if not isinstance(e["generated"], bool):
             probs.append(f"{e['id']}: generated must be true or false")
         for f in ("purpose", "content", "source"):
@@ -349,6 +358,86 @@ def prose_problems(page: str) -> list[str]:
     return probs
 
 
+# Numbers the prose states for a setting. A sentence that names a numeric setting in bold and says "default N" or
+# "N to M" is held to params.json. Step fields (italics, not bold) and prose with no bold setting name are not
+# checked, so a sentence naming two settings must give both the same numbers.
+NUMERIC_TYPES = {"int", "percent", "permille", "uint32"}
+NUM = r"[\u2212+-]?\d[\d,]*(?:\.\d+)?"
+UNIT = r"(?:%|ms|s\b)?"
+DEFAULT_RX = re.compile(rf"\bdefault(?:s)?(?:\s+to|\s+is)?\s+(?P<n>\d+/\d+T?|{NUM})\s*(?P<u>{UNIT})")
+RANGE_RX = re.compile(rf"(?P<a>{NUM})\s*(?P<ua>{UNIT})\s+to\s+(?P<b>{NUM})\s*(?P<ub>{UNIT})")
+BOLD = re.compile(r"\*\*([^*]+)\*\*")
+
+
+def _val(text: str) -> float:
+    return float(text.replace("\u2212", "-").replace(",", "").replace("+", ""))
+
+
+def _scaled(key: str, v: float, unit: str) -> float:
+    """The number in params.json's own unit (step_time_us in microseconds, swing in permille)."""
+    if key == "step_time_us":
+        return v * {"ms": 1e3, "s": 1e6}.get(unit, 1)
+    if key == "swing" and unit == "%":
+        return v * 10
+    return v
+
+
+def _bounds(p: dict) -> tuple[float, float]:
+    if p["type"] == "uint32":
+        return 0, 2**32 - 1
+    return p["min"], p["max"]
+
+
+def _prose_sentences(page: str):
+    text = re.sub(r"%s.*?%s" % (re.escape(BEGIN), re.escape(END)), "", _strip_comments(page), flags=re.S)
+    for ln in _fenceless_lines(text):
+        if ln.startswith(("Status:", "|", "#")):
+            continue
+        for s in re.split(r"(?<=[.!?])\s+(?=[A-Z*`(\[])", ln):
+            yield s
+
+
+def number_problems(page: str, params_doc: dict, min_claims: int = 8) -> tuple[list[str], int]:
+    numeric = {p["label"]: p for p in params_doc["params"] if p["type"] in NUMERIC_TYPES}
+    rates = {r["name"] for r in params_doc["rate"]}
+    rate_default = next(p["default"] for p in params_doc["params"] if p["key"] == "rate")
+    probs: list[str] = []
+    checked = 0
+    for s in _prose_sentences(page):
+        named = [b for b in BOLD.findall(s) if b in numeric or b == "Rate"]
+        if not named:
+            continue
+        for m in DEFAULT_RX.finditer(s):
+            for label in named:
+                if label == "Rate":
+                    ok = m.group("n") == rate_default and m.group("n") in rates
+                    checked += 1
+                    if not ok:
+                        probs.append(f"prose says {label} defaults to {m.group('n')}, params.json says {rate_default}: {s.strip()[:80]}")
+                    continue
+                p = numeric[label]
+                got = _scaled(p["key"], _val(m.group("n")), m.group("u"))
+                checked += 1
+                if got != p["default"]:
+                    probs.append(f"prose says {label} defaults to {m.group('n')}{m.group('u')}, params.json says {p['default']}: {s.strip()[:80]}")
+        for m in RANGE_RX.finditer(s):
+            ua, ub = m.group("ua"), m.group("ub")
+            ua = ua or ub
+            for label in named:
+                if label == "Rate":
+                    continue
+                p = numeric[label]
+                lo, hi = _bounds(p)
+                a, b = _scaled(p["key"], _val(m.group("a")), ua), _scaled(p["key"], _val(m.group("b")), ub)
+                checked += 1
+                if (a, b) != (lo, hi):
+                    probs.append(f"prose says {label} runs {m.group('a')} to {m.group('b')}, params.json says {lo} to {hi}: {s.strip()[:80]}")
+    if checked < min_claims:
+        probs.append(f"the number check found only {checked} stated numbers to check (expected at least {min_claims}): "
+                     "its patterns no longer match the prose")
+    return probs, checked
+
+
 # ---------------------------------------------------------------- driver
 
 def load() -> tuple[dict, dict, dict, str]:
@@ -368,6 +457,7 @@ def all_problems(params, bank, figs, page) -> dict[str, list[str]]:
         "figures": figure_problems(page, figs),
         "status": status_problems(page),
         "prose": prose_problems(page),
+        "numbers": number_problems(page, params)[0],
     }
 
 
@@ -384,7 +474,9 @@ def cmd_check() -> int:
     found = all_problems(params, bank, figs, page)
     red = False
     for name, probs in found.items():
-        if probs:
+        if name == "numbers" and not probs:
+            print(f"PASS  numbers ({number_problems(page, params)[1]} stated numbers match params.json)")
+        elif probs:
             red = True
             print(f"RED   {name}")
             for p in probs:
@@ -415,6 +507,17 @@ def cmd_plant() -> int:
     l2 = page.replace(END, "Open the spec at §4.4 to see the formula.\n" + END, 1)   # a citation in prose
     plants["prose"] = ("prose", (params, bank, figs, l2))
 
+    n2 = page.replace("1 to 200 %, default 80 %", "1 to 200 %, default 81 %", 1)    # a prose default off by one
+    assert n2 != page, "plant text not found in the page: update the plant"
+    plants["numbers (default)"] = ("numbers", (params, bank, figs, n2))
+    n3 = page.replace("from \u221248 to +48 and defaults to +12", "from \u221248 to +36 and defaults to +12", 1)   # a prose range changed
+    assert n3 != page, "plant text not found in the page: update the plant"
+    plants["numbers (range)"] = ("numbers", (params, bank, figs, n3))
+
+    d2 = copy.deepcopy(figs)
+    d2["entries"][0]["depends_on"] = ["SPEC §4.2"]            # a depends_on horde's scaffold check would refuse
+    plants["depends_on"] = ("figures", (params, bank, d2, page))
+
     missed = False
     for name, (which, args) in plants.items():
         probs = all_problems(*args)[which]
@@ -425,8 +528,8 @@ def cmd_plant() -> int:
             print(f"GREEN plant '{name}': NOT detected, the {which} check cannot be trusted")
     if missed:
         return 2
-    print("RED   every plant was detected: the controls work")
-    return 1
+    print("every plant was detected")
+    return 3
 
 
 def main(argv: list[str]) -> int:
