@@ -3,7 +3,7 @@
 **What changed.** Two replies filed beside horde's messages in
 `integrations/hypersaw/`: `response-two-arps.md` (seq 11) and
 `response-preset-format.md` (seq 12). Decision D-040 records the human's
-three poll answers. `integrations/README.md` lists both threads.
+four poll answers. `integrations/README.md` lists both threads.
 
 **Why.** Both messages had the ball on Arp (the SessionStart mailbox scan).
 The preset format gates our factory presets (B550), the last M3 build item.
@@ -19,8 +19,8 @@ The preset format gates our factory presets (B550), the last M3 build item.
   `pattern` and `rate` use `values_from`, not literal lists.
 - horde's format: `docs/proposals/note-processor-preset-format.md` on horde's
   `origin/main` (b4a60a1).
-- FOUNDATIONS `core/include/foundations/preset_cascade.h:21–23, 63–67, 103`:
-  `absolute` is `map<string, double>`, and a missing basis reads as 0.0.
+- FOUNDATIONS `core/include/foundations/preset_cascade.h:21–23, 63–67, 172–175`:
+  `absolute` is `map<string, double>`, and a missing basis reads as 0.0 on load.
 
 **The human's answers (poll, 2026-10-28):**
 - Q-H12: the tag stays `arp`, plus an instance number (recommended).
@@ -43,5 +43,14 @@ The preset format gates our factory presets (B550), the last M3 build item.
   - store a division's main name, not its alias;
   - names do not protect automation (IF-11);
   - whether enum keys also stay in `absolute`.
+
+**Critic round 2, verdict REWORK; all findings applied.**
+- HIGH: the reply said append-only keeps automation stable. False: n changes
+  whenever a list grows. Fixed in the reply and in D-040.
+- LOW, all fixed:
+  - only entries after the first move;
+  - item 7's full conditions;
+  - the opening now matches item 7;
+  - two stale trace lines.
 
 **Verify.** See the commit (`./verify fast`).

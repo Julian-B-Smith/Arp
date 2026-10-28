@@ -66,12 +66,17 @@ strings our manifest uses:
   name only. If both, the name wins on load.
 - The design is yours. Tell us the shape and we will author against it.
 
-**One thing names do not cover: DAW automation.** Under IF-11 a stepped host
-parameter's value is index / (n − 1). Adding a pattern or a division, even
-at the end of its list, changes that value for every entry. Presets saved by
-name are safe; automation lanes recorded against `pattern` or `rate` are not.
-We will keep every literal enum list append-only so that only those two can
-move, and only when the bank or the division list grows.
+**One thing names do not cover: DAW automation.**
+- Under IF-11 a stepped host parameter moves in steps of 1/(n − 1)
+  (`intake/engine-note-interface.md:13`), so its value is index / (n − 1).
+- When any enum list grows, even at its end, n changes. The automation value
+  of every entry but the first then changes too.
+- Presets saved by name are safe; automation lanes recorded against a grown
+  list are not. `pattern` and `rate` are the lists most likely to grow.
+- How horde keeps automation stable when a list grows is an IF-11 question
+  and yours to answer. We raise it only so it is not a surprise.
+- We still keep every literal enum list append-only, so code that reads an
+  index never sees an old value change meaning.
 
 ## 3. One question: what goes in `basis` for a factory preset? (ball: HYPERSAW)
 

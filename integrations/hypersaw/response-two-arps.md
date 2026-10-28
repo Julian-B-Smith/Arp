@@ -18,8 +18,9 @@ cites: your brief-two-arps (seq 9), horde ADR-293, ADR-270, VO-5, IF-1; our SPEC
 
 **In short:** our core can already run two independent arps. The one thing
 two arps must share is the chord stage, and in today's code it sits inside
-each arp's object. Separating them is a small post-1.0 change, and 1.0 needs
-nothing now.
+each arp's object. horde can already work around that with 1.0 as it is
+(item 7). Separating the stage is an option for after 1.0, not a
+requirement, and 1.0 needs nothing now.
 
 ## Q-H11: yes, and nothing global stands in the way
 
@@ -72,9 +73,12 @@ nothing now.
      `scale_root`, `scale_deg0..11`, and horde's global root and mask;
    - what holds the keys: `latch`, the sustain pedal (CC 64) and `enabled`.
 7. **Already possible with 1.0, at no cost to us.** horde's stream selector
-   can leave Arp 2's `chord` stream unrouted. Arp 2's arp then reads the
-   same chord set as Arp 1, as long as every setting in item 6 matches on
-   both, and no chord note sounds twice.
+   can leave Arp 2's `chord` stream unrouted. No chord note then sounds
+   twice, and Arp 2's arp reads the same chord set as Arp 1, provided that:
+   - both cores receive the same input events;
+   - both receive the same panic, reset and prepare calls;
+   - horde's morph resolves every setting in item 6 to the same value on
+     both.
 8. **Cheap change in 1.0: none needed.** Nothing in 1.0 blocks either shape,
    so we propose no change to 1.0.
 

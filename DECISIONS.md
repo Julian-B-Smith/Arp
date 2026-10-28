@@ -1086,9 +1086,12 @@ them in `integrations/hypersaw/`.
     spec amendment.
   - We suggested the names travel beside the `Preset`, as ADR-294 does for
     blobs; the shape is horde's.
-  - We keep the nine literal enum lists append-only anyway, because a host
-    automation value is index / (n − 1) (IF-11), which names cannot
-    protect.
+  - Names protect presets, not automation. A stepped host value is
+    index / (n − 1) (IF-11), so any enum list that grows, even at its end,
+    moves its automation values. We raised this with horde as theirs to
+    answer.
+  - We keep the nine literal enum lists append-only only so that code
+    reading an index never sees an old value change meaning.
   - We asked horde what `basis` a factory preset carries (we proposed 0).
   - We corrected the key count to 50 (D-036 added three).
 
