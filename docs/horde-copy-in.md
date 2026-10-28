@@ -3,7 +3,7 @@
 > **Origin.** Arp project, M3a dispatch of ROADMAP T-007, 2026-10-24 (base commit `ff115db` plus the M3a working tree). horde's
 > note-processor 1.0 bar says the core is copied into horde's tree at Arp's V1 by a horde PR that records Arp's commit (D-015,
 > Q-H2 ANSWERED). This file is the contract for that copy: **exactly these files, nothing else.**
-> Last verified: 2026-10-25 by `bash tools/core_test.sh` (the check described at the end). The CPU envelope below was measured on 2026-10-25 (M3c, D-032).
+> Last verified: 2026-10-27 by `bash tools/core_test.sh` (the check described at the end; hashes re-cut for D-039, whose shipped output is unchanged). The CPU envelope below was measured on 2026-10-25 (M3c, D-032), before D-039 touched the timeline loop (D-038 already asks for a re-measure).
 
 ## What horde copies
 
@@ -13,12 +13,12 @@ Keep the relative layout: `core/include` is the include root (`#include "arp/cor
 |---|---|
 | `core/include/arp/arith.h` | 702d89b13848b554a6e32392f5f48a22bbdd157e8a531270f194e0a103f37162 |
 | `core/include/arp/bank_data.h` | 87876a9f7681733500c17e65463f043b1be4f5bda8a77aff5949347c3a4b3723 |
-| `core/include/arp/core.h` | 305a41e73dcd76790ecd183b4c5b55d5d68bb93eb0eddad8adcbf075d5da7ea0 |
+| `core/include/arp/core.h` | 1dc40a197e02731afb39a83e674376b099f641656dddd8e64b25b3ee0bcb2459 |
 | `core/include/arp/draw.h` | ed9060b7d13a854f3ed09d0011a0483136df387982d16efafbe65cd2e90c8985 |
 | `core/include/arp/int128.h` | bb2c26a4cea9e04015c18957bf81a0d76b10f332ba72c86416fa41065112b433 |
 | `core/include/arp/pattern.h` | 1ad8f47861d91587aa6df2b6180d85cfc7d611fc8001769d42547cf1714e3899 |
 | `core/include/arp/types.h` | b45f811cdc241a5bf3ab6d76d4cc9fb8b168cb195870cbfdb452afab6879133b |
-| `core/src/core.cpp` | 0efbfeb4d45f8caca175188ecf28c6e4d723e11d0170075b92a86d28f2e3f920 |
+| `core/src/core.cpp` | f4bdb3409d35b0206796d46c03cbe47e13a1a4a177fa6d5246c55f2b1ada1f18 |
 
 - **Pinned at commit:** the commit that contains this file. horde records `git log -1 --format=%h -- core/ docs/horde-copy-in.md`
   in its copy-in PR; the sha256 column above is the authority (it is what `tools/core_test.sh` checks), the commit is the label.

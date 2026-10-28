@@ -151,6 +151,9 @@ struct Plants {
   bool randomFromBlock = false;     // RN1 / G1: the draw position x is taken from the step's offset in its block instead of the grid (kAbs)
   bool randomIgnoresCurve = false;  // RN1: random_curve is read as 0 (always uniform)
   bool randomChordStage = false;    // RN1: chord-stage notes get the velocity randomness too
+  // ---- the order inside one sample (D-039, erratum E13 option C) ----
+  bool musicalOrderOnSample = false; // SPEC 1.1 / G4: E13's REJECTED option A: an off, pending on or grid step strictly before an input on its sample goes first (a chord
+                                     // delivered a fraction of a sample late, as a rounding-up host does, then misses the step it was meant for)
 };
 #endif
 
@@ -331,7 +334,7 @@ class Core {
   void startBlockOffs();
   std::int64_t nextOffTime() const;
   bool offDueBy(const I128& pos, const I128& bound, std::int64_t t) const;
-  int takeDueOffs(std::int64_t t, int* out);
+  int takeDueOffs(std::int64_t t, int* out, const I128* before = nullptr);   // `before`: plant musicalOrderOnSample only
   bool releaseSlot(int i, std::int32_t s);
   int& schedAt(int logical) { return sched_[static_cast<std::size_t>((schedHead_ + logical) & (kSchedRing - 1))]; }
   int schedAt(int logical) const { return sched_[static_cast<std::size_t>((schedHead_ + logical) & (kSchedRing - 1))]; }

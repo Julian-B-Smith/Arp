@@ -693,15 +693,26 @@ EventSpan Core::process(const Block& b) {
       lastEvaluated_ = kAtOrAfter(posAt(static_cast<std::int32_t>(cur))) - 1;
       hasLastEvaluated_ = true;
     }
-    // The next thing to happen. On a tie the earlier kind wins: input, then offs, then pending ons, then the grid step.
+    // The next thing to happen. On a tie the earlier kind wins: an input, then offs, then pending ons, then the grid step (SPEC 1.1, D-039: erratum
+    // E13, option C). So an input counts as ON any off, pending on or grid step of its sample, even one a fraction of a sample earlier in the music.
+    // That is a choice, not an accident: a host delivers an event written on a grid line at a whole sample, and at 44.1 kHz half the 1/16 lines of
+    // 120 bpm fall on half samples; a host that rounds them to the nearest or up puts a chord change just past its step's tick, and this order still
+    // plays it on that step. The price, stated in G4: an input genuinely less than one sample after an event can land on either side of it,
+    // depending on the rate (G4 covers causes more than one sample apart). Plant musicalOrderOnSample is the rejected option A: what lies strictly
+    // before the input's position on its sample goes first (an off held back by the 1-sample minimum counts as on the sample); it is the control
+    // that the known answers in test_core.cpp testG4Order and tools/lab_smoke.mjs 7b must catch.
+    const std::int64_t inT = ii < b.in.size() ? b.in[ii].offset : kNever;
+    const I128 inPos = inT != kNever ? posAt(inT) : I128{};
+    const bool musical = inT != kNever && ARP_PLANT(musicalOrderOnSample);
+    const std::int64_t offT = nextOffTime();   // kNever when no off is due
+    const bool offBefore = musical && offT == inT && schedN_ > 0 && std::max<std::int64_t>(0, ofsMemo(memoOff_, sounding_[static_cast<std::size_t>(schedAt(0))].offPos)) == inT &&
+                           sounding_[static_cast<std::size_t>(schedAt(0))].offPos < inPos;   // the schedule's front is its earliest off
     std::int64_t t = kNever;
     int kind = -1;
-    if (ii < b.in.size()) { t = b.in[ii].offset; kind = 0; }
-    const std::int64_t offT = nextOffTime();   // kNever when no off is due
-    if (offT < t) { t = offT; kind = 1; }
+    if (offT < inT || (offT == inT && offBefore)) { t = offT; kind = 1; }
     if (pendN_ > 0) {   // the front of the ring is the soonest, the earliest queued among equals
       const std::int64_t s = std::max<std::int64_t>(0, ofsMemo(memoPend_, pendAt(0).pos));
-      if (s < t) { t = s; kind = 2; }
+      if (s < t && (s < inT || (s == inT && musical && pendAt(0).pos < inPos))) { t = s; kind = 2; }
     }
     if (running) {
       const I128 stepPos = I128::mul(gtick(lastEvaluated_ + 1), D_);
@@ -714,8 +725,9 @@ EventSpan Core::process(const Block& b) {
       // sub-note between the grid tick and the swung on survives and is emitted in its own time; only one at or after the swung on (straight swing:
       // the grid tick itself) is dropped, which is what E10 asks. In sync mode nothing drops, so the earlier-kind-wins order stands.
       const bool dropsTie = s == t && kind == 2 && timeMode_ && !ARP_PLANT(keepSpilledRatchets) && pendAt(0).lane == 0 && !(pendAt(0).pos < stepPos);
-      if (s < t || dropsTie) { t = s; kind = 3; }
+      if ((s < t || dropsTie) && (s < inT || (s == inT && musical && stepPos < inPos))) { t = s; kind = 3; }
     }
+    if (inT < t) { t = inT; kind = 0; }   // the input first at its sample (under the plant: once nothing strictly before it is left there)
     const bool inWindow = ARP_PLANT(clampOffset) ? t <= n_ : t < n_;   // half-open window; the plant lets an event at n through
     if (kind < 0 || !inWindow) break;
     if (t < cur) t = cur;   // a LATE event (SPEC 13.1) is emitted now
@@ -732,8 +744,9 @@ EventSpan Core::process(const Block& b) {
     } else if (kind == 1) {
       // Every off due at this offset goes out now, in ascending output id. Nothing can come between them: at a tie an input goes first (so none is left
       // at this offset), and a pending on or a grid step only goes after the offs, so what the old one-off-per-iteration loop did is exactly this.
+      // (Under plant musicalOrderOnSample an off can go before an input on its sample; then only the offs strictly before the input are taken.)
       int due[kSoundingSlots];
-      const int nd = takeDueOffs(offT, due);
+      const int nd = takeDueOffs(offT, due, musical && offT == inT ? &inPos : nullptr);
       for (int q = 0; q < nd; ++q) {
         if (sounding_[static_cast<std::size_t>(due[q])].hasOff) ++counters_.rows[1];
         releaseSlot(due[q], so);
@@ -1902,9 +1915,11 @@ bool Core::offDueBy(const I128& pos, const I128& bound, std::int64_t t) const {
 
 // Removes from the schedule every off due at offset `t` (the value nextOffTime() returned) and returns their slots in ascending output id.
 // In sched_ they are a prefix: the offsets are monotone in the position and `ofs(pos) <= t` is `pos <= start + t * inc` (no division).
-int Core::takeDueOffs(std::int64_t t, int* out) {
+// `before` (plant musicalOrderOnSample only): only the scheduled offs strictly before that position, for an input that yields its sample to them;
+// the rest of the sample's offs (exactly on it, and the quick offs, which count as on it) follow the input.
+int Core::takeDueOffs(std::int64_t t, int* out, const I128* before) {
   int n = 0;
-  for (int k = quickN_ - 1; k >= 0; --k) {
+  for (int k = quickN_ - 1; k >= 0 && !before; --k) {
     const int i = quick_[static_cast<std::size_t>(k)];
     if (sounding_[static_cast<std::size_t>(i)].quickT != t) continue;
     out[n++] = i;
@@ -1914,7 +1929,7 @@ int Core::takeDueOffs(std::int64_t t, int* out) {
   if (schedN_ > 0) {
     const I128 bound = start_ + I128::mul(t, inc_);
     int taken = 0;
-    while (taken < schedN_ && offDueBy(sounding_[static_cast<std::size_t>(schedAt(taken))].offPos, bound, t)) {
+    while (taken < schedN_ && offDueBy(sounding_[static_cast<std::size_t>(schedAt(taken))].offPos, bound, t) && (!before || sounding_[static_cast<std::size_t>(schedAt(taken))].offPos < *before)) {
       const int i = schedAt(taken++);
       out[n++] = i;
       sounding_[static_cast<std::size_t>(i)].off = kOffNone;

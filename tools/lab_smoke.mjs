@@ -324,6 +324,38 @@ function g1Diverges(plants) {
   check(!diverges([]) && ref.length > 60, `G4: ${ref.length} events carry identical ticks at 44.1, 48, 96 and 192 kHz`);
 }
 
+// ---- 7b. G4 / SPEC 1.1 (D-039, E13 option C): an input goes first at its sample (the C++ suite's testG4Order, tests/core/test_core.cpp) ------------
+// 1. A chord change pressed exactly on step 3's tick (120 bpm, 1/16: 0.375 s, 16537.5 samples at 44.1 kHz) plays on step 3 at every rate and every host
+//    rounding (16537 down, 16538 nearest or up). The rejected option A (plant musicalOrderOnSample) misses it at 16538.
+// 2. Documented near-ties outside G4 (G4 covers causes more than one sample apart): an input less than one 48 kHz sample after an event counts as on it
+//    at 48 kHz and comes after it at 96 kHz. Option A erases each, so the plant must read red on each.
+{
+  const chord = (plants, sr, at) => { const r = run({ core: mkCore(plants), sr, block: 1024, total: sr, ins: [K(0, "a", 60), K(at, "b", 67)] }); const e = ons(r).find(x => x.tick === 3 * 3840); return e ? e.key : null; };
+  const ats = [[48000, 18000], [96000, 36000], [192000, 72000], [44100, 16537], [44100, 16538]];
+  const every = plants => ats.every(([sr, at]) => chord(plants, sr, at) === 67);
+  plant(!every(["musicalOrderOnSample"]), "E13 C: the rejected option A misses a chord change a rounding-up host delivers just past its step's tick (44.1 kHz, sample 16538)");
+  check(every([]), "known answer (E13 C): key 67 pressed exactly on step 3's tick plays on step 3 at 48 / 96 / 192 kHz and at 44.1 kHz rounded down, to the nearest or up");
+  const one = (which, plants, sr) => {
+    const at = x => x * sr / 8000;   // exact at 48 and 96 kHz
+    const r = which === 0
+      ? run({ core: mkCore(plants), sr, block: 1024, total: at(5000), bpm: 209, base: { rate: "1/32" }, ins: [K(0, "a", 60), K(0, "b", 67), O(at(3158), "b")] })
+      : run(Object.assign({ core: mkCore(plants), sr, block: 1024, total: at(6000), bpm: 108, ins: [K(0, "a", 60), { at: at(3889), t: "panic" }] },
+          which === 1 ? { base: { pattern: "user", gate: 30 }, userPattern: { length: 1, steps: [{ ratchet: 2 }] } } : { base: { gate: 50 } }));
+    const o = ons(r).map(e => e.key + "@" + e.tick);
+    return which === 0 ? (o.includes("60@21120") ? 60 : o.includes("67@21120") ? 67 : 0) : which === 1 ? o.includes("60@13440") + "/" + o.length + "/" + r.evs.filter(e => e.t === "off").length : (r.core.rows.T7 || 0) + "/" + r.core.rows.T1;
+  };
+  plant(one(0, ["musicalOrderOnSample"], 48000) === 67, "option A erases the step near-tie (step 11 plays 67 at 48 kHz too)");
+  plant(one(1, ["musicalOrderOnSample"], 48000).startsWith("true"), "option A erases the pending near-tie (the sub-note sounds before the Panic at 48 kHz too)");
+  plant(one(2, ["musicalOrderOnSample"], 48000).startsWith("0/"), "option A erases the off near-tie (the gate ends the note before the Panic at 48 kHz too)");
+  check(one(0, [], 48000) === 60 && one(0, [], 96000) === 67, "documented near-tie outside G4 (step): a release 0.70 tick after step 11 counts as on it at 48 kHz (60), after it at 96 kHz (67)");
+  check(one(1, [], 48000) === "false/7/7" && one(1, [], 96000) === "true/8/8", "documented near-tie outside G4 (pending): a Panic 0.38 tick after a sub-note clears it at 48 kHz, ends it at 96 kHz");
+  check(one(2, [], 48000) === "1/3" && one(2, [], 96000) === "0/4", "documented near-tie outside G4 (off): a Panic 0.38 tick after a gate end ends the note itself at 48 kHz (T7), finds it ended at 96 kHz");
+  // rounded: 97 bpm, 1/16, release at 8 kHz 8660 = 1.14 samples after step 7 at 44.1 kHz, delivered at the NEAREST sample (the C++ suite's atRate)
+  const step7 = (plants, sr) => { const r = run({ core: mkCore(plants), sr, block: 1024, total: Math.round(11000 * sr / 8000), bpm: 97, ins: [K(0, "a", 60), K(0, "b", 67), O(Math.floor((8660 * sr + 4000) / 8000), "b")] }); const e = ons(r).find(x => x.tick === 7 * 3840); return e ? e.key : null; };
+  plant(step7(["musicalOrderOnSample"], 44100) === 67, "option A erases the rounded near-tie (step 7 plays 67 at 44.1 kHz too)");
+  check([44100, 48000, 96000, 192000].map(sr => step7([], sr)).join() === "60,67,67,67", "documented near-tie outside G4 (rounded): a release 1.14 samples after step 7, delivered at the nearest sample, counts as on it at 44.1 kHz (60), after it at 48 / 96 / 192 kHz (67)");
+}
+
 // ---- 8. G5: under +-1/32-beat host jitter every grid step is evaluated exactly once ---------
 {
   const lcg = s => (Math.imul(s, 1664525) + 1013904223) >>> 0;

@@ -1015,3 +1015,39 @@ readiness notice goes to horde, re-measure on a quiet machine and quote one
 input figure that covers every setting, randomness included**. Rejected:
 quoting 1,300 with a randomness exception; optimising the two-word path first
 (unknown gain). Every settings-only load still fits the 2 % slice (D-031).
+
+## D-039 — Inside one sample, an input comes first; G4 covers causes more than two samples apart (erratum E13, option C; RATIFIED by the human, 2026-10-27)
+
+The randomness edge fuzz showed a step played differently at 44.1 kHz after a
+transport restart. That was the test host's, not the core's: it replayed
+stops at rounded samples, so the rates saw different input. The host was
+fixed and G4 made strict over the fuzz (PR #30, merged into `m3/randomness`;
+lands on main here).
+
+Its critic then found a real gap: nothing ordered an INPUT against an off,
+pending on or grid step on the same sample. The core handles the input first,
+and whether two events share a sample depends on the rate, so near such a tie
+a step can read a different held set at 44.1 kHz than at 48 kHz.
+
+- **First choice, by poll: (A) "earlier in the music first"**, the input
+  first on an exact tie. Implemented, then **reversed** after its critic
+  showed what the poll had not: a chord pressed exactly on a beat plays that
+  beat under (A) only if the host rounds the event's time DOWN (at 44.1 kHz
+  every other 1/16 at 120 bpm lies on a half sample), and how DAWs round is
+  unknown.
+- **Final, by poll: (C), input first within its sample** (no output change;
+  the four digests are identical to before). A chord on the beat plays that
+  beat under any host rounding; a known answer pins it at round-down, nearest
+  and up, with the (A) order as its plant.
+- **G4 is narrowed and stated truthfully:** it covers events whose causes lie
+  more than **two** samples apart at every rate. That is the reach of a host
+  that rounds down, to the nearest or up. "One sample" (the poll's wording)
+  was too narrow, since a nearest-rounding host reaches 1.5 samples. That
+  correction was the lead's, within the human's choice; it changes no
+  behaviour. A cause is defined in the G4 row. §1.1 is clarified. The
+  near-ties at 209 bpm and 97 bpm are pinned as documented cases outside G4.
+
+Rejected: (B) step first (a chord on the beat misses it at every rate); the
+distance measured on delivered samples (it hides the host's rounding).
+SPEC §1.1 and row G4 amended; `docs/spec-errata.md` E13 applied;
+`spec/MANIFEST` re-pinned.

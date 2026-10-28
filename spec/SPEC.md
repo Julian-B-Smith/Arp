@@ -1,6 +1,6 @@
 # Arp — 1.0 specification (RATIFIED 2026-10-23, r2.12)
 
-> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026); E8, E9 and E10 approved 2026-10-23 (D-027); E11 and E12 approved 2026-10-23 (D-028).; velocity and length randomness added 2026-10-27 (D-036, a recorded exception to the freeze).** This is a protected path: any change needs the human's
+> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026); E8, E9 and E10 approved 2026-10-23 (D-027); E11 and E12 approved 2026-10-23 (D-028).; velocity and length randomness added 2026-10-27 (D-036, a recorded exception to the freeze); erratum E13 approved 2026-10-27 as option C (D-039).** This is a protected path: any change needs the human's
 > gate and a decision record. Revision history: r1 (2026-10-21) to r2.12 (2026-10-22); four independent reviews
 > (`docs/spec-review-r1..r4.md`).
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -107,6 +107,22 @@ Events at the same offset are emitted in this order:
 its own `NoteOn`. If its off falls on that sample, it is emitted one sample
 later (in the next block if needed). Every note therefore lasts at least one
 sample (H4).
+
+**Inside one sample, an input comes first (erratum E13, option C, D-039).**
+Arp handles its input events at a sample before its own due offs, pending
+ons (ratchet sub-notes, swung and straight ons, triggers) and grid steps at
+that sample. So an input counts as **on** any such event of its sample, even
+one a fraction of a sample earlier in the music. The reason is that a host
+delivers an event written on a grid line at a whole sample. At 44.1 kHz half
+the 1/16 lines of 120 bpm fall on half samples, and a host that rounds to the
+nearest sample or up delivers a chord change a fraction of a sample after its
+step's tick. This order still plays it on that step. The price is stated in
+G4 (§11): an input up to two samples after an event can land on either side
+of it, depending on the sample rate and the host's rounding.
+- This is the order in which Arp *handles* events. The events it *emits* at
+  one offset keep the order listed above.
+- Among its own events at one sample, Arp handles offs, then pending ons,
+  then the grid step (§5.1 E10 excepted).
 
 ### 1.2 Identity (`intake/note-vocabulary.md`)
 - Input notes are matched by `ref`.
@@ -877,7 +893,7 @@ produce no extra and no missing terminal (LIBRARY L0001).
 | G1 | event absolute samples identical at block sizes 1, 7, 64, 512, 4096 | clamp offsets; accumulate the position in float |
 | G2 | ons land at `cdiv` of their exact position | round instead of ceil |
 | G3 | swing parity follows `kAbs`, not `k` | use `k` under `restart = chord` |
-| G4 | the **tick** of every event is identical at 44.1, 48, 96 and 192 kHz (samples differ by rate) | read a sample-rate-dependent value into tick math |
+| G4 | the **tick** of every event is identical at 44.1, 48, 96 and 192 kHz (samples differ by rate), for events whose causes lie **more than two samples apart** at every rate (enough for a host that rounds an event's time down, to the nearest sample or up). A cause is an input event, or a settings, transport or scale change, which takes effect at its block's first sample. An input within that distance after an off, pending on or grid step can count as on it (§1.1, E13), so near such a tie the order can depend on the rate | read a sample-rate-dependent value into tick math |
 | G5 | under re-base jitter (the host position perturbed by ±1/32 beat), every grid step is evaluated exactly once | drop the once-guard |
 | D1 | same seed → same stream; a different seed changes `random` / `shuffle` / `prob` output | put a time-varying value in the draw |
 | Q1 | every quantized key is in the **effective** scale (source, mode, anchor) and in 0–127 | skip quantize on chord steps |

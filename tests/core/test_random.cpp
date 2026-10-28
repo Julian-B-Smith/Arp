@@ -556,13 +556,14 @@ Session mixSession(const Plant& pl) {
   s.ins = {K(0, "a", 60, 100), K(0, "b", 64, 70), K(0, "c", 67, 110), K(6500, "d", 72, 90), O(18000, "b"), K(24500, "e", 55, 80), O(40500, "a")};
   return s;
 }
-Session atRate(Session s, int sr) {   // the same musical script at another rate (cf. test_core.cpp): positions in samples scale, those in musical units stay
+// `bySample`: the host's held positions re-derived from the rounded sample (SimHost::rescaled), the control the G4 hand-over check must catch.
+Session atRate(Session s, int sr, bool bySample = false) {   // the same musical script at another rate (cf. test_core.cpp): positions in samples scale, those in musical units stay
   auto sc = [sr](int at) { return static_cast<int>((static_cast<long long>(at) * sr + 4000) / 8000); };
   s.sr = sr;
   s.total = sc(s.total);
   for (auto& i : s.ins) i.at = sc(i.at);
   for (auto& c : s.cfg) c.at = sc(c.at);
-  if (s.host) s.host = s.host->rescaled(sr, sc);
+  if (s.host) s.host = s.host->rescaled(sr, sc, bySample);
   return s;
 }
 std::string g1Diverges(const Plant& pl) {
@@ -862,7 +863,7 @@ Session fuzzEdgeSession(std::uint32_t id, const Plant& pl, EdgeKinds* kinds = nu
 void testEdgeFuzz() {
   std::puts("RN1: randomness across transport stop / jump / loop, time mode, latch, pedal and panic (40 seeded sessions)");
   constexpr int kSessions = 40;
-  int n1Bad = 0, g1Bad = 0, g4Bad = 0, g4Ran = 0, g4Core = 0, notes = 0, noRandom = 0;
+  int n1Bad = 0, g1Bad = 0, g4Bad = 0, g4Ran = 0, notes = 0, noRandom = 0;
   std::int64_t t6 = 0, t7 = 0;
   int nStop = 0, nSeek = 0, nTempo = 0, nTime = 0, nLatch = 0, nPedal = 0, nPanic = 0;
   std::string first;
@@ -879,23 +880,15 @@ void testEdgeFuzz() {
     const std::string want = streamOf(ref);
     for (int blk : {512, 64, 7, 1})
       if (streamOf(runR(s, blk)) != want) { ++g1Bad; if (first.empty()) first = "G1 session " + std::to_string(id) + " at block " + std::to_string(blk); break; }
-    // G4 in sync mode (time mode is held to TM1 in microseconds, not ticks): the tick of every event is the same at every rate. One thing is excluded by construction: when the transport
-    // restarts while keys are held, the hand-over from the free clock to the host clock lands the next step at a tick that depends on the sample rate (found by this fuzz in session 20; it
-    // is the core's, not the feature's: it happens with randomness OFF too). So a session whose host stops must show no divergence that the same session with randomness off does not show.
+    // G4 in sync mode (time mode is held to TM1 in microseconds, not ticks): the tick of every event is the same at every rate, with no tolerance. (Until T-007 a
+    // session whose host stopped was let off when its randomness-off twin diverged too; the cause was the test host, not the core: testHandOver below.)
+    // G4 covers causes more than one sample apart (SPEC 1.1, E13 option C, D-039): an input less than one sample after an off, pending on or grid step counts
+    // as on it, so a seed that put one there could read differently by rate without a fault (test_core.cpp testG4Order pins those near-ties). None of these does.
     if (!ek.time) {
       ++g4Ran;
-      auto g4Differs = [&](const Session& q) {
-        const std::string t48 = tickStreamOf(runR(atRate(q, 48000), 1024));
-        for (int sr : {44100, 96000, 192000}) if (tickStreamOf(runR(atRate(q, sr), 1024)) != t48) return sr;
-        return 0;
-      };
-      if (const int sr = g4Differs(s)) {
-        Session z = s;   // the same session with both amounts forced to 0
-        z.base.velRandom = 0; z.base.gateRandom = 0;
-        for (Change& c : z.cfg) { auto f = c.f; c.f = [f](Settings& x) { f(x); x.velRandom = 0; x.gateRandom = 0; }; }
-        if (ek.stop && g4Differs(z) != 0) ++g4Core;
-        else { ++g4Bad; if (first.empty()) first = "G4 session " + std::to_string(id) + " at " + std::to_string(sr) + " Hz"; }
-      }
+      const std::string t48 = tickStreamOf(runR(atRate(s, 48000), 1024));
+      for (int sr : {44100, 96000, 192000})
+        if (tickStreamOf(runR(atRate(s, sr), 1024)) != t48) { ++g4Bad; if (first.empty()) first = "G4 session " + std::to_string(id) + " at " + std::to_string(sr) + " Hz"; break; }
     }
   }
   // plants: a draw position taken from the block (G1), a dropped release (N1), a sample-rate-dependent value in tick math (G4)
@@ -904,15 +897,51 @@ void testEdgeFuzz() {
     EdgeKinds ek;
     if (pG1 == 0) { Session s = fuzzEdgeSession(id, {"randomFromBlock"}, &ek); if (s.base.velRandom + s.base.gateRandom > 0) pG1 += streamOf(runR(s, 4096)) != streamOf(runR(s, 7)); }
     if (pN1 == 0) { Session s = fuzzEdgeSession(id, {"dropRelease"}, &ek); pN1 += !n1(runR(s, 64)).empty(); }
-    if (pG4 == 0) { Session s = fuzzEdgeSession(id, {"srTickMath"}, &ek); if (!ek.time) pG4 += tickStreamOf(runR(atRate(s, 48000), 1024)) != tickStreamOf(runR(atRate(s, 192000), 1024)); }
+    if (pG4 == 0) {   // every rate the check compares; the plant's skew (sr / 44100) is 1 at 44.1 and 48 kHz alike, so only 96 and 192 kHz can read it
+      Session s = fuzzEdgeSession(id, {"srTickMath"}, &ek);
+      if (!ek.time) { const std::string t48 = tickStreamOf(runR(atRate(s, 48000), 1024)); int red = 0; for (int sr : {44100, 96000, 192000}) red += tickStreamOf(runR(atRate(s, sr), 1024)) != t48; pG4 = red > 0; }
+    }
   }
   plant(pG1 > 0, "the edge fuzz reads red on a draw position taken from the block (plant randomFromBlock), G1");
   plant(pN1 > 0, "the edge fuzz reads red on a dropped release (plant dropRelease), N1");
   plant(pG4 > 0, "the edge fuzz reads red on a sample-rate-dependent value in tick math (plant srTickMath), G4");
   check(n1Bad == 0 && g1Bad == 0 && g4Bad == 0 && notes > 500,
         "edge fuzz: " + std::to_string(kSessions) + " sessions (stop/start " + std::to_string(nStop) + ", jump " + std::to_string(nSeek) + ", tempo " + std::to_string(nTempo) + ", time mode " + std::to_string(nTime) + ", latch " + std::to_string(nLatch) + ", pedal " + std::to_string(nPedal) + ", panic " +
-        std::to_string(nPanic) + "; " + std::to_string(kSessions - noRandom) + " with randomness on): " + std::to_string(notes) + " notes, N1 holds, G1 identical at blocks 4096 / 512 / 64 / 7 / 1, G4 identical at 44.1 / 48 / 96 / 192 kHz in " + std::to_string(g4Ran - g4Core) + " of the " + std::to_string(g4Ran) + " sync-mode sessions (the other " + std::to_string(g4Core) + " diverge with randomness OFF too: the free-clock hand-over, the core's)" + (first.empty() ? "" : " - " + first));
+        std::to_string(nPanic) + "; " + std::to_string(kSessions - noRandom) + " with randomness on): " + std::to_string(notes) + " notes, N1 holds, G1 identical at blocks 4096 / 512 / 64 / 7 / 1, G4 identical at 44.1 / 48 / 96 / 192 kHz in all " + std::to_string(g4Ran) + " sync-mode sessions" + (first.empty() ? "" : " - " + first));
   check(t6 > 10 && t7 > 3 && nStop > 5 && nSeek > 5 && nTime > 5 && nLatch > 5 && nPedal > 5 && nPanic > 5 && g4Ran > 5, "the edge fuzz really reaches those paths: " + std::to_string(t6) + " transport-edge terminals (T6) and " + std::to_string(t7) + " panic terminals (T7) counted over the sessions");
+}
+
+// ---------------------------------------------------------------------------------------------------- G4 at a restart: the same musical input at every rate (T-007)
+// The edge fuzz's session 20 diverged at 44.1 kHz after a stop and restart with keys held, with randomness off too. The core was right (SPEC 4.5: the
+// first grid step at or after the restart position, core.cpp reanchor -> kAtOrAfter); its INPUT was not the same: the test host re-derived the position
+// a stop holds from the stop's ROUNDED sample. 8 kHz sample 17500 is 96468.75 at 44.1 kHz; at 96469, 120 bpm, the host held tick 67200.17, one hair
+// past step 35 (1/32: L = 1920, 35 * 1920 = 67200), so the restart played step 36. SimHost::rescaled now keeps every held position exact.
+// Minimal form here: 120 bpm, two keys held, the host stops at 17500 (8 kHz) and starts again at 20500; the first note after the restart is step 35.
+void testHandOver() {
+  std::puts("G4: a restart with keys held lands on the same step at every rate (the host's held position is the same musical position; T-007)");
+  Session s;
+  s.sr = 8000; s.total = 26000;
+  s.base.rate = Rate::R1_32; s.base.gate = 50; s.base.velRandom = 0; s.base.gateRandom = 0;
+  s.ins = {K(0, "a", 60), K(0, "b", 67)};
+  auto h = std::make_shared<SimHost>(8000, 120, 0, true);
+  h->set(17500, false); h->set(20500, true);
+  s.host = h;
+  auto firstAfter = [](const Run& r, int sr) {   // the tick of the first arp note at or after the restart
+    const std::int64_t at = (20500LL * sr + 4000) / 8000;
+    for (const Rec& e : r.evs) if (e.t == EventType::NoteOn && e.stream == Stream::Arp && e.a >= at) return e.tick;
+    return kNoTick;
+  };
+  const Run bySample = runR(atRate(s, 44100, true), 1024), r48 = runR(atRate(s, 48000), 1024);
+  plant(firstAfter(bySample, 44100) == 36 * 1920 && tickStreamOf(bySample) != tickStreamOf(r48),
+        "control: a host that holds the position of the ROUNDED stop sample (96469 at 44.1 kHz: tick 67200.17) restarts on step 36 (tick " + std::to_string(firstAfter(bySample, 44100)) + "), and G4 reads red");
+  bool same = true;
+  std::string firsts;
+  for (int sr : {44100, 48000, 96000, 192000}) {
+    const Run r = runR(atRate(s, sr), 1024);
+    same = same && tickStreamOf(r) == tickStreamOf(r48) && firstAfter(r, sr) == 35 * 1920;
+    firsts += (firsts.empty() ? "" : " / ") + std::to_string(firstAfter(r, sr));
+  }
+  check(same && onsOf(r48).size() > 20, "known answer: the host stops at beat 4.375 (tick 67200, on step 35) and restarts there with keys held: the first note after the restart is step 35 at 44.1 / 48 / 96 / 192 kHz (ticks " + firsts + "), and every tick is identical");
 }
 
 // ---------------------------------------------------------------------------------------------------- the randomness digest
@@ -986,6 +1015,7 @@ void runRandomTests() {
   testSweep();
   testCollision();
   testEdgeFuzz();
+  testHandOver();
   testDigest();
 }
 
