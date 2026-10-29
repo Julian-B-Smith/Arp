@@ -50,3 +50,11 @@ wording. The code was clean.**
   - the B++ (no randomness), B+ and A family figures were wrong or missing;
   - "every setting" and "measured" overclaimed.
 - LOW: D-039's 44.1 kHz ratio; the "reads higher" note.
+
+**Critic round 2: APPROVE-WITH-NOTES, no HIGH. All notes applied.**
+- MEDIUM: the input-family coverage sentence.
+- LOW: the 1.4-1.8 % range; the 1,532 re-run details; the 1.97 % row's
+  spread.
+- New, pre-existing: block-512 figures on the heaviest loads may under-read
+  (output overflow). This is now stated in the doc; the binding case is at
+  block 16.
