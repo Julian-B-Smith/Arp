@@ -144,7 +144,7 @@ choice (D-038) is to re-measure on a quiet machine and then quote one figure tha
 | load | native | two-word |
 |---|---|---|
 | B++ with randomness 100 | 1.79 % | 1.91 % |
-| the 112-note, ratchet-4 chord with randomness 100 | 1.72 % | 1.91 % (1.97 % in the CPU-time pass, spread 10-18 %) |
+| the 112-note, ratchet-4 chord with randomness 100 | 1.72 % | 1.91 % (1.97 % in the CPU-time pass, spread 9.6 %; 1.94 % at 44.1 kHz with spread 37 %) |
 | A at ratchet 4 with randomness 100 | 1.75 % | 1.87 % |
 | B+ / B+6 / B++ (no randomness) | 1.62 % | 1.72 % |
 | the 112-note chord (no randomness) | 1.43 % | 1.52 % |
@@ -162,18 +162,19 @@ The worst is at 192 kHz, block 16. Against 2026-10-25 on the same loads, B+ / B+
 
 **Readings below the binding figure, and why they are not taken as cost:**
 - 456 events/s on the chord-stage-on flood over B++, two-word, 44.1 kHz. Four re-runs read 11,300-12,700.
-- 1,532 on B++'s 4-keys family, native, 48 kHz. In four re-runs that configuration read 3,930-4,252 or reached no limit up to 4,263.
+- 1,532 on B++'s 4-keys family, native, 48 kHz. In four re-runs that configuration read 4,124 once and reached no limit up to 4,263 three times. The family's 96 and 192 kHz configurations read 3,930-4,252.
   - One re-run read 1,976 in another configuration of the same family (96 kHz, block 512).
   - So a sub-2,000 reading did recur in this family, in a different place each time. That pattern looks like scheduling, not cost, but it is a judgement, not a proof.
-- Three passes read a family's load alone as over the slice in one configuration each: two `--cpu-time` passes and the new family's first wall-clock pass (48 kHz, block 128). The same loads read 1.7-1.9 % everywhere else.
+- Three passes read a family's load alone as over the slice in one configuration each: two `--cpu-time` passes and the new family's first wall-clock pass (48 kHz, block 128). The other configurations of the same loads read 1.4-1.8 %.
 
 **What is measured and what is inferred.**
 - **Measured:** each load's cost at each rate, rate of input, block and path above.
 - **Inferred:**
   - **Each input edge** is a straight line drawn between two measured input rates.
   - **The x4 min-spec factor** is horde's heuristic.
-  - **"Every setting" assumes** input cost adds to a load the same way on loads that have no input family of their own. A at ratchet 4 with randomness (1.87 % alone, two-word) has none. Only B++ with randomness has a flood or one-ref family.
+  - **"Every setting" assumes** input cost adds to a load the same way on loads that have no input family of their own. A at ratchet 4 with randomness (1.87 % alone, two-word) has none. Among the randomness loads, only B++ has flood families, and none has a one-ref family (the only one-ref family is on A at ratchet 4 without randomness).
   - **Blocks under 16 samples** were not measured, although Arp's output is defined for blocks of 1-4096.
+  - **Block-512 figures on the heaviest loads may under-read.** At 512 samples their output overflows the buffer, so less work is done. For example, the re-struck chord on A at ratchet 4 emits about 165,000 events/s instead of 264,000. The binding case is at block 16, where nothing overflows.
 - **Nothing gates this figure:** CPU is measured, never gated (the charter), so a later cost increase would make it stale silently. Re-measure before any release that touches the core.
 
 Reproduce:
