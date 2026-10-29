@@ -1148,9 +1148,13 @@ no brand name.
 
 **The knockout screen** (US only, `docs/prior-art.md`, "Re-scan 2026-10-29")
 reads LOW for this use:
-- Korg's live ARP marks are class 15 (synthesizers);
-- its class 9 software application died in 2018;
+- Korg's live ARP marks are class 15, "music synthesizers";
+- its class 9 software application was withdrawn in 2018 after AARP's
+  opposition (TTAB 91240731);
 - "arpeggiator" is the feature's ordinary name.
+
+Korg's unregistered use of ARP on software and AARP's class 9 policing both
+make an "ARP" brand riskier. Neither touches a descriptive label.
 
 "ARP" as a brand stays HIGH and forbidden.
 
