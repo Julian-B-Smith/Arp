@@ -1148,9 +1148,11 @@ battery charged, OneDrive paused.
   thread CPU time.
 
 **Settings alone fit the 2 % slice on both paths** (0 of 195 over):
-- the worst is 1.79 % native and 1.91 % two-word (B++ with randomness 100,
-  192 kHz, block 16);
-- D-039's cost is x1.015-1.02 (an A/B against `e1dbd3c`, three runs each);
+- the worst is 1.79 % native and 1.91 % two-word by wall clock (B++ with
+  randomness 100, 192 kHz, block 16); one noisier CPU-time pass read the
+  112-note randomness chord at 1.97 %;
+- D-039's cost is x1.004-1.02 (an A/B against `e1dbd3c`, three runs each;
+  the low end is at 44.1 kHz);
 - D-041's 2.08 % was the busy machine.
 
 **No single figure keeps D-033's 10 % margin (x4 ≤ 1.8 %) and covers every
@@ -1160,17 +1162,36 @@ B++ with randomness, two-word, 192 kHz. It reads 1,461 / 1,416 / 1,415
 events/s, over three runs and both timings. A new bench family covers the
 112-note randomness chord, the heaviest two-word load: 2,782-2,845 events/s
 (`benchOnly`, so both pinned digests are unchanged). Two single-configuration
-readings lower than the binding figure (456 and 1,532) were scheduling spikes:
-four re-runs each read above 3,900.
+readings lower than the binding figure (456 and 1,532) are taken as
+scheduling, not cost:
+- the 456's four re-runs read 11,300 and up;
+- one re-run of the 1,532's family read 1,976, in a different configuration.
+That is a judgement, not a proof.
 
 **Chosen, by poll:** quote **1,000 incoming note events per second with every
 setting, randomness included**, inside the 2 % slice (x4, not min-spec
-verified), both paths, 44.1-192 kHz. That is about 30 % below the lowest
-measured edge. D-033's separate 10 % CPU margin is dropped, and the notice
-says so plainly. A fast player sends about 40 events/s.
+verified), both paths, 44.1-192 kHz. D-033's separate 10 % CPU margin is
+dropped.
+
+**The margin, which the critic showed and the human chose to state plainly
+(second poll):** 1,000 is about 30 % below the lowest edge in events, but
+input costs little.
+- On the tightest case (two-word, 192 kHz, randomness 100 on B++), 1,000
+  events/s reads about 1.97 % x4. That leaves about 1.5 % of the slice,
+  inside the roughly 3 % run-to-run movement.
+- The settings alone already leave only about 4.5 %, so a lower figure
+  would barely help.
+- The notice says this, and it says what is measured and what is inferred:
+  - each edge is a straight line between measured rates;
+  - "every setting" assumes input adds the same way on loads that have no
+    input family;
+  - blocks under 16 samples were not measured.
+- A fast player sends about 40 events/s.
 
 **Rejected:**
 - quoting the measured edge, 1,400, with no margin at all;
+- lowering the quote to 500 (about 1.94 % at the tightest case: still within
+  noise);
 - keeping the 10 % margin with two figures (about 1,100 with randomness off,
   none with randomness at 100 on the heaviest loads);
 - optimising the two-word path first.

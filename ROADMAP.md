@@ -264,7 +264,7 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   Every load still fits 2 % x4 (worst 1.91 %, the 112-note chord, two-word path; estimates from a busy machine). ~~**Before the
   readiness notice: re-measure on a quiet machine and quote one input figure covering every setting (D-038).**~~ **DONE
   2026-10-29 (D-042):** measured idle, settings alone fit on both paths (worst 1.91 % two-word); the quoted input limit is
-  **1,000 events/s with every setting** (lowest measured edge about 1,400; D-033's 10 % CPU margin dropped). `docs/horde-copy-in.md`.
+  **1,000 events/s with every setting**, the thin margin stated plainly (about 1.97 % x4 at the tightest case, two-word 192 kHz; D-033's 10 % CPU margin dropped). `docs/horde-copy-in.md`.
   Listening piece 17.
 - **G4 at the clock hand-over: RESOLVED 2026-10-27 (D-039).** The edge fuzz's session 20 was the test host's (it replayed
   stops at rounded samples); the host is fixed and G4 is strict over the fuzz. The critic then found input-vs-step order inside
