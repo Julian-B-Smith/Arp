@@ -3,7 +3,7 @@
 > **Origin.** Arp project, M3a dispatch of ROADMAP T-007, 2026-10-24 (base commit `ff115db` plus the M3a working tree). horde's
 > note-processor 1.0 bar says the core is copied into horde's tree at Arp's V1 by a horde PR that records Arp's commit (D-015,
 > Q-H2 ANSWERED). This file is the contract for that copy: **exactly these files, nothing else.**
-> Last verified: 2026-10-27 by `bash tools/core_test.sh` (the check described at the end; hashes re-cut for D-039, whose shipped output is unchanged). The CPU envelope below was measured on 2026-10-25 (M3c, D-032), before D-039 touched the timeline loop (D-038 already asks for a re-measure).
+> Last verified: 2026-10-27 by `bash tools/core_test.sh` (the check described at the end; hashes re-cut for D-039, whose shipped output is unchanged). The CPU envelope below was measured on 2026-10-25 (M3c, D-032); **the quoted input limit is the idle re-measure of 2026-10-29 (D-042, "The quoted input limit" below), which supersedes the 1,300 of D-033.**
 
 ## What horde copies
 
@@ -74,7 +74,7 @@ feature that adds cost per note, so the bench runs the three heaviest loads with
 | the 112-note, ratchet-4 chord | 1.75 % / 1.86 % | 1.80 % / 1.91 % | x1.20 (up to x1.32) |
 | A at ratchet 4 | 1.54 % / 1.73 % | 1.60 % / 1.77 % | x1.07 native, x1.12 two-word (up to x1.23) |
 
-These are **estimates, not quiet-machine readings**: the machine never read as quiet on 2026-10-27 (the same B+ read 2.25 % where 2026-10-25 read 1.54 %), so each figure is this session's
+**Superseded by the idle re-measure (D-042, below).** These are **estimates, not quiet-machine readings**: the machine never read as quiet on 2026-10-27 (the same B+ read 2.25 % where 2026-10-25 read 1.54 %), so each figure is this session's
 reading (least disturbed of 4 passes, the old and new builds run at the same moment, native and two-word, 44.1-192 kHz, blocks of 16 / 32 / 64 / 128 / 512) scaled by the same load's quiet figure above divided by
 this session's reading of it (B++ x0.68 / x0.69, the 112-note chord x0.73 / x0.74; A at ratchet 4 uses B++'s). The ratio column is measured and needs no scaling. **The worst is 1.91 % after x4 (the 112-note chord, two-word
 path); 1.80 % is the worst on the native path (the same load).** That is inside the slice with 4.5 % of it to spare on the two-word path and 10 % on the native one; it is not inside the 10 % headroom the notice's limit keeps. Not min-spec verified.
@@ -103,7 +103,7 @@ Arp costs, so it is given for three loads: **A** (D-031's, x4 about 1.1-1.3 % al
 | a flood of refused presses on new keys, chord stage off | ~66,000 events/s (measured to 8,000) | ~53,000 events/s (measured to 17,000) | ~44,000 events/s (measured to 17,000) |
 | the same, chord stage on | ~24,000 events/s (measured to 8,000) | 9,000 events/s (measured to 17,000) | 9,300 events/s |
 
-The reading for the notice (the human's choice, D-033): **over the heaviest load measured (B+ / B++), any of these shapes stays inside the 2 % slice with 10 % headroom (x4 ≤ 1.8 %) up to 1,300
+**Superseded by D-042 (below).** The reading for the notice (the human's choice, D-033): **over the heaviest load measured (B+ / B++), any of these shapes stays inside the 2 % slice with 10 % headroom (x4 ≤ 1.8 %) up to 1,300
 incoming note events per second (x4, not min-spec verified).** That is the quoted limit. The measured edge of the slice itself is 3,600 events/s (4 keys re-struck, two-word path, 192 kHz, block 16); at
 2,500 that worst combination reads about 1.90 % after x4 (the load alone is 1.68 %), only 5 % of the slice below the limit, and the figure moves by 0.05-0.1 % with the state of the machine, which is why
 the quote keeps 10 % headroom instead. Over load A the same shapes hold to 9,000. Over a lighter load the room grows: for a load that costs `L` % after x4 alone, the rate is about
@@ -111,13 +111,75 @@ the quote keeps 10 % headroom instead. Over load A the same shapes hold to 9,000
 1.5 %: about 60,000 events/s at 60 ns an event, 15,000 at 250 ns. These are stress rates, not playing rates (a chord re-struck at every 1/64 step at 999 bpm is about 17,000 events/s). The core stays correct at any rate;
 only the CPU grows.
 
-**With note randomness at 100 (D-036), the quoted 1,300 does not hold on the heaviest loads, and the figure to quote is re-measured before the readiness notice (D-038).** An incoming event costs the same with
+**Superseded by D-042 (below).** **With note randomness at 100 (D-036), the quoted 1,300 does not hold on the heaviest loads, and the figure to quote is re-measured before the readiness notice (D-038).** An incoming event costs the same with
 randomness on (the 4-keys-re-struck slope on B++ is 8.5e-5 against 9.4e-5 % per event/s, two-word, 192 kHz, block 16, this session: noise); what moves is the load under it. **With randomness at 100 the heaviest
 settings-only load is no longer B++ but the 112-note, ratchet-4 chord** (1.80 % / 1.91 % in the table above, native / two-word), and on it **no room is left under the 1.8 % line (10 % headroom) on either path**;
 the 2.0 % edge itself is at roughly 2,000 events/s (native) and 1,000 (two-word), if its per-event slope is B++'s (that load has no measured input family). On B++ with randomness (1.69 % / 1.76-1.89 %; the two-word range is
 the two ways it was measured, x1.04 in the settings-only passes and x1.12 in the 4-keys family) the room under 1.8 % is roughly 1,100-1,200 events/s native and 0-450 two-word, at a slope of 9-10e-5 % per event/s.
 With randomness at 0, or on lighter loads (A at ratchet 4 with randomness: 1.54-1.77 %), the 1,300 stands. All of this is the scaled estimate described above, not a quiet-machine reading; the human's
 choice (D-038) is to re-measure on a quiet machine and then quote one figure that covers every setting. The bench families `... + randomness 100` measure it (`bash tools/core_bench.sh --only "randomness 100"`).
+
+### The quoted input limit (D-042, idle re-measure 2026-10-29)
+
+**The figure for the readiness notice: up to 1,000 incoming note events per second (NoteOn plus NoteOff, host side), with every setting, randomness at 100 included, on both int128 paths, at 44.1-192 kHz and blocks of 16-512, inside the 2 % slice (x4, not min-spec verified).** D-033's separate 10 % CPU margin is dropped.
+
+**Read this with the margin, which is thin (the human's choice: state it plainly).**
+- **The tightest case:** the two-word path at 192 kHz, randomness at 100, on the heaviest loads.
+- **Before any input arrives,** the settings alone read 1.91 % x4 by wall clock, and up to 1.97 % in a noisier CPU-time pass.
+- **At 1,000 events/s,** the binding shape below reads about 1.97 %, interpolated between its measured 0 and 2,131 events/s points (1.909 % and 2.042 %). That leaves about 1.5 % of the slice, which is less than the roughly 3 % a figure moves between runs.
+- **So in that corner, Arp sits within measurement noise of its slice.** Lowering the input figure would barely help, because the settings alone leave only about 4.5 %.
+- **Everywhere else** the room is larger:
+  - the native path's worst is 1.79 % alone;
+  - with randomness off the two-word worst is 1.72 %;
+  - lighter loads leave much more.
+- For scale, a fast player sends about 40 events/s.
+
+**Conditions.** The run took place at 12:00 on 2026-10-29, after a fresh restart, with the battery charged, OneDrive paused and nothing else running.
+- Machine: the same Apple M3, Release build, main `a90f03c`'s core.
+- **Quiet rule:** the run started when the 1-minute load was below 1.5 and the 5-minute below 2.0 (Maw's rule; this Mac idles near 2 with the desktop and the Claude app open). Load rose to 2.2-2.5 during the run, the bench's own core included.
+- **Timing:** `bash tools/core_bench.sh` measured twice, once by wall clock and once with `--cpu-time` (this thread's CPU time, which other processes cannot inflate, though they can still disturb caches and clocks).
+
+**Settings alone: every load fits on both paths** (0 of 195 configurations over, both timings). The worst x4 over 4 rates and 5 blocks, by wall clock (spread 1-4 %):
+
+| load | native | two-word |
+|---|---|---|
+| B++ with randomness 100 | 1.79 % | 1.91 % |
+| the 112-note, ratchet-4 chord with randomness 100 | 1.72 % | 1.91 % (1.97 % in the CPU-time pass, spread 9.6 %; 1.94 % at 44.1 kHz with spread 37 %) |
+| A at ratchet 4 with randomness 100 | 1.75 % | 1.87 % |
+| B+ / B+6 / B++ (no randomness) | 1.62 % | 1.72 % |
+| the 112-note chord (no randomness) | 1.43 % | 1.52 % |
+
+The worst is at 192 kHz, block 16. Against 2026-10-25 on the same loads, B+ / B+6 / B++ read up to 6 % higher, and the 112-note chord, A and B read 0-6 % lower. D-039 accounts for x1.004-1.02, measured by building the pre-D-039 core (`e1dbd3c`) and alternating it with the current one, three runs each, `--cpu-time`. The ratio is x1.015-1.02 at 48, 96 and 192 kHz and x1.004-1.013 at 44.1 kHz.
+
+**The binding input shape:** 4 keys re-struck over and over, on B++ with randomness 100, on the two-word path at 192 kHz, block 16. Its edge is **1,461** (wall clock), **1,416** and **1,415** events/s (`--cpu-time`, the second with 9 repetitions). The lowest edge of every other input family, over both runs:
+- the same shape native: 2,507;
+- 4 keys re-struck, two-word, 192 kHz: on B+ 3,280, on B++ 3,390, on A at ratchet 4 3,507;
+- the new family on the 112-note randomness chord: 2,782-2,845 two-word and 3,857-4,142 native at 192 kHz (its first, short wall-clock pass also read 2,112 native at 44.1 kHz);
+- floods of refused presses with the chord stage on: 2,561 and up (the lowest on B++ with randomness, two-word, 192 kHz);
+- one ref of a 4-ref key re-struck: 3,804 and up;
+- whole-chord re-strikes: 4,145 and up;
+- floods with the chord stage off: no limit found up to the 17,000 measured.
+
+**Readings below the binding figure, and why they are not taken as cost:**
+- 456 events/s on the chord-stage-on flood over B++, two-word, 44.1 kHz. Four re-runs read 11,300-12,700.
+- 1,532 on B++'s 4-keys family, native, 48 kHz. In four re-runs that configuration read 4,124 once and reached no limit up to 4,263 three times. The family's 96 and 192 kHz configurations read 3,930-4,252.
+  - One re-run read 1,976 in another configuration of the same family (96 kHz, block 512).
+  - So a sub-2,000 reading did recur in this family, in a different place each time. That pattern looks like scheduling, not cost, but it is a judgement, not a proof.
+- Three passes read a family's load alone as over the slice in one configuration each: two `--cpu-time` passes and the new family's first wall-clock pass (48 kHz, block 128). The other configurations of the same loads read 1.4-1.8 %.
+
+**What is measured and what is inferred.**
+- **Measured:** each load's cost at each rate, rate of input, block and path above.
+- **Inferred:**
+  - **Each input edge** is a straight line drawn between two measured input rates.
+  - **The x4 min-spec factor** is horde's heuristic.
+  - **"Every setting" assumes** input cost adds to a load the same way on loads that have no input family of their own. A at ratchet 4 with randomness (1.87 % alone, two-word) has none. Among the randomness loads, only B++ has flood families, and none has a one-ref family (the only one-ref family is on A at ratchet 4 without randomness).
+  - **Blocks under 16 samples** were not measured, although Arp's output is defined for blocks of 1-4096.
+  - **Block-512 figures on the heaviest loads may under-read.** At 512 samples their output overflows the buffer, so less work is done. For example, the re-struck chord on A at ratchet 4 emits about 165,000 events/s instead of 264,000. The binding case is at block 16, where nothing overflows.
+- **Nothing gates this figure:** CPU is measured, never gated (the charter), so a later cost increase would make it stale silently. Re-measure before any release that touches the core.
+
+Reproduce:
+- `bash tools/core_bench.sh` and `bash tools/core_bench.sh --cpu-time`;
+- the binding family: `build/bench/arp_bench_soft --cpu-time --reps 9 --input-seconds 0.5 --only "4 keys re-struck: B++ chromatic transposed + randomness"`.
 
 ## How this list is kept honest
 
