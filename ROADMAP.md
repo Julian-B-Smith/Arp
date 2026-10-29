@@ -170,7 +170,9 @@ A difference is investigated against the spec, which wins.
 - **Gate:** dated re-scan appended to `docs/prior-art.md`; conflicts surfaced to
   the human with a go/no-go; name cleared before any public release.
 - **Screened so far:** the name, 2026-10-29 (D-043). The label is plain
-  descriptive, LOW, US registers only. That is not clearance.
+  descriptive, LOW, US registers only. That is not clearance. The human's
+  go/no-go: **GO** on the label (2026-10-29), with the EU, WIPO and counsel
+  before any commercial release.
 - **Still open:** the swarm re-scan, the patent/IP pass, and the EU and WIPO
   registers.
 

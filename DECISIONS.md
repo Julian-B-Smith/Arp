@@ -1167,5 +1167,6 @@ section title, "Arp" as a short label, no all-caps "ARP" logo or device, and
   wanted);
 - asking horde first, since its ECHO ruling already set the pattern.
 
-**Open:** the EU and WIPO registers, unsearched; counsel stays
-pre-commercial (horde B433).
+**Go/no-go (Phase N gate), by poll, 2026-10-29: GO** on the label. The EU
+and WIPO registers and counsel stay open before any commercial release
+(horde B433).
