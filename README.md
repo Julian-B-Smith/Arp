@@ -29,7 +29,7 @@ in [`ROADMAP.md`](ROADMAP.md).
 - **Rate:** tempo-synced by horde's division names (dotted and triplet included), or **time mode**: a free step length
   shown as both ms and Hz, starting from your key press. Sweeping it speeds the arp up or down smoothly.
 - **Shape:** transposition steps (the pattern repeats shifted, by semitones or scale degrees, like Ableton's), gate length (past 100% for legato), swing, and velocity (as played, fixed, or accented by
-  step).
+  step), with optional velocity and gate randomness on a shared curve.
 - **Holding:** latch, either replacing or adding to the held notes. The sustain pedal holds the arp's input notes.
 - **Scale:** quantize to horde's global scale or Arp's own, in horde's scale format (a root plus twelve degrees): snap
   to the scale, or anchor its shape on the chord's lowest note. Ties follow the melody.
@@ -61,6 +61,7 @@ landed" (replaying the timing of your presses) is held for after 1.0: `docs/defe
 | `integrations/` | Inbound mailbox (`integrations/<sender>/`) and the outbound thread table | live |
 | `docs/filings/` | Working copies of what Arp filed in other repos | live |
 | `docs/horde-1.0-bar.md`, `docs/horde-copy-in.md` | horde's 1.0 checklist mapped to evidence; the files horde copies, with hashes, build notes and the CPU envelope | live |
+| `docs/manual/` | Arp's section of horde's manual (`arp.md`, its settings table generated from `spec/params.json` and checked by `./verify fast`) and its figure list | written; files into horde's manual later |
 | `docs/prior-art.md` | Phase 0: pattern-bank landscape, failure modes, grid math, name check (dated, cited) | done |
 | `spec/` | The 1.0 spec (SPEC.md), every setting (params.json), the candidate step-pattern bank | RATIFIED 2026-10-23 (protected) |
 | `lab/arp-lab.html` | The playable twin: Ableton-style computer keys, MIDI, transport, every setting, morph A/B, a small synth, a **pattern view** (one full cycle as the core plays it, plus a live roll), an **order × pattern** thumbnail matrix, and a **build-your-own** step editor | built; play it to settle the open listening questions in ROADMAP (how settings switch during a morph, restart under morph, which patterns ship, pre-roll, tie memory, which pass a pick takes) |
@@ -69,7 +70,7 @@ landed" (replaying the timing of your presses) is held for after 1.0: `docs/defe
 | `docs/deferred/` | Designs held for after 1.0 (`landed.md`) | live |
 | `lab/patterns/` | Your saved build-your-own patterns (`arp-user-pattern/1` JSON, listed in `index.json`) | live: "Broken chord stabs" |
 | `index.html` | Root landing page: redirects to the lab | done |
-| `core/` | The C++20 core (standard library only, self-contained; horde copies it in). `tests/core/` is its invariant suite; `tools/core_test.sh` builds and runs it | **M1a, M1b and M2 built**: clocks (sync, free, time), held set, all 16 order styles, every step-pattern field, transposition, the user pattern, scale quantize, swing, velocity, restart, repeats, the chord stage; 409 checks on both int128 paths, in `./verify fast`. M3 next |
+| `core/` | The C++20 core (standard library only, self-contained; horde copies it in). `tests/core/` is its invariant suite; `tools/core_test.sh` builds and runs it | **M1a, M1b and M2 built**: clocks (sync, free, time), held set, all 16 order styles, every step-pattern field, transposition, the user pattern, scale quantize, swing, velocity, restart, repeats, the chord stage, note randomness; 539 checks on each int128 path, in `./verify fast`. M3 (horde admission) under way |
 | `verify` | The oracle: `./verify fast` / `full` / `report` | live |
 
 ## Neighbours
@@ -84,4 +85,4 @@ landed" (replaying the timing of your presses) is held for after 1.0: `docs/defe
 ./verify fast
 ```
 
-_Last verified: 2026-10-27 (`./verify fast` green on `m3/horde-answers` from main 97e01fb; statuses checked against ROADMAP)._
+_Last verified: 2026-10-29 (`./verify fast` green at 04b79f4; spot-checked against the tree: the check count from `.harness/core_test.out`, `lab/patterns/index.json`, `docs/manual/`, the M3 status in ROADMAP)._

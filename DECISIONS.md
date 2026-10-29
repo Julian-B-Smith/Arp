@@ -1105,3 +1105,35 @@ Rejected:
 Names keep both our manifest and the "divisions are stored by name" rule
 literal. Factory presets wait on horde's
 answer to items 2 and 3.
+
+## D-041 — The CPU re-measure of 2026-10-29 is not quotable; re-measure on an idle machine, then decide (RATIFIED by poll, 2026-10-29)
+
+D-038's re-measure ran on 2026-10-29. The machine was not idle: load 1.8–2.5
+and the battery charging. It read above every earlier figure.
+- **Two-word path:** B++ with all three randomness settings at 100 reads
+  2.08 % after x4 at 192 kHz, over the 2 % slice (3 of 195 settings-only
+  configurations).
+- **Native path:** worst 1.93 %.
+- **Loads without randomness:** about 11 % above 2026-10-25.
+- **D-039's share:** a side-by-side A/B against the pre-D-039 core (e1dbd3c,
+  thread CPU time, alternated three times) puts it at x1.015–1.020. The rest
+  shows up in both builds, so it belongs to the machine or the session, not
+  to code.
+- The 2026-10-27 randomness estimates were scaled from a busy machine, and
+  they under-read today's figures.
+
+**Chosen:** re-measure on an idle machine before deciding anything:
+- a fresh restart;
+- charging finished;
+- nothing else open;
+- load under 1.
+
+The run is the full `tools/core_bench.sh` and the same A/B.
+
+**Rejected for now, and the options if idle still reads over the slice:**
+- optimise the two-word randomness path;
+- quote the input figure with an exception (randomness high, 96 kHz and up,
+  two-word build);
+- cap the randomness cost by a spec change.
+
+Evidence: `traces/2026-10-29-cpu-remeasure-1.md`.
