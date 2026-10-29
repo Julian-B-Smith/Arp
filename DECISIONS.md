@@ -1198,3 +1198,36 @@ input costs little.
 
 Supersedes D-033's 1,300. Recorded in `docs/horde-copy-in.md`, "The quoted
 input limit".
+
+## D-043 — The user-visible name is a plain descriptive label, "Arp" / "Arpeggiator", not a brand (RATIFIED by poll, 2026-10-29)
+
+Phase N's name clearance (horde B433) asks what the user sees. Arp is not
+sold on its own; it is a section of horde.
+
+**Chosen, by poll:** a plain descriptive label, like horde's ECHO ruling, and
+no brand name.
+
+**The knockout screen** (US only, `docs/prior-art.md`, "Re-scan 2026-10-29")
+reads LOW for this use:
+- Korg's live ARP marks are class 15, "music synthesizers";
+- its class 9 software application was withdrawn in 2018 after AARP's
+  opposition (TTAB 91240731);
+- "arpeggiator" is the feature's ordinary name.
+
+Korg's unregistered use of ARP on software and AARP's class 9 policing both
+make an "ARP" brand riskier. Neither touches a descriptive label.
+
+"ARP" as a brand stays HIGH and forbidden.
+
+**Recommended to horde with the readiness notice:** "Arpeggiator" as the
+section title, "Arp" as a short label, no all-caps "ARP" logo or device, and
+"ARP" never as a product or pack name.
+
+**Rejected:**
+- a distinctive brand name (Phase 0's directions stay on file if one is ever
+  wanted);
+- asking horde first, since its ECHO ruling already set the pattern.
+
+**Go/no-go (Phase N gate), by poll, 2026-10-29: GO** on the label. The EU
+and WIPO registers and counsel stay open before any commercial release
+(horde B433).
