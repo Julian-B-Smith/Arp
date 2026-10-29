@@ -84,6 +84,7 @@ struct Scenario {
   std::string family;             // scenarios of one family differ only in the input rate: the summary derives the largest rate inside the slice from them
   bool lightDigest = false;       // the stream digest covers a few rates / block sizes for 1 s, not the whole matrix (heavy loads, added with D-032: the digest's cost grows with them)
   const char* noDigest = nullptr;  // not null: left out of the stream digest, and this is why (D-036: the digest file was cut from a core without the feature this scenario uses)
+  const char* benchOnly = nullptr; // not null: left out of BOTH digests, and this is why (added after the randomness digest was cut; including it would change that pinned file)
   std::optional<UserPattern> user;
   Scale scale{0, 0xAB5};   // horde's global scale: C major
 };
@@ -178,13 +179,16 @@ std::vector<Scenario> scenarios() {
     loadBHeavy(s); s.st.steps = 4; s.st.stepSize = 2; s.lightDigest = true;
     s.st.velRandom = 100; s.st.gateRandom = 100; s.st.randomCurve = 100; s.noDigest = kNoDigestWhy;
   });
-  add("WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100", [kNoDigestWhy](Scenario& s) {
+  auto load112Random = [](Scenario& s) {   // also the load of the D-038 input family below
     s.bpm = 999; s.keyBase = 14; s.keyStride = 7;
     s.st.order = Order::Chord; s.st.pattern = Pattern::User; s.st.gate = 200;
     s.st.chordEnabled = true;
     for (int i = 0; i < 6; ++i) { s.st.chordOn[i] = true; s.st.chordShift[i] = i + 1; }
     UserPattern u; u.length = 1; u.steps[0].ratchet = 4; s.user = u;
-    s.st.velRandom = 100; s.st.gateRandom = 100; s.st.randomCurve = 100; s.noDigest = kNoDigestWhy;
+    s.st.velRandom = 100; s.st.gateRandom = 100; s.st.randomCurve = 100;
+  };
+  add("WORST CASE for events per block with randomness: the 112-key ratchet 4 chord, vel_random = gate_random = random_curve = 100", [load112Random, kNoDigestWhy](Scenario& s) {
+    load112Random(s); s.noDigest = kNoDigestWhy;
   });
   add("WORST CASE A at ratchet 4 with randomness: A (32 keys on 16 channels, 128 notes, 8 transposition steps, every on evicts) at ratchet 4, vel_random = gate_random = random_curve = 100", [loadA, kNoDigestWhy](Scenario& s) {
     loadA(s); s.user->steps[0].ratchet = 4; s.lightDigest = true;
@@ -246,6 +250,16 @@ std::vector<Scenario> scenarios() {
       s.st.velRandom = 100; s.st.gateRandom = 100; s.st.randomCurve = 100;
     }, {0.0, 1.0}, {0.0, 1.0, 2.0, 4.0}, {0.0, 17000.0});
     for (std::size_t k = from; k < v.size(); ++k) v[k].noDigest = kNoDigestWhy;
+  }
+  // D-038 (2026-10-29): on an idle machine the 112-key randomness chord is the heaviest two-word load, and it had no input family, so the quoted input
+  // figure would have rested on B++'s slope. Only the binding shape (4 keys re-struck: the lowest room on every load above); its 16 held keys rule out
+  // the 32-key shapes. benchOnly: both digests were cut before it, and adding it would change tests/core/stream_digest_random_bench.txt.
+  for (double per : {0.0, 1.0, 2.0, 4.0}) {
+    Scenario sc; sc.st = baseSettings(); sc.family = "INPUT 4 keys re-struck (on one sample after the off), the 112-key ratchet 4 chord + randomness 100";
+    sc.name = "INPUT 4 keys re-struck: the 112-key ratchet 4 chord + randomness 100, 4 of the 16 keys re-struck " + rateName(per) + "x per 1/64 step (on one sample after the off)";
+    load112Random(sc); sc.restrikeKeys = 4; sc.restrikePerStep = per; sc.restrikeGap = 1; sc.lightDigest = true;
+    sc.benchOnly = "D-038: added after the randomness digest was cut from ed943b2";
+    v.push_back(std::move(sc));
   }
 #endif
   return v;
@@ -482,7 +496,7 @@ void digestAll(bool perturb, bool randomOnly) {
   if (randomOnly) std::printf("# the note-randomness scenarios only (D-036; tools/core_digest.sh regen-random): cut from ed943b2, the first core with randomness, before it was optimised\n");
   std::printf("# arp bench stream digest: scenario <TAB> rate block events stream-hash counters-hash (%.0f s of audio each, %.0f s for the heavy input scenarios; tests/core/stream_digest.h)\n", kDigestSeconds, kLightDigestSeconds);
   for (const Scenario& sc : scenarios()) {
-    if ((sc.noDigest != nullptr) != randomOnly) continue;
+    if (sc.benchOnly || (sc.noDigest != nullptr) != randomOnly) continue;
     for (const Cfg& c : sc.lightDigest ? light : full) {
       const int sr = c.sr, block = c.block;
       auto core = std::make_unique<Core>();
