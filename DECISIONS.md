@@ -1137,3 +1137,43 @@ The run is the full `tools/core_bench.sh` and the same A/B.
 - cap the randomness cost by a spec change.
 
 Evidence: `traces/2026-10-29-cpu-remeasure-1.md`.
+
+## D-042 — The quoted input limit is 1,000 events/s with every setting; D-033's 10 % CPU margin is dropped (RATIFIED by poll, 2026-10-29)
+
+D-041's idle re-measure ran at 12:00 on 2026-10-29: a fresh restart, the
+battery charged, OneDrive paused.
+- **The quiet rule was raised to Maw's** (1-minute load < 1.5, 5-minute
+  < 2.0), by the human's choice. This Mac idles near 2 with Claude open.
+- **Timing:** the full bench ran twice, once by wall clock and once by
+  thread CPU time.
+
+**Settings alone fit the 2 % slice on both paths** (0 of 195 over):
+- the worst is 1.79 % native and 1.91 % two-word (B++ with randomness 100,
+  192 kHz, block 16);
+- D-039's cost is x1.015-1.02 (an A/B against `e1dbd3c`, three runs each);
+- D-041's 2.08 % was the busy machine.
+
+**No single figure keeps D-033's 10 % margin (x4 ≤ 1.8 %) and covers every
+setting.** With randomness at 100, the heaviest loads use the margin before
+any input arrives. The binding shape is 4 keys re-struck over and over, on
+B++ with randomness, two-word, 192 kHz. It reads 1,461 / 1,416 / 1,415
+events/s, over three runs and both timings. A new bench family covers the
+112-note randomness chord, the heaviest two-word load: 2,782-2,845 events/s
+(`benchOnly`, so both pinned digests are unchanged). Two single-configuration
+readings lower than the binding figure (456 and 1,532) were scheduling spikes:
+four re-runs each read above 3,900.
+
+**Chosen, by poll:** quote **1,000 incoming note events per second with every
+setting, randomness included**, inside the 2 % slice (x4, not min-spec
+verified), both paths, 44.1-192 kHz. That is about 30 % below the lowest
+measured edge. D-033's separate 10 % CPU margin is dropped, and the notice
+says so plainly. A fast player sends about 40 events/s.
+
+**Rejected:**
+- quoting the measured edge, 1,400, with no margin at all;
+- keeping the 10 % margin with two figures (about 1,100 with randomness off,
+  none with randomness at 100 on the heaviest loads);
+- optimising the two-word path first.
+
+Supersedes D-033's 1,300. Recorded in `docs/horde-copy-in.md`, "The quoted
+input limit".
