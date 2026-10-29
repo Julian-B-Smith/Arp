@@ -1137,3 +1137,31 @@ The run is the full `tools/core_bench.sh` and the same A/B.
 - cap the randomness cost by a spec change.
 
 Evidence: `traces/2026-10-29-cpu-remeasure-1.md`.
+
+## D-043 — The user-visible name is a plain descriptive label, "Arp" / "Arpeggiator", not a brand (RATIFIED by poll, 2026-10-29)
+
+Phase N's name clearance (horde B433) asks what the user sees. Arp is not
+sold on its own; it is a section of horde.
+
+**Chosen, by poll:** a plain descriptive label, like horde's ECHO ruling, and
+no brand name.
+
+**The knockout screen** (US only, `docs/prior-art.md`, "Re-scan 2026-10-29")
+reads LOW for this use:
+- Korg's live ARP marks are class 15 (synthesizers);
+- its class 9 software application died in 2018;
+- "arpeggiator" is the feature's ordinary name.
+
+"ARP" as a brand stays HIGH and forbidden.
+
+**Recommended to horde with the readiness notice:** "Arpeggiator" as the
+section title, "Arp" as a short label, no all-caps "ARP" logo or device, and
+"ARP" never as a product or pack name.
+
+**Rejected:**
+- a distinctive brand name (Phase 0's directions stay on file if one is ever
+  wanted);
+- asking horde first, since its ECHO ruling already set the pattern.
+
+**Open:** the EU and WIPO registers, unsearched; counsel stays
+pre-commercial (horde B433).

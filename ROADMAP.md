@@ -169,6 +169,10 @@ A difference is investigated against the spec, which wins.
   for the user-visible name.
 - **Gate:** dated re-scan appended to `docs/prior-art.md`; conflicts surfaced to
   the human with a go/no-go; name cleared before any public release.
+- **Done so far:** the name screen, 2026-10-29 (D-043). The label is plain
+  descriptive, LOW, US registers only.
+- **Still open:** the swarm re-scan, the patent/IP pass, and the EU and WIPO
+  registers.
 
 ### After 1.0 — Step sequencing and generators
 Scoped at the post-1.0 gate with the human: where the step sequencer begins
@@ -257,7 +261,7 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   output" covers triggers that §2.5 fires with no keys under restart bar/free; who owns the face and undo; the
   factory-content format.
 - **With the human:** ~~the listening sign-off~~ **given 2026-10-27 (D-037)**, 18 of 18 on the shipped core (the
-  randomness sliders get their own listen); goldens cut per pattern; name clearance (Phase N, B433).
+  randomness sliders get their own listen); goldens cut per pattern; ~~name clearance (Phase N, B433)~~ **the label screened 2026-10-29 (D-043): a plain descriptive "Arp" / "Arpeggiator", LOW (US only; EU/WIPO open)**.
 - **Scope:** `core/`, `tests/core/`, `tools/`, `docs/`, the traces. **Out of scope:** any 1.0 feature (frozen).
 - **Freeze exception (D-036, 2026-10-27):** velocity and gate randomness with a shared curve, on `m3/randomness`;
   defaults 0 keep the output byte-identical. The listening renders include them before the sign-off.

@@ -289,3 +289,52 @@ D-005; the M1 tests enforce them).
 - Primary manuals not read: Bitwig's pattern list, Cubase's full mode list,
   Arturia, Korg, Roland Juno/JD-Xi, Novation Circuit, Elektron. Read them only
   if one becomes load-bearing.
+
+---
+
+## Re-scan 2026-10-29: the user-visible label (Phase N, horde B433; a zero-cost knockout screen, not legal advice)
+
+**What is screened.** The human's choice (D-043, by poll): inside horde, the
+module carries a **plain descriptive label**, "Arp" / "Arpeggiator", like
+horde's ECHO ruling, and **no brand name**. So this screen asks whether that
+descriptive use is clear. It does not ask whether "Arp" could be a brand.
+
+**Sources and method.**
+- USPTO TSDR status pages, read directly on 2026-10-29.
+- Web search over trademark aggregators and KVR.
+- The EU (EUIPO TMview) and WIPO registers were **not** searched: no working
+  route this session. That is the same gap horde's B433 screens recorded.
+
+**Findings (US).**
+- **Live, Korg Inc., class 15 (music synthesizers):**
+  - ARP standard-character word mark, Reg. 4782829 (serial 86198994),
+    registered 2015-07-28, renewed 2025-01-07;
+  - an ARP design mark (treble clef with a plug, serial 86199003), registered
+    2015-08-25, renewed 2025-01-07.
+- **Dead, Korg Inc., class 9 (software for playing, creating and editing
+  music):** ARP design mark, serial 87269937, filed 2016-12-15. It was
+  abandoned on 2018-07-25 after an inter partes decision of the Trademark
+  Trial and Appeal Board, and never registered.
+- **Products:** no plugin named exactly "Arp" was found. Suffixed and prefixed
+  names are common (H-Arp, Pattern Arp Plus, BlueARP, Arp-EG).
+- **"Arpeggiator"** is the ordinary name of the feature across synths and
+  DAWs; no trademark claim on it was found.
+
+**Verdict.**
+- **As a descriptive label for the arpeggiator section inside horde: LOW.** It
+  names what the feature is, as countless instruments do. Korg's live marks
+  cover synthesizer hardware (class 15), and its software (class 9)
+  application died.
+- **As a brand or product name: still HIGH,** unchanged from §5. horde is a
+  software synthesizer, close to Korg's goods.
+
+**Practices that keep it descriptive** (recommended to horde with the
+readiness notice):
+- prefer "Arpeggiator" for the section title and "Arp" only as a short label;
+- avoid an all-caps "ARP" styled as a logo or wordmark;
+- never pair it with a clef or plug device;
+- never use "ARP" as a product, preset-pack or plugin name.
+
+**Not covered:**
+- the EU and WIPO registers;
+- counsel. horde's B433 keeps counsel as a pre-commercial step.
