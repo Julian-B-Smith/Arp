@@ -25,8 +25,8 @@ target_compile_options(arp_core_plants_soft PRIVATE ${ARP_WARN})
 
 # The committed stream digest (test_digest.cpp): the suite's output, hashed, from the pre-optimisation core (D-030).
 set(ARP_DIGEST_FILE ${CMAKE_CURRENT_SOURCE_DIR}/stream_digest.txt)
-set(ARP_RANDOM_DIGEST_FILE ${CMAKE_CURRENT_SOURCE_DIR}/stream_digest_random.txt)
-set(ARP_RANDOMIZE_DIGEST_FILE ${CMAKE_CURRENT_SOURCE_DIR}/randomize_digest.txt)   # SPEC 15 RZ1: the randomize digest (test_randomize.cpp), identical on every platform   # D-036: the randomness suite's own digest (test_random.cpp)
+set(ARP_RANDOM_DIGEST_FILE ${CMAKE_CURRENT_SOURCE_DIR}/stream_digest_random.txt)   # D-036: the randomness suite's own digest (test_random.cpp)
+set(ARP_RANDOMIZE_DIGEST_FILE ${CMAKE_CURRENT_SOURCE_DIR}/randomize_digest.txt)   # SPEC 15 RZ1: the randomize digest (test_randomize.cpp), identical on every platform
 add_executable(arp_tests ${ARP_TEST_SOURCES} $<TARGET_OBJECTS:arp_core_plants>)
 target_include_directories(arp_tests PRIVATE ${ARP_CORE_DIR}/include)
 target_compile_definitions(arp_tests PRIVATE ARP_PLANTS ARP_DIGEST_FILE="${ARP_DIGEST_FILE}" ARP_RANDOM_DIGEST_FILE="${ARP_RANDOM_DIGEST_FILE}" ARP_RANDOMIZE_DIGEST_FILE="${ARP_RANDOMIZE_DIGEST_FILE}")

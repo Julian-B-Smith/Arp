@@ -31,8 +31,17 @@ using Plants = arp::rnd::Plants;   // arp::Plants (the core's) is visible here t
 // ---- the oracle: literal class lists (SPEC 15 §3; spec/randomize.json) ----
 const std::vector<P> kNever = {P::Enabled, P::ArpEnabled, P::RateMode, P::Latch, P::ScaleSource};
 const std::vector<P> kValue = {P::StepTimeUs, P::Gate, P::Swing, P::VelFixed, P::VelRandom, P::GateRandom, P::RandomCurve, P::Seed};
-bool isNever(P p) { for (P q : kNever) if (q == p) return true; return false; }
-bool isValue(P p) { for (P q : kValue) if (q == p) return true; return false; }
+// One statement per line throughout: g++'s -Wmisleading-indentation is an error under -Werror (CI builds on Linux g++).
+bool isNever(P p) {
+  for (P q : kNever)
+    if (q == p) return true;
+  return false;
+}
+bool isValue(P p) {
+  for (P q : kValue)
+    if (q == p) return true;
+  return false;
+}
 bool isStructure(P p) { return !isNever(p) && !isValue(p); }
 const std::vector<P> kArpKeys = {P::Order, P::Pattern, P::Rate, P::Restart, P::Repeats, P::VelMode, P::Steps, P::StepSize, P::StepUnit,
                                  P::Gate, P::Swing, P::StepTimeUs, P::VelFixed, P::VelRandom, P::GateRandom, P::RandomCurve, P::Seed};
@@ -92,13 +101,23 @@ bool sameSettings(const Settings& a, const Settings& b) {
   for (int i = 0; i < kParamCount; ++i) if (g(a, static_cast<P>(i)) != g(b, static_cast<P>(i))) return false;
   return true;
 }
-Settings clampedHome(const Settings& h) { Settings o = h; for (int i = 0; i < kParamCount; ++i) setParam(o, static_cast<P>(i), g(h, static_cast<P>(i))); return o; }
+Settings clampedHome(const Settings& h) {
+  Settings o = h;
+  for (int i = 0; i < kParamCount; ++i) setParam(o, static_cast<P>(i), g(h, static_cast<P>(i)));
+  return o;
+}
 
 // One case of the shared corpus.
 struct Case { Settings cur, home; Request rq; };
 Case makeCase(Gen& r) { Case c; c.cur = randomSettings(r); c.home = randomHome(r, c.cur); c.rq = randomRequest(r); return c; }
 
-std::uint64_t fnvMix(std::uint64_t h, std::uint64_t v) { for (int i = 0; i < 8; ++i) { h ^= (v >> (8 * i)) & 0xFF; h *= 0x100000001B3ull; } return h; }
+std::uint64_t fnvMix(std::uint64_t h, std::uint64_t v) {
+  for (int i = 0; i < 8; ++i) {
+    h ^= (v >> (8 * i)) & 0xFF;
+    h *= 0x100000001B3ull;
+  }
+  return h;
+}
 std::uint64_t digestOf(const Plants& pl, int n) {
   Gen r(20261029);
   std::uint64_t h = 0xCBF29CE484222325ull;
@@ -345,6 +364,16 @@ int rz9Violations(const Plants& pl) {
       if (o.chordUnit != c.cur.chordUnit) b = true;
       for (int k = 0; k < 6; ++k) if (o.chordOn[k] != c.cur.chordOn[k] || o.chordShift[k] != c.cur.chordShift[k]) b = true;
     }
+    // The rest of the "live" rules (the critic's M3): a seed nothing reads, the curve with both amounts at 0, rate and restart in time
+    // mode, the unit and size with no passes, the shift of a slot that is off.
+    const bool seedRead = c.cur.order == Order::Random || c.cur.order == Order::Shuffle || c.cur.velRandom > 0 || c.cur.gateRandom > 0 ||
+                          c.cur.pattern == Pattern::SparseChance || c.cur.pattern == Pattern::User;
+    if (c.rq.verb == Verb::Values && !seedRead && o.seed != c.cur.seed) b = true;
+    if (c.rq.verb == Verb::Values && c.cur.velRandom == 0 && c.cur.gateRandom == 0 && o.randomCurve != c.cur.randomCurve) b = true;
+    if (c.cur.rateMode == RateMode::Time && (o.rate != c.cur.rate || o.restart != c.cur.restart)) b = true;
+    if (o.steps == 0 && (o.stepSize != c.cur.stepSize || o.stepUnit != c.cur.stepUnit)) b = true;
+    for (int k = 0; k < 6; ++k)
+      if (!o.chordOn[k] && o.chordShift[k] != c.cur.chordShift[k]) b = true;
     if (c.cur.scaleSource == ScaleSource::Global) {
       if (o.scaleRoot != c.cur.scaleRoot) b = true;
       for (int k = 0; k < 12; ++k) if (o.scaleDeg[k] != c.cur.scaleDeg[k]) b = true;
@@ -359,7 +388,11 @@ void testRZ9() {
   Plants b; b.ignoreArpEnabled = true;
   plant(rz9Violations(a) > 0, "RZ9 detects step_time_us drawn in sync mode");
   plant(rz9Violations(b) > 0, "RZ9 detects the arp's keys drawn with the arp off");
-  check(rz9Violations(Plants{}) == 0, "RZ9: over 20,000 unlocked cases, no key is drawn that cur cannot hear (step time in sync, fixed velocity in played, the arp off, the stage off, the own scale with source global, the module off)");
+  Plants c; c.seedAlwaysRead = true;
+  Plants d; d.curveAlwaysLive = true;
+  plant(rz9Violations(c) > 0, "RZ9 detects the seed drawn when nothing reads it");
+  plant(rz9Violations(d) > 0, "RZ9 detects random_curve drawn with both randomness amounts at 0");
+  check(rz9Violations(Plants{}) == 0, "RZ9: over 20,000 unlocked cases, no key is drawn that cur cannot hear (step time in sync, fixed velocity in played, the arp off, the stage off, the own scale with source global, the module off, a seed nothing reads, the curve at zero amounts, rate and restart in time mode, unit and size with no passes, the shift of an off slot)");
 }
 
 // ---------------------------------------------------------------------------------------------------- RZ10 distribution
@@ -431,7 +464,12 @@ bool structureDiffers(const Settings& a, const Settings& b) {
   for (int k = 0; k < kParamCount; ++k) if (isStructure(static_cast<P>(k)) && g(a, static_cast<P>(k)) != g(b, static_cast<P>(k))) return true;
   return false;
 }
-LockSet allStructureLocked() { LockSet l; for (int k = 0; k < kParamCount; ++k) if (isStructure(static_cast<P>(k))) l.set(static_cast<P>(k)); return l; }
+LockSet allStructureLocked() {
+  LockSet l;
+  for (int k = 0; k < kParamCount; ++k)
+    if (isStructure(static_cast<P>(k))) l.set(static_cast<P>(k));
+  return l;
+}
 struct Rz11 { int silent = 0, special = 0; };
 Rz11 rz11(const Plants& pl) {
   Gen r(11);
@@ -510,6 +548,7 @@ int rz12Violations(const Plants& pl, std::string* why = nullptr) {
     const std::int64_t bound = o.stepUnit == StepUnit::Semitones ? 24 : 14;
     // The span bound limits drawn values; at chaos 0 nothing is drawn and members return to their centre (SPEC 15.9), like any band.
     if (c.rq.chaosPm > 0 && o.steps >= 1 && o.steps <= 3 && !homeShape && !curShape && std::abs(static_cast<std::int64_t>(o.steps) * o.stepSize) > bound) w = "span";
+    if (o.steps > 3 && o.stepSize != h.stepSize && o.stepSize != c.cur.stepSize) w = "a steps above 3 got a new size";
     if (c.cur.repeats == 0 && o.repeats != 0) w = "forever became a count";
     if (c.cur.repeats != 0 && o.repeats != 0 && o.repeats < c.cur.repeats) w = "repeats went down";
     if (o.rate != c.cur.rate) {
@@ -543,8 +582,10 @@ void testRZ12() {
   plant(rz12Violations(a) > 0, "RZ12 detects a dropped span filter");
   plant(rz12Violations(b) > 0, "RZ12 detects repeats drawn below cur");
   plant(rz12Violations(c) > 0, "RZ12 detects trigger_pulse lit");
+  Plants d; d.ownShapeRedraw = true;
+  plant(rz12Violations(d) > 0, "RZ12 detects a new size drawn for a steps above 3 (an unbounded span)");
   std::string why;
-  check(rz12Violations(Plants{}, &why) == 0, "RZ12: over 30,000 cases the span, repeats, rate family and band, unlit patterns, degrees with quantize off and every value band hold" + (why.empty() ? std::string() : " (first: " + why + ")"));
+  check(rz12Violations(Plants{}, &why) == 0, "RZ12: over 30,000 cases the span, a steps above 3 keeping its own size, repeats, rate family and band, unlit patterns, degrees with quantize off and every value band hold" + (why.empty() ? std::string() : " (first: " + why + ")"));
 }
 
 // ---------------------------------------------------------------------------------------------------- RZ13 allocation
@@ -662,7 +703,14 @@ void dumpRandomize() {
 // settings as 50-int arrays in ParamId order (home RAW, so some values are out of range: randomize clamps a home before use).
 void dumpRandomizeCases() {
   Gen r(42);
-  auto arr = [](const Settings& s) { std::string o = "["; for (int k = 0; k < kParamCount; ++k) { if (k) o += ","; o += std::to_string(g(s, static_cast<P>(k))); } return o + "]"; };
+  auto arr = [](const Settings& s) {
+    std::string o = "[";
+    for (int k = 0; k < kParamCount; ++k) {
+      if (k) o += ",";
+      o += std::to_string(g(s, static_cast<P>(k)));
+    }
+    return o + "]";
+  };
   std::printf("{\"format\": \"arp-randomize-cases/1\", \"note\": \"GENERATED by arp_tests --dump-randomize-cases (SPEC 15 known answers for the lab twin); tools/core_params_check.py checks it is current\", \"cases\": [\n");
   for (int i = 0; i < 300; ++i) {
     const Case c = makeCase(r);

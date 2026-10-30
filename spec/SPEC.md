@@ -1170,6 +1170,9 @@ Added 2026-10-29 as a recorded exception to the freeze (D-044); the human's answ
 reviews: `docs/design/randomize.md`. **Normative data:** `spec/randomize.json` (classes, groups, exemptions, bands, taste weights,
 interval tables, rate families, and the σ, `exp` and step-time tables as integers). **Reference implementation:**
 `core/include/arp/randomize.h`, `core/src/randomize.cpp`. Where this section and the data disagree, fixing them together is a spec change.
+This section and the data together determine every result: an implementation from them alone reproduces RZ1's digest. The data's
+`draw`, `live`, `order`, `groups` and `degrees_needs_quantize` fields name rules this section states (the `live` labels: §15.3);
+RZ15 checks the data's classes and exemptions against the code.
 
 ### 15.1 What it is
 - **One pure function** `randomize(cur, home, request) → result`. It produces new settings and nothing else. Integers only: no
@@ -1198,6 +1201,22 @@ must change off, the keys changed at amount a are a subset of those changed at a
 liveness from Structure's result, so `vel_fixed` and `seed` may not nest under Both (D-048 answer 11). "The arp is live" means
 `cur.enabled` and `cur.arp_enabled`.
 
+The `live` labels of `randomize.json`, all read on `cur` (for Values under Both, on Structure's result):
+
+| label | live when |
+|---|---|
+| `arp` | the arp is live |
+| `arp_sync` / `arp_time` | the arp is live and `rate_mode` is `sync` / `time` |
+| `arp_repeats_counting` | the arp is live and `repeats ≠ 0` |
+| `arp_vel_fixed` | the arp is live and `vel_mode` is `fixed` |
+| `arp_randomness` | the arp is live and `vel_random > 0` or `gate_random > 0` |
+| `arp_seed_read` | the arp is live and §15.7's seed condition holds |
+| `module` | `enabled` (the chord group) |
+| `scale_group` | `enabled`, and the arp is live or `chord_enabled` is on |
+| `own_scale` | inside the scale group: `scale_source = own` and `quantize` not off after the group's step 1 |
+| `steps_on` | inside the transposition group: `steps > 0` after its step 1 |
+| `chord_on` / `chord_slot_on` | inside the chord group: the stage on after step 0 / that slot on after step 1 |
+
 ### 15.4 Unordered choices
 At chaos 0, or when `¬below(rdraw(key, 1), chaos)`, the result is home, unless home is not admitted (§15.5), then `cur`.
 Otherwise a taste-weighted pick among the lit values (taste > 0) with `rdraw(key, 2)`. An unlit home is kept by the keep test.
@@ -1209,6 +1228,8 @@ Otherwise a taste-weighted pick among the lit values (taste > 0) with `rdraw(key
   admitted: `repeats` below `cur` (§15.7), `steps` under a locked `step_size` (§15.6), `chord_enabled` with the arp off (§15.6),
   and a step size or chord shift whose unit is pinned to `cur`'s, which differs from home's. There it is `cur`'s value. The centre
   is always a candidate.
+- **A home step time not on the ladder** uses the rung nearest by ratio (the smallest `max(a, h) / min(a, h)`, compared by
+  cross-multiplication in integers; ties go to the lower rung). If the pick lands on that rung, the result is home's exact value.
 - **Width:** `s8 = ⌊σ[chaos] · n / 2⁸⌋`, `s2 = s8²`, with `σ` the table `sigma_q16` and `n` the full ladder's length. **Weight**
   of a candidate at distance `d` from the centre: `2¹⁶` at `d = 0`; otherwise `exp_neg_q16[x8]` for `x8 = ⌊d² · 2²⁴ / (2 · s2)⌋`
   when `s2 > 0` and `x8 < 4096`, else 0. The pick is §15.2's with `rdraw(key, 2)`. At chaos 0 the result is the centre.
@@ -1221,9 +1242,12 @@ Each group has one amount threshold and a fixed internal order. Its members' joi
      plus `cur.steps`.
   2. Only if `steps > 0`: `step_unit`, unordered, kept at `cur` if it or `step_size` is locked; `degrees` lit only while
      `cur.quantize ≠ off`.
-  3. Only if `steps > 0` and unlocked: `step_size` from the unit's table (`intervals.transposition`), only intervals within the bound
-     for `steps` ≤ 3 (a `steps` above 3 is home's or `cur`'s own shape: no filter). Forced (no keep test) when the unit flipped from
-     home's or home's size breaks the bound; otherwise unordered. At chaos 0: home's size, or `cur`'s when the unit differs from home's.
+  - **A `steps` above 3** can only be home's or `cur`'s own value, kept beyond the band: it brings its own shape. Nothing new is
+     drawn for its unit or size; they come from the same source as the steps (home if `steps` equals home's, else `cur`), the size
+     only when its unit is that source's, locks aside. Steps 2 and 3 below apply to `steps` 1–3.
+  3. Only if `steps > 0` and unlocked: `step_size` from the unit's table (`intervals.transposition`), only intervals within the bound.
+     Forced (no keep test) when the unit flipped from home's or home's size breaks the bound; otherwise unordered. At chaos 0: home's
+     size, or `cur`'s when the unit differs from home's.
 - **Chord** (`chord_enabled`, `chord_on1..6`, `chord_unit`, `chord_shift1..6`; live when `cur.enabled`).
   0. `chord_enabled`, unordered. **With the arp off it is never turned off:** if `cur` has it on, it stays on; otherwise only
      on is lit. If the result is off, no other member changes.
@@ -1251,15 +1275,23 @@ Each group has one amount threshold and a fixed internal order. Its members' joi
 ### 15.8 Order and must change
 - **Structure** runs `order`, `pattern`, `rate`, `restart`, `repeats`, `vel_mode`, the scale group, the transposition group, the
   chord group. **Values** runs `gate`, `swing`, `step_time_us`, `vel_fixed`, `vel_random`, `gate_random`, `random_curve`, `seed`.
-- **Must change** (Structure only, `mustChange`, chaos > 0): if no structure key changed, the movable unit (live, unlocked, with a
-  move that changes a key) with the lowest `rdraw(unit, 0)` moves, with `rdraw(…, 3)`:
-  - an unordered key: by taste among its lit values other than `cur`'s;
-  - `rate` or `repeats`: the nearest admitted rung above or below `cur` in `cur`'s family, the side from the draw's top bit;
-  - transposition: `steps` as an ordered key (the span rule then re-applied to the size); else a different size within the bound;
-    else the unit flipped, with a forced size;
-  - chord: the first on, unlocked shift redrawn; else the first off, unlocked slot turned on; else the last on slot turned off;
-    else the unit flipped with every on shift forced; else `chord_enabled` flipped alone (never off with the arp off);
-  - scale: `quantize`; else a different named scale; else the root one fifth either way.
+- **Must change** (Structure, and Both's Structure part; `mustChange`, chaos > 0): if no structure key changed, the movable unit
+  (live, unlocked, with a move that changes a key) with the lowest `rdraw(unit, 0)` moves (ties: the earlier unit in the order). Every
+  move draws with `idx` 3, keyed as stated; "the top bit" is bit 31 of that draw, 1 = above (or up a fifth), 0 = below:
+  - an unordered key (`order`, `pattern`, `restart`, `vel_mode`): by taste among its lit values other than `cur`'s, keyed by the key;
+  - `rate`: the nearest admitted position above or below `cur`'s in `cur`'s family (the family's band, plus home's position when
+    home is in that family), keyed `rate`; `repeats`: the nearest admitted count above or below `cur`'s (§15.7's set without
+    `cur`), keyed `repeats`. The side is the top bit's when both exist;
+  - transposition (keyed `transposition` for the steps move, `step_size` for every size draw): `steps` moved as an ordered key among
+    the admitted values within 0–3, then, if the size is unlocked and its span with the new `steps` breaks the bound, a size forced
+    within it; else, for `cur.steps` 1–3, a different size within the bound by taste; else, for `cur.steps` 1–3, the unit flipped
+    (degrees only while `quantize` is on) with a forced size. A `steps` above 3 is never moved into, and its size and unit never move;
+  - chord (each shift keyed by its own key): the first on, unlocked shift redrawn by taste, excluding `cur`'s; else the first off,
+    unlocked slot turned on, its shift forced unless locked; else the last on, unlocked slot turned off; else the unit flipped (if no
+    shift is locked; degrees only while `quantize` is on) with every on shift forced; else `chord_enabled` flipped alone (never off
+    with the arp off). With the stage off in `cur`, the only move is turning it on, alone;
+  - scale: `quantize` by taste, excluding `cur`'s, keyed `scale`; else (own scale live and unlocked) a different named scale by
+    taste, keyed `scale_mask`; else the root one fifth up or down by the top bit, keyed `scale_root`.
   - If no unit is movable, the result is unchanged and `nothingToDraw` is true.
 
 ### 15.9 Chaos 0

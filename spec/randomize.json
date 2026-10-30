@@ -1,7 +1,7 @@
 {
  "format": "arp-randomize/1",
  "status": "RATIFIED 2026-10-29 (D-044, D-048: the human's polls; SPEC §15); protected: changes need the human's gate",
- "note": "Normative companion of SPEC §15 (Arp's own randomize). Classes, groups, default exemptions, bands, taste weights and the integer tables the draw uses. tools/gen_randomize.py generates core/include/arp/randomize_data.h from it; the lab embeds it verbatim. Every number is an integer.",
+ "note": "Normative companion of SPEC §15 (Arp's own randomize). Classes, groups, default exemptions, bands, taste weights and the integer tables the draw uses. tools/gen_randomize.py generates core/include/arp/randomize_data.h from it; the lab embeds it verbatim. Every number is an integer. The fields draw, live, order, groups and degrees_needs_quantize name rules SPEC §15 states (the live labels: §15.3); RZ15 checks class and exempt against the code.",
  "draw": {
   "function": "rdraw(seed, click, corner, keyId, idx) = mulberry32(seed ^ salt ^ imul(click, k_click) ^ imul(corner, k_corner) ^ imul(keyId, k_key) ^ imul(idx + 1, k_idx))",
   "salt": 1380011588,

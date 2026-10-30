@@ -46,6 +46,9 @@ constexpr ParamId scaleDeg(int i) { return static_cast<ParamId>(static_cast<int>
 
 enum Idx : u32 { kAmount = 0, kKeep = 1, kPick = 2, kMust = 3 };
 constexpr int kMaxCands = 256;
+// Every ladder fits the candidate arrays: the widest is swing (500..750, 251 values); then gate (200), velocity (127), the percents
+// (101), the step-time ladder (93). A new or wider range must grow kMaxCands, not overrun it.
+static_assert(750 - 500 + 1 <= kMaxCands && 200 <= kMaxCands && sizeof D::kStepTimeLadder / sizeof D::kStepTimeLadder[0] <= kMaxCands, "a ladder outgrew kMaxCands");
 
 i64 iabs(i64 x) { return x < 0 ? -x : x; }
 i64 clampv(i64 x, i64 lo, i64 hi) { return x < lo ? lo : x > hi ? hi : x; }
@@ -165,7 +168,11 @@ struct Cands {
     v[i] = x;
     ++n;
   }
-  bool has(int x) const { for (int i = 0; i < n; ++i) if (v[i] == x) return true; return false; }
+  bool has(int x) const {
+    for (int i = 0; i < n; ++i)
+      if (v[i] == x) return true;
+    return false;
+  }
 };
 
 // A bell over every integer lo..hi (the ladder), band [bandLo, bandHi] widened to include home.
@@ -195,7 +202,11 @@ int namedScaleOf(std::uint16_t m) {
   for (int i = 0; i < static_cast<int>(sizeof D::kScaleMask / sizeof D::kScaleMask[0]); ++i) if (D::kScaleMask[i] == m) return i;
   return -1;
 }
-int fifthsPos(int root) { for (int i = 0; i < 12; ++i) if (D::kFifths[i] == root) return i; return 0; }
+int fifthsPos(int root) {
+  for (int i = 0; i < 12; ++i)
+    if (D::kFifths[i] == root) return i;
+  return 0;
+}
 bool seedRead(const Settings& s) {
   if (s.order == Order::Random || s.order == Order::Shuffle || s.velRandom > 0 || s.gateRandom > 0) return true;
   for (std::uint8_t p : D::kSeedPatterns) if (static_cast<std::uint8_t>(s.pattern) == p) return true;
@@ -206,12 +217,20 @@ i64 spanBound(StepUnit u) { return u == StepUnit::Semitones ? D::kSpanSemitones 
 // Rate families: which family a division belongs to, and its members.
 struct Family { const std::uint8_t* m; int n; int lo, hi; };
 Family familyOf(Rate r) {
-  const auto in = [&](const std::uint8_t* m, int n) { for (int i = 0; i < n; ++i) if (m[i] == static_cast<std::uint8_t>(r)) return true; return false; };
+  const auto in = [&](const std::uint8_t* m, int n) {
+    for (int i = 0; i < n; ++i)
+      if (m[i] == static_cast<std::uint8_t>(r)) return true;
+    return false;
+  };
   if (in(D::kRateDotted, 7)) return {D::kRateDotted, 7, D::kRateDottedBand[0], D::kRateDottedBand[1]};
   if (in(D::kRateTriplet, 7)) return {D::kRateTriplet, 7, D::kRateTripletBand[0], D::kRateTripletBand[1]};
   return {D::kRateStraight, 8, D::kRateStraightBand[0], D::kRateStraightBand[1]};
 }
-int posIn(const Family& f, Rate r) { for (int i = 0; i < f.n; ++i) if (f.m[i] == static_cast<std::uint8_t>(r)) return i; return 0; }
+int posIn(const Family& f, Rate r) {
+  for (int i = 0; i < f.n; ++i)
+    if (f.m[i] == static_cast<std::uint8_t>(r)) return i;
+  return 0;
+}
 
 // The transposition / chord interval table of a unit, as weights with a filter applied by the caller.
 struct Table { const std::int32_t (*rows)[2]; int n; };
@@ -270,7 +289,8 @@ void repeatsAdmitted(const Ctx& c, Cands& cs, bool withCur) {
   for (int v = cr + 1; v <= D::kBandRepeats[1]; ++v) cs.add(v);
   if (hr == 0 || hr > cr) cs.add(hr);
 #ifdef ARP_PLANTS
-  if (c.pl.repeatsDown) for (int v = D::kBandRepeats[0]; v < cr; ++v) cs.add(v);
+  if (c.pl.repeatsDown)
+    for (int v = D::kBandRepeats[0]; v < cr; ++v) cs.add(v);
 #endif
 }
 void repeatsKey(Ctx& c, bool arp) {
@@ -363,6 +383,18 @@ void transpositionGroup(Ctx& c, bool arp) {
   }
   c.out.steps = static_cast<std::int32_t>(steps);
   if (steps <= 0) return;   // no passes: the unit and size keep cur (a flip would only wait, unheard, in the new unit)
+  bool ownShape = steps > D::kBandSteps[1];
+#ifdef ARP_PLANTS
+  if (c.pl.noOwnShapeRule || c.pl.ownShapeRedraw) ownShape = false;   // fall through to a draw (filtered: empties the table; unfiltered: an unbounded span)
+#endif
+  if (ownShape) {
+    // A steps above 3 can only be home's or cur's own value, kept beyond the band: it brings its own shape. Nothing new is drawn for
+    // its unit or size (a new interval with 4..8 passes has no safe span); they come from the same source as the steps, locks aside.
+    const bool fromHome = steps == c.home.steps;
+    if (!uL && !zL) c.out.stepUnit = fromHome ? c.home.stepUnit : c.cur.stepUnit;
+    if (!zL) c.out.stepSize = (fromHome && c.out.stepUnit == c.home.stepUnit) ? c.home.stepSize : c.cur.stepSize;
+    return;
+  }
   StepUnit unit = c.cur.stepUnit;
   if (!uL && !zL) {
     const u32 taste[2] = {D::kTasteStepUnit[0], c.cur.quantize != Quantize::Off ? D::kTasteStepUnit[1] : 0u};
@@ -395,7 +427,11 @@ void transpositionGroup(Ctx& c, bool arp) {
   c.out.stepSize = size;
 }
 
-bool anyShiftLocked(const Ctx& c) { for (int i = 0; i < 6; ++i) if (c.locked(chordShift(i))) return true; return false; }
+bool anyShiftLocked(const Ctx& c) {
+  for (int i = 0; i < 6; ++i)
+    if (c.locked(chordShift(i))) return true;
+  return false;
+}
 bool chordAllLocked(const Ctx& c) {
   if (!c.locked(ParamId::ChordEnabled) || !c.locked(ParamId::ChordUnit)) return false;
   for (int i = 0; i < 6; ++i) if (!c.locked(chordOn(i)) || !c.locked(chordShift(i))) return false;
@@ -521,9 +557,15 @@ void values(Ctx& c) {
     c.out.velRandom = static_cast<std::int32_t>(bellRange(c, ParamId::VelRandom, 0, 100, D::kBandVelRandom[0], D::kBandVelRandom[1], c.home.velRandom));
   if (arp && !c.locked(ParamId::GateRandom) && c.considered(id(ParamId::GateRandom)))
     c.out.gateRandom = static_cast<std::int32_t>(bellRange(c, ParamId::GateRandom, 0, 100, D::kBandGateRandom[0], D::kBandGateRandom[1], c.home.gateRandom));
-  if (arp && (ref->velRandom > 0 || ref->gateRandom > 0) && !c.locked(ParamId::RandomCurve) && c.considered(id(ParamId::RandomCurve)))
+  bool curveLive = ref->velRandom > 0 || ref->gateRandom > 0;
+  bool seedLive = seedRead(*ref);
+#ifdef ARP_PLANTS
+  if (c.pl.curveAlwaysLive) curveLive = true;
+  if (c.pl.seedAlwaysRead) seedLive = true;
+#endif
+  if (arp && curveLive && !c.locked(ParamId::RandomCurve) && c.considered(id(ParamId::RandomCurve)))
     c.out.randomCurve = static_cast<std::int32_t>(bellRange(c, ParamId::RandomCurve, 0, 100, D::kBandRandomCurve[0], D::kBandRandomCurve[1], c.home.randomCurve));
-  if (arp && seedRead(*ref) && !c.locked(ParamId::Seed) && c.considered(id(ParamId::Seed))) {
+  if (arp && seedLive && !c.locked(ParamId::Seed) && c.considered(id(ParamId::Seed))) {
     if (c.chaos == 0) c.out.seed = c.home.seed;
     else {
       const u32 rk = c.rd(id(ParamId::Seed), kKeep);
@@ -607,20 +649,28 @@ bool moveUnit(Ctx& c, int u, bool arp, bool apply) {
     case kUOrder:
       if (!arp || c.locked(ParamId::Order)) return false;
       { const int i = unorderedMove(c, unitKey(u), D::kTasteOrder, 16, static_cast<int>(cur.order), apply);
-        if (i < 0) return false; if (apply) out.order = static_cast<Order>(i); return true; }
+        if (i < 0) return false;
+        if (apply) out.order = static_cast<Order>(i);
+        return true; }
     case kUPattern:
       if (!arp || c.locked(ParamId::Pattern)) return false;
       { u32 t[12]; patternTaste(c, t);
         const int i = unorderedMove(c, unitKey(u), t, 12, static_cast<int>(cur.pattern), apply);
-        if (i < 0) return false; if (apply) out.pattern = static_cast<Pattern>(i); return true; }
+        if (i < 0) return false;
+        if (apply) out.pattern = static_cast<Pattern>(i);
+        return true; }
     case kURestart:
       if (!arp || cur.rateMode != RateMode::Sync || c.locked(ParamId::Restart)) return false;
       { const int i = unorderedMove(c, unitKey(u), D::kTasteRestart, 3, static_cast<int>(cur.restart), apply);
-        if (i < 0) return false; if (apply) out.restart = static_cast<Restart>(i); return true; }
+        if (i < 0) return false;
+        if (apply) out.restart = static_cast<Restart>(i);
+        return true; }
     case kUVelMode:
       if (!arp || c.locked(ParamId::VelMode)) return false;
       { const int i = unorderedMove(c, unitKey(u), D::kTasteVelMode, 2, static_cast<int>(cur.velMode), apply);
-        if (i < 0) return false; if (apply) out.velMode = static_cast<VelMode>(i); return true; }
+        if (i < 0) return false;
+        if (apply) out.velMode = static_cast<VelMode>(i);
+        return true; }
     case kURate: {
       if (!arp || cur.rateMode != RateMode::Sync || c.locked(ParamId::Rate)) return false;
       const Family f = familyOf(cur.rate);
@@ -645,7 +695,10 @@ bool moveUnit(Ctx& c, int u, bool arp, bool apply) {
       if (!scaleLive(c, arp)) return false;
       if (!c.locked(ParamId::Quantize)) {
         const int i = unorderedMove(c, kIdScale, D::kTasteQuantize, 3, static_cast<int>(cur.quantize), apply);
-        if (i >= 0) { if (apply) out.quantize = static_cast<Quantize>(i); return true; }
+        if (i >= 0) {
+          if (apply) out.quantize = static_cast<Quantize>(i);
+          return true;
+        }
       }
       if (firstMoveOnly(c)) return false;
       if (ownScaleLocked(c) || cur.scaleSource != ScaleSource::Own || cur.quantize == Quantize::Off) return false;
@@ -668,8 +721,10 @@ bool moveUnit(Ctx& c, int u, bool arp, bool apply) {
       if (!arp) return false;
       const bool sL = c.locked(ParamId::Steps), uL = c.locked(ParamId::StepUnit), zL = c.locked(ParamId::StepSize);
       if (!sL) {
-        Cands cs;
-        stepsAdmitted(c, cs);
+        Cands all, cs;   // a must-change move stays in the band 0..3: it never moves into a shape beyond it
+        stepsAdmitted(c, all);
+        for (int k = 0; k < all.n; ++k)
+          if (all.v[k] <= D::kBandSteps[1]) cs.add(all.v[k]);
         const int i = orderedMove(c, unitKey(u), cs, static_cast<int>(cur.steps), 9, apply);
         if (i >= 0) {
           if (apply) {
@@ -685,7 +740,7 @@ bool moveUnit(Ctx& c, int u, bool arp, bool apply) {
         }
       }
       if (firstMoveOnly(c)) return false;
-      if (zL || cur.steps <= 0) return false;
+      if (zL || cur.steps <= 0 || cur.steps > D::kBandSteps[1]) return false;   // a steps above 3 is the player's own shape: its size and unit stay
       {
         u32 w[8];
         const i64 ex = cur.stepSize;

@@ -1427,7 +1427,7 @@ const ARP_BANK = {
 const ARP_RANDOMIZE = {
  "format": "arp-randomize/1",
  "status": "RATIFIED 2026-10-29 (D-044, D-048: the human's polls; SPEC §15); protected: changes need the human's gate",
- "note": "Normative companion of SPEC §15 (Arp's own randomize). Classes, groups, default exemptions, bands, taste weights and the integer tables the draw uses. tools/gen_randomize.py generates core/include/arp/randomize_data.h from it; the lab embeds it verbatim. Every number is an integer.",
+ "note": "Normative companion of SPEC §15 (Arp's own randomize). Classes, groups, default exemptions, bands, taste weights and the integer tables the draw uses. tools/gen_randomize.py generates core/include/arp/randomize_data.h from it; the lab embeds it verbatim. Every number is an integer. The fields draw, live, order, groups and degrees_needs_quantize name rules SPEC §15 states (the live labels: §15.3); RZ15 checks class and exempt against the code.",
  "draw": {
   "function": "rdraw(seed, click, corner, keyId, idx) = mulberry32(seed ^ salt ^ imul(click, k_click) ^ imul(corner, k_corner) ^ imul(keyId, k_key) ^ imul(idx + 1, k_idx))",
   "salt": 1380011588,
@@ -3521,6 +3521,14 @@ function rzTranspositionGroup(c, arp) {
   }
   c.out[rzId.steps] = steps;
   if (steps <= 0) return;   // no passes: the unit and size keep cur (a flip would only wait, unheard, in the new unit)
+  if (steps > RZ_BAND("steps")[1]) {
+    // A steps above 3 is home's or cur's own value, kept beyond the band: it brings its own shape (SPEC 15.6). Nothing new is drawn for
+    // its unit or size; they come from the same source as the steps, locks aside.
+    const fromHome = steps === c.home[rzId.steps];
+    if (!uL && !zL) c.out[rzId.step_unit] = fromHome ? c.home[rzId.step_unit] : c.cur[rzId.step_unit];
+    if (!zL) c.out[rzId.step_size] = (fromHome && c.out[rzId.step_unit] === c.home[rzId.step_unit]) ? c.home[rzId.step_size] : c.cur[rzId.step_size];
+    return;
+  }
   let unit = c.cur[rzId.step_unit];
   if (!uL && !zL) {
     const taste = [RZ_T_STEPUNIT[0], c.cur[rzId.quantize] !== RZ_Q_OFF ? RZ_T_STEPUNIT[1] : 0];
@@ -3705,8 +3713,9 @@ function rzMoveUnit(c, u, arp, apply) {
       if (!arp) return false;
       const sL = !!L[rzId.steps], uL = !!L[rzId.step_unit], zL = !!L[rzId.step_size], band = RZ_BAND("steps");
       if (!sL) {
-        const cs = rzCands();
-        rzStepsAdmitted(c, cs);
+        const all = rzCands(), cs = rzCands();   // a must-change move stays in the band 0..3: it never moves into a shape beyond it
+        rzStepsAdmitted(c, all);
+        for (const v of all.v) if (v <= band[1]) cs.add(v);
         const i = rzOrderedMove(c, RZ_KEY[rzId.steps], cs, cur[rzId.steps], apply);
         if (i >= 0) {
           if (apply) {
@@ -3719,7 +3728,7 @@ function rzMoveUnit(c, u, arp, apply) {
           return true;
         }
       }
-      if (zL || cur[rzId.steps] <= 0) return false;
+      if (zL || cur[rzId.steps] <= 0 || cur[rzId.steps] > band[1]) return false;   // a steps above 3 is the player's own shape: its size and unit stay
       {
         const w = rzSizeWeights(cur[rzId.step_unit], cur[rzId.steps], cur[rzId.step_size]);
         if (w.some(x => x > 0)) {

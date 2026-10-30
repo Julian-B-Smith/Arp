@@ -42,6 +42,9 @@ struct Plants {
   bool pointerInSeed = false;        // RZ1: an address enters the draw
   bool shiftOutOfRange = false;      // RZ3: the chord table's +24 is drawn as +25
   bool noOwnShapeRule = false;       // RZ3: a steps above 3 is span-filtered too, emptying the size table
+  bool ownShapeRedraw = false;       // RZ12: a steps above 3 draws a new size from the whole table (an unbounded span)
+  bool seedAlwaysRead = false;       // RZ9: the seed is drawn even when nothing reads it
+  bool curveAlwaysLive = false;      // RZ9: random_curve is drawn with both randomness amounts at 0
   bool centreNotCandidate = false;   // RZ3: the bell's centre is not added when it lies outside the band
   bool locksValuesOnly = false;      // RZ4: Structure ignores locks
   bool drawLatch = false;            // RZ5: latch is drawn by Structure
