@@ -175,6 +175,7 @@ A difference is investigated against the spec, which wins.
   before any commercial release.
 - **Still open:** the swarm re-scan, the patent/IP pass, and the EU and WIPO
   registers.
+  **When (D-047):** after the readiness notice, before any public release.
 
 ### After 1.0 — Step sequencing and generators
 Scoped at the post-1.0 gate with the human: where the step sequencer begins
@@ -290,6 +291,19 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   4. An independent Opus critic review for accuracy against the spec, no HIGH open.
   The check runs in `./verify fast` (`manual_gate`), approved by the human by poll 2026-10-28.
 - **Acceptance criteria:** the M3 gate above.
+- **Rulings of 2026-10-29 (D-044 to D-047), the work they open:**
+  - **Arp's own randomize** for horde's Random page (D-044, a freeze exception). Settings only, with two verbs,
+    structure and values. It is seeded, honours chaos and locks, and runs off the audio thread. **Acceptance criteria
+    (proposed; the design comes first):**
+    1. a design doc of each key's class, the never-draw set, the safe ranges and the API, reviewed by a critic with
+       no HIGH open;
+    2. the implementation in `core/` with invariant tests and plants: deterministic for a seed; every result passes
+       the settings validator; locks and never-draw keys are untouched; chaos 0 changes nothing;
+    3. the reply to horde's brief (seq 10), with the scale-names question and the seq-12 reminder (D-047).
+  - **"Ableton" out of forward-facing text** (D-045): the spec §4.7 heading and header note, the `params.json`
+    note, the README, the lab, the manifest; spec re-pinned; no behaviour change.
+  - **Bank-pattern goldens** cut and protected (D-046); the preset goldens follow the presets.
+  - **The manual:** fill in the input-rate OPEN note with D-042's 1,000.
 
 ## Open questions (blocking — ask the human or horde)
 

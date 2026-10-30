@@ -112,7 +112,7 @@
   <div class="q" id="clockNote">Transport stopped: the free clock. Step 0 lands on your key press.</div>
   <div id="kb"></div>
   <div class="q kbinfo" id="kbInfo"></div>
-  <div class="q">Computer keys, laid out as in Ableton Live: <kbd>A</kbd>–<kbd>'</kbd> on the home row are the white keys, <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd> <kbd>O</kbd> <kbd>P</kbd> the black keys. <kbd>Z</kbd> / <kbd>X</kbd> shift the octave, <kbd>C</kbd> / <kbd>V</kbd> step the velocity, <kbd>Space</kbd> plays or stops. Note names follow Live (middle C, MIDI 60, is C3). Mouse and touch work on the keys above.</div>
+  <div class="q">Piano-style computer keys: <kbd>A</kbd>–<kbd>'</kbd> on the home row are the white keys, <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd> <kbd>O</kbd> <kbd>P</kbd> the black keys. <kbd>Z</kbd> / <kbd>X</kbd> shift the octave, <kbd>C</kbd> / <kbd>V</kbd> step the velocity, <kbd>Space</kbd> plays or stops. Note names put middle C (MIDI 60) at C3. Mouse and touch work on the keys above.</div>
   <div class="q" id="status"></div>
   <div class="q" id="coreStatus"></div>
 </div>
@@ -322,7 +322,7 @@ const ARP_PARAMS = {
    "max": 8,
    "default": 0,
    "ref": "SPEC §4.7",
-   "note": "transposition steps, Ableton-style: the whole pattern repeats shifted by step_size each pass, `steps` times, then returns; 0 = none (D-014)",
+   "note": "transposition steps: the whole pattern repeats, shifted by step_size each pass, `steps` times, then returns; 0 = none (D-014)",
    "unit": "passes"
   },
   {
@@ -4044,18 +4044,18 @@ function arpIntsToSettings(a) {
     paintKeys(); paintKbInfo();
   }
   const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-  // Live's convention: MIDI 60 is C3 (so MIDI 0 is C-2), matching the human's DAW.
+  // MIDI 60 is named C3 (so MIDI 0 is C-2), the octave numbering the human's DAW uses.
   const noteName = k => NAMES[k % 12] + (Math.floor(k / 12) - 2);
   function paintKeys() { for (const el of document.querySelectorAll(".key")) el.classList.toggle("down", pressed.has(Number(el.getAttribute("data-key")))); }
 
-  // Ableton Live's computer MIDI keyboard. Matched on PHYSICAL keys (ev.code), so it works on
+  // The piano-style computer keyboard. Matched on PHYSICAL keys (ev.code), so it works on
   // AZERTY/QWERTZ and with Caps Lock or Shift: the home row is the white keys from C, the row
-  // above the black keys; Z/X shift the octave, C/V step the velocity, as in Live.
-  const ABLETON = { KeyA: 0, KeyW: 1, KeyS: 2, KeyE: 3, KeyD: 4, KeyF: 5, KeyT: 6, KeyG: 7, KeyY: 8, KeyH: 9,
-                    KeyU: 10, KeyJ: 11, KeyK: 12, KeyO: 13, KeyL: 14, KeyP: 15, Semicolon: 16, Quote: 17 };
-  const KEY_LABEL = {}; for (const [code, i] of Object.entries(ABLETON)) KEY_LABEL[i] = code === "Semicolon" ? ";" : code === "Quote" ? "'" : code.slice(3);
-  const VEL_STEPS = [1, 20, 40, 60, 80, 100, 120, 127];   // Live's C/V steps, from its default of 100
-  let kbBase = 60, kbVel = 100;   // A = C3 in Live's naming (MIDI 60)
+  // above the black keys; Z/X shift the octave, C/V step the velocity.
+  const KEYMAP = { KeyA: 0, KeyW: 1, KeyS: 2, KeyE: 3, KeyD: 4, KeyF: 5, KeyT: 6, KeyG: 7, KeyY: 8, KeyH: 9,
+                   KeyU: 10, KeyJ: 11, KeyK: 12, KeyO: 13, KeyL: 14, KeyP: 15, Semicolon: 16, Quote: 17 };
+  const KEY_LABEL = {}; for (const [code, i] of Object.entries(KEYMAP)) KEY_LABEL[i] = code === "Semicolon" ? ";" : code === "Quote" ? "'" : code.slice(3);
+  const VEL_STEPS = [1, 20, 40, 60, 80, 100, 120, 127];   // the C/V velocity steps, from a default of 100
+  let kbBase = 60, kbVel = 100;   // A = C3 (MIDI 60)
   // code -> the MIDI key its press sounded. A release must end THAT note: after an octave shift
   // mid-hold, recomputing it from kbBase would release the wrong note and strand the first.
   const heldKeys = new Map();
@@ -4077,12 +4077,12 @@ function arpIntsToSettings(a) {
   document.addEventListener("keydown", ev => {
     if (ev.ctrlKey || ev.metaKey || ev.altKey || isTyping(ev.target)) return;
     if (ev.code === "Space") { ev.preventDefault(); if (!ev.repeat) togglePlay(); return; }
-    if (ev.code in ABLETON) ev.preventDefault();          // ' and / would otherwise open Firefox quick-find
+    if (ev.code in KEYMAP) ev.preventDefault();           // ' and / would otherwise open Firefox quick-find
     if (ev.repeat) return;
     if (ev.code === "KeyZ" || ev.code === "KeyX") { shiftOctave(ev.code === "KeyX" ? 1 : -1); return; }
     if (ev.code === "KeyC" || ev.code === "KeyV") { stepVel(ev.code === "KeyV" ? 1 : -1); return; }
-    if (!(ev.code in ABLETON) || heldKeys.has(ev.code)) return;
-    const k = kbBase + ABLETON[ev.code];
+    if (!(ev.code in KEYMAP) || heldKeys.has(ev.code)) return;
+    const k = kbBase + KEYMAP[ev.code];
     heldKeys.set(ev.code, k); press(kbRef(ev.code, k), k, kbVel);
   });
   document.addEventListener("keyup", ev => {
@@ -4551,7 +4551,7 @@ function arpIntsToSettings(a) {
     roll.notes.push(n); roll.byId.set(e.ref.id, n);
   }
   function rollOff(e, when) { const n = roll.byId.get(e.ref.id); if (n) { n.off = when; roll.byId.delete(e.ref.id); } }
-  const EXAMPLE_CHORD = [60, 63, 67];        // C3 minor in Live's naming, used when nothing is held
+  const EXAMPLE_CHORD = [60, 63, 67];        // C3 minor (MIDI 60 = C3), used when nothing is held
   // With the chord stage on, the stage MAKES the chord, so the example is one note. Feeding it a triad stacks a
   // triad on each of its notes (C Eb G + {+4, +7} = 7 keys), which the preview then faithfully drew as "too many notes".
   const EXAMPLE_NOTE = [60];
