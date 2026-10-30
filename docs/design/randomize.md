@@ -5,6 +5,11 @@
 > and answers horde's brief seq 10 (`integrations/hypersaw/brief-arp-randomize.md`,
 > horde ADR-321).
 >
+> **Built, 2026-10-29 (phase 2):** SPEC §15 and `spec/randomize.json` (§8's
+> amendment, applied), the core (`core/include/arp/randomize.h`), RZ1–RZ16 and
+> the lab panel. Where implementation refined a rule, §2.5, §2.8 and §2.9 say so
+> ("found in implementation"); SPEC §15 is normative.
+>
 > **Status: APPROVED DESIGN, revision 4.** The human answered the open
 > questions by poll on 2026-10-29 (D-048, recorded by the lead) and approved
 > phase 2: the spec amendment, the core, the lab panel and the reply. Revision
@@ -219,10 +224,13 @@ values. The same integer bell serves them all.
 - **The band:** the key's musically safe band (§3), **widened to include
   home**. A home outside the band is never forced to move: the band only limits
   new values.
-- **The centre.** The bell is centred on home. Three rules can make home
+- **The centre.** The bell is centred on home. Four rules can make home
   inadmissible: `repeats`, which never goes down from `cur` (§3, row 20);
-  `steps` under a locked `step_size` (§2.6); and `chord_enabled` while
-  `cur.arp_enabled` is off, which admits only on and `cur` (§2.6). There the
+  `steps` under a locked `step_size` (§2.6); `chord_enabled` while
+  `cur.arp_enabled` is off, which admits only on and `cur` (§2.6); and (found
+  in implementation) a step size or chord shift whose unit is pinned to
+  `cur`'s by a lock and differs from home's, where home's interval belongs to
+  the other unit. There the
   centre (or, for the unordered `chord_enabled`, the value the keep test
   keeps) is `cur`'s value, which those rules always admit. **The centre is
   always a candidate,** for every bell, at every chaos, under every lock set.
@@ -370,7 +378,8 @@ no key:
    - **an unordered key:** pick by taste among its lit values other than
      `cur`'s;
    - **an ordered key** (`rate`, `repeats`): the nearest admitted rung above or
-     below `cur`, the side chosen by `r`'s top bit; if only one side exists,
+     below `cur` (for `rate`, in `cur`'s family: the move starts from `cur`),
+     the side chosen by `r`'s top bit; if only one side exists,
      that side. No bell, so no zero-weight pick (the bell's weights all vanish
      once σ is under 0.18 rungs);
    - **the transposition group:** move `steps` as an ordered key, then re-apply
@@ -402,13 +411,16 @@ that moves. **Departs from horde.**
   and lock set, with must change on or off. This is the identity the lead asked
   for, and a test.
 - **With a separate home,** chaos 0 returns every drawn member **to its
-  centre**, which is home except in §2.5's three cases. A member a group does not
+  centre**, which is home except in §2.5's four cases. A member a group does not
   draw (a `step_size` when steps is 0, the shift of a slot that is off) keeps
   `cur`. The bell has zero width, so its only value is the centre, and an
   unordered choice keeps home. That is horde's law: its lab's `drawNum` returns home at
   chaos 0. Inside a group, the forced redraws (§2.6) **do not apply at chaos
   0**: a group at chaos 0 takes home's members whole, a combination home
-  already holds. It keeps the knob continuous: at a chaos just above 0 the
+  already holds. Chaos 0 draws nothing, so **no band applies at chaos 0**, the
+  span bound included: a home step size returns with a locked `steps` even when
+  their span passes the bound, exactly as a home gate outside its band returns
+  (found in implementation by RZ12; SPEC §15.6). It keeps the knob continuous: at a chaos just above 0 the
   draws land next to home. Jumping to `cur` exactly at 0 would be a
   discontinuity. The human confirmed this reading (D-048 answer 5).
 
@@ -465,7 +477,7 @@ and value keys are drawable by default, `chord_enabled` among them.
   the build-your-own pattern's steps are not drawn at all (D-044);
 - "latch" is never drawn (row 13).
 
-## 4. The API (planned; nothing written yet)
+## 4. The API (built: `core/include/arp/randomize.h`, `core/src/randomize.cpp`; SPEC §15)
 
 ```cpp
 // arp/randomize.h — planned. A pure, integer-only function: no float, no libm, no allocation,
@@ -482,8 +494,8 @@ struct LockSet { std::uint64_t bits = 0; /* set, test */ };
 struct Request {
   Verb verb = Verb::Both;
   std::uint32_t seed = 0, click = 0, corner = 0;   // horde's draw key (corner: 0..3)
-  std::uint16_t chaosPm = 0;                       // 0..1000; larger values clamp to 1000
-  std::uint16_t amountPm = 1000;                   // 0..1000; larger values clamp to 1000
+  std::uint32_t chaosPm = 0;                       // 0..1000; larger values clamp to 1000
+  std::uint32_t amountPm = 1000;                   // 0..1000; larger values clamp to 1000
   bool mustChange = true;                          // horde's "ARCH must change"; Structure only
   LockSet locks = defaultLocks();                  // horde's effective locks
 };

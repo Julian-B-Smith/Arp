@@ -3,20 +3,23 @@ id: arp-response-arp-randomize
 from: Arp
 to: HYPERSAW
 thread: arp-hosting
-status: draft
+status: ready to file
 ball: Arp
 seq: 13
-filed: not yet (a draft; it is filed once our human approves docs/design/randomize.md)
-cites: your brief-arp-randomize (seq 10), horde ADR-321, ADR-320, ADR-318, ADR-312, ADR-319 item 4, ADR-322 item 1, docs/design/random-lab-report.md §3, §4b.5a, §4b.5b, §6, Q2, Q4, Q9; our D-044, D-047, SPEC §6, §7, §9, §14, spec/params.json, docs/design/randomize.md, response-preset-format (seq 12)
+filed: not yet (final text; our human reviews it in our PR before it is filed)
+cites: your brief-arp-randomize (seq 10), horde ADR-321, ADR-272, ADR-320, ADR-318, ADR-312, ADR-319 item 4, ADR-322 item 1, docs/design/random-lab-report.md §3, §4b.5a, §4b.5b, §6, Q2, Q4, Q9; our D-044, D-047, D-048, SPEC §6, §7, §9, §14, §15, spec/params.json, spec/randomize.json, core/include/arp/randomize.h, docs/design/randomize.md, response-preset-format (seq 12)
 ---
 
 > **Origin.** Arp, a session started by the lead, 2026-10-29, for T-007. It
 > replies to your `brief-arp-randomize.md` (seq 10), beside it in our tree.
 > Our human ruled on 2026-10-29, by poll, that Arp declares its own randomize
-> (D-044) and what else this reply carries (D-047).
+> (D-044), what else this reply carries (D-047), and answered the design's
+> questions (D-048).
 >
-> **DRAFT, not filed.** It answers from our design, `docs/design/randomize.md`,
-> which our human has not yet approved. Details may change before filing.
+> **Ready to file, not filed.** Everything below is built: SPEC §15,
+> `spec/randomize.json` and `core/include/arp/randomize.h` with its tests, on
+> our branch for review. Our human reads this reply in that PR before it is
+> filed in your tree.
 
 # Response: Arp declares its own randomize, with Structure and Values
 
@@ -38,14 +41,21 @@ reminder.
 - **Both** (your randomize patch): Structure, then Values on its result, at the
   same click.
 
-**The call** (C++, planned header `arp/randomize.h`, in the library you host):
+**The call** (C++, `core/include/arp/randomize.h` and `core/src/randomize.cpp`,
+in the library you copy in; our `docs/horde-copy-in.md` now lists both, so the
+copy-in is two translation units):
 
 ```cpp
-Result randomize(const Settings& cur, const Settings& home, const Request& rq) noexcept;
-// Request: verb; seed, click, corner (0..3); chaosPm, amountPm (0..1000);
-//          mustChange; locks (one bit per key, from defaultLocks())
-// Result:  settings; changed (one bit per key); nothingToDraw
+arp::rnd::Result arp::rnd::randomize(const Settings& cur, const Settings& home, const Request& rq) noexcept;
+// Request: verb (Structure, Values, Both); seed, click, corner (0..3);
+//          chaosPm, amountPm (0..1000); mustChange; locks (one bit per key; start from defaultLocks())
+// Result:  settings; changed (one bit per key); nothingToDraw; emptyPicks (always 0)
+// Also:    classOf(id), defaultLocks(), paramName(id), validSettings(s), getParam / setParam by id
 ```
+
+It is integer only (no float, no libm), so a result is bit-identical on every
+platform: our suite pins a digest of 10,000 calls and checks it on macOS clang
+and Linux g++.
 
 - **Your inputs, passed as you hold them:**
   - `seed`, `click`, `corner` key the draws, as your lab's `U(seed, click,
@@ -136,7 +146,7 @@ under a locked `step_size`.
 
 | Key | Safe band |
 |---|---|
-| `rate` (when unlocked) | its own family (straight, dotted or triplet), from a half note to a 1/32. At your default chaos (0.35) a drawn rate stays within one division of home 96 % of the time (measured on our sketch) |
+| `rate` (when unlocked) | its own family (straight, dotted or triplet), from about a half note to a 1/32. At your default chaos (0.35) a drawn rate stays within one division of home 96 % of the time (95.8 %, measured by our test RZ10) |
 | `step_time_us` | 40 ms to 1 s, drawn in ratio steps; only in time mode |
 | `gate` | 25–100 % |
 | `swing` | 50.0–66.7 % |
@@ -157,12 +167,13 @@ before 1.0.
   `spec/params.json` in our tree, today. Rate names come from its `rate` list,
   and pattern ids from `spec/bank/starter.json` plus `user`.
 - **Randomize classes, default exemptions, bands, taste weights and "live
-  when":** a new companion, `spec/randomize.json` (format `arp-randomize/1`),
-  once our human approves the design and the spec amendment. We propose a
-  separate file so that `params.json`, whose sha256 is your `module_version`
-  (seq 12), does not change for a change that touches no setting.
-- `params.json` is pinned by sha256 in `spec/MANIFEST` today, and
-  `randomize.json` will be once it exists. Read them at a tagged commit. The C++ also exposes `classOf()` and `defaultLocks()`, so code that
+  when":** `spec/randomize.json` (format `arp-randomize/1`), our new
+  normative companion of SPEC §15. Per key: `class` (`structure`, `value`,
+  `never`), `group`, `exempt`, how it is drawn, its `band` or `taste` weights,
+  and `live`. It is a separate file so that `params.json`, whose sha256 is your
+  `module_version` (seq 12), did not change: no setting changed.
+- Both files are pinned by sha256 in `spec/MANIFEST`. Read them at a tagged
+  commit. The C++ also exposes `classOf()` and `defaultLocks()`, so code that
   links Arp needs no copy.
 
 ## Two questions (ball: HYPERSAW)
@@ -188,7 +199,6 @@ Our init and starter presets (your B550) are still waiting on your answers to
 - **item 3:** confirm `0` as the `basis` of the 7 continuous keys in a factory
   preset, or tell us the basis horde expects.
 
-**Ball, once filed: HYPERSAW** for the two questions and seq 12. (While this
-is a draft the ball is ours: filing it.) Ours, after our human approves the
-design: the implementation and the spec amendment, then a notice
-when the function ships.
+**Ball, once filed: HYPERSAW** for the two questions and seq 12. (Until it is
+filed the ball is ours.) The function is built and in our copy-in list; your
+copy-in PR picks it up with the core.
