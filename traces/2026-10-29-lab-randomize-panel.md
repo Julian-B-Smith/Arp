@@ -1,0 +1,8 @@
+# lab-randomize-panel — the lab ports SPEC 15 randomize and gains a Randomize panel
+
+- **Queue item:** T-007 phase 2 (the human's poll D-048 approved "a lab Randomize panel")
+- **Why:** so the randomize taste weights and bands can be tuned by ear before horde's Random panel calls the C++ function. The lab's CORE now holds a JS port of `core/src/randomize.cpp` over the embedded `spec/randomize.json`, and the UI has a panel that applies a draw as an ordinary settings change.
+- **Evidence consulted:** spec/SPEC.md section 15; core/src/randomize.cpp and core/include/arp/randomize.h; spec/randomize.json; tools/gen_randomize.py (how the C++ derives ranges, tastes, rate indices); tests/core/randomize_cases.json (300 known answers); lab/arp-lab.html CORE/UI; tools/lab_smoke.mjs.
+- **Alternatives rejected:** a plant switch table inside the CORE (the smoke's three port plants are one-line source edits of the CORE text instead, so the shipped lab carries no fault code); a float or BigInt-everywhere port (only r*total needs BigInt, every other product is below 2^53, divisions use an exact remainder-subtracted form).
+- **Verify:** `./verify fast`, exit 0, git 0a0ec37 (working tree dirty: lab/arp-lab.html, tools/lab_smoke.mjs, this trace). All 300 known answers match; embedded-data plant and three port plants (salt off by one: 222 cases differ; keep test reversed: 133; band one wider: 55) fire.
+- **Open questions:** panel defaults (chaos 0.400, amount 0.600, draw seed 1, must change on) are the implementer's choice, not spec'd. No SPEC section 15 / randomize.cpp disagreement found. The panel itself is exercised only through a stubbed-DOM run of buildRandomize (not a browser); a listening pass is the lead's.
