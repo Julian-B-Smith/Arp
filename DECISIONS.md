@@ -1344,3 +1344,24 @@ propose any guard as a question.
 - the lab panel;
 - the final reply to horde. It is shown to the human in the PR before it is
   filed.
+
+## D-049 — Randomize phase 2's implementation rules approved (RATIFIED by poll, 2026-10-30)
+
+While implementing SPEC §15 (PR #43), the randomize session settled rules
+the design had not covered and put them to the human. All approved as
+recommended:
+- **Large transpositions:** when home has more than 3 transposition passes,
+  a click keeps home's step size and unit rather than drawing new ones.
+  Otherwise one click could reach +144 semitones. The session wrote this
+  into §15 before asking; this poll is the human's approval.
+- **Chaos 0:** settings return to home and no safe band applies. If a lock
+  keeps the current unit and home's interval is in the other unit, the
+  current interval stays.
+- **Must change:** it moves the rate within the current rate's family, and
+  it applies to randomize-patch (Both), not only to Structure.
+- **The chord stage's on/off** is an ordinary draw, about one Structure
+  click in ten at horde's defaults. It is never turned off while the arp is
+  off. Its weight in `spec/randomize.json` is the knob if listening says it
+  flips too often.
+- **Listening:** the lab's Randomize panel is tuned by ear after #43 merges,
+  and any weight changes come as a follow-up.
