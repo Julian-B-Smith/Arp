@@ -126,7 +126,7 @@
       "max": 8,
       "default": 0,
       "ref": "SPEC §4.7",
-      "note": "transposition steps, Ableton-style: the whole pattern repeats shifted by step_size each pass, `steps` times, then returns; 0 = none (D-014)",
+      "note": "transposition steps: the whole pattern repeats, shifted by step_size each pass, `steps` times, then returns; 0 = none (D-014)",
       "unit": "passes"
     },
     {

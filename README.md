@@ -28,7 +28,7 @@ in [`ROADMAP.md`](ROADMAP.md).
   export/import.
 - **Rate:** tempo-synced by horde's division names (dotted and triplet included), or **time mode**: a free step length
   shown as both ms and Hz, starting from your key press. Sweeping it speeds the arp up or down smoothly.
-- **Shape:** transposition steps (the pattern repeats shifted, by semitones or scale degrees, like Ableton's), gate length (past 100% for legato), swing, and velocity (as played, fixed, or accented by
+- **Shape:** transposition steps (the whole pattern repeats, shifted by semitones or scale degrees on each pass), gate length (past 100% for legato), swing, and velocity (as played, fixed, or accented by
   step), with optional velocity and gate randomness on a shared curve.
 - **Holding:** latch, either replacing or adding to the held notes. The sustain pedal holds the arp's input notes.
 - **Scale:** quantize to horde's global scale or Arp's own, in horde's scale format (a root plus twelve degrees): snap
@@ -64,7 +64,7 @@ landed" (replaying the timing of your presses) is held for after 1.0: `docs/defe
 | `docs/manual/` | Arp's section of horde's manual (`arp.md`, its settings table generated from `spec/params.json` and checked by `./verify fast`) and its figure list | written; files into horde's manual later |
 | `docs/prior-art.md` | Phase 0: pattern-bank landscape, failure modes, grid math, name check (dated, cited) | done |
 | `spec/` | The 1.0 spec (SPEC.md), every setting (params.json), the candidate step-pattern bank | RATIFIED 2026-10-23 (protected) |
-| `lab/arp-lab.html` | The playable twin: Ableton-style computer keys, MIDI, transport, every setting, morph A/B, a small synth, a **pattern view** (one full cycle as the core plays it, plus a live roll), an **order × pattern** thumbnail matrix, and a **build-your-own** step editor | built; play it to settle the open listening questions in ROADMAP (how settings switch during a morph, restart under morph, which patterns ship, pre-roll, tie memory, which pass a pick takes) |
+| `lab/arp-lab.html` | The playable twin: piano-style computer keys, MIDI, transport, every setting, morph A/B, a small synth, a **pattern view** (one full cycle as the core plays it, plus a live roll), an **order × pattern** thumbnail matrix, and a **build-your-own** step editor | built; play it to settle the open listening questions in ROADMAP (how settings switch during a morph, restart under morph, which patterns ship, pre-roll, tie memory, which pass a pick takes) |
 | `tools/lab_smoke.mjs` | Headless checks of the lab core against the spec's invariants, run by `./verify fast` | live |
 | `docs/spec-review-r1.md` … `-r4.md` | The four independent critic reviews of the spec, and where each finding went | done |
 | `docs/deferred/` | Designs held for after 1.0 (`landed.md`) | live |
