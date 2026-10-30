@@ -304,6 +304,17 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
     note, the README, the lab, the manifest; spec re-pinned; no behaviour change.
   - **Bank-pattern goldens** cut and protected (D-046); the preset goldens follow the presets.
   - **The manual:** fill in the input-rate OPEN note with D-042's 1,000.
+- **Stochastic pattern blending under morph (D-050, 2026-10-30, a freeze exception for 1.0).** Each step plays one
+  morph corner's step pattern, drawn with chance = that corner's weight; horde's four corners drive it; step patterns
+  only. **Acceptance criteria (proposed; the design comes first):**
+  1. the lab: a "stochastic blend" morph rule on the A/B card, its provisional rules labelled, heard by the human;
+  2. a design note (`docs/design/morph-blend.md`) whose open questions (ties across corners, patterns of different
+     lengths, which settings travel with a pattern, the user pattern, the draw lane, the interface) are answered by
+     the human, reviewed by a critic with no HIGH open;
+  3. a SPEC amendment ratified by the human and re-pinned; the core with invariant tests and must-fail plants (one
+     terminal per note, block-size and sample-rate independence, determinism); weights at a single corner give
+     output byte-identical to today's;
+  4. the brief to horde for the interface change, shown to the human before it is filed.
 
 ## Open questions (blocking — ask the human or horde)
 

@@ -1365,3 +1365,33 @@ recommended:
   flips too often.
 - **Listening:** the lab's Randomize panel is tuned by ear after #43 merges,
   and any weight changes come as a follow-up.
+
+## D-050 — Stochastic pattern blending under morph: a freeze exception for 1.0 (RATIFIED by poll, 2026-10-30)
+
+The human asked for "an element of stochastic blending to the morph between
+arp patterns". Today horde's morph resolves `pattern` like any discrete
+setting: the leading corner's value, with 0.05 hysteresis (SPEC §9, D-021),
+so Arp sees one pattern and never the other corners or the weights.
+
+**Chosen, by poll (each the recommended option unless noted):**
+- **When: unfreeze for 1.0** (not the recommendation, which was to record it
+  for after 1.0). A **freeze exception**, as D-036 and D-044 were. The cost
+  was stated before the choice: a spec amendment, a change to horde's
+  interface, core + lab + tests, all before the 2026-12-11 cutoff, with the
+  factory presets and the readiness notice still ahead.
+- **Granularity: every step.** Each step independently plays one corner's
+  pattern step, by a seeded draw; a corner's chance is its morph weight.
+- **Scope: step patterns only.** The order style, rate and every other
+  discrete setting still switch the ordinary way (D-021).
+- **Weights: horde's corners drive it.** Up to four patterns. horde sends
+  every corner's pattern settings and the four weights; this is an interface
+  change, briefed to horde once the design is settled.
+- **Order of work:** (1) this decision and a ROADMAP item; (2) a "stochastic
+  blend" morph rule in the lab, to hear it before anything is specced;
+  (3) a design note with the open questions put to the human (ties across
+  corners, patterns of different lengths, which settings travel with a
+  pattern, the user pattern, the draw lane); (4) a SPEC amendment for the
+  human to ratify; (5) core, invariant tests with plants, the brief to horde.
+
+**What is not decided here:** every rule in (3). The lab prototype picks a
+provisional rule for each, labelled as such, and the design note asks.
