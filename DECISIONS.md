@@ -1231,3 +1231,80 @@ section title, "Arp" as a short label, no all-caps "ARP" logo or device, and
 **Go/no-go (Phase N gate), by poll, 2026-10-29: GO** on the label. The EU
 and WIPO registers and counsel stay open before any commercial release
 (horde B433).
+
+## D-044 — Arp gets its own randomize, for horde's Random page: a recorded freeze exception (RATIFIED by poll, 2026-10-29)
+
+horde's brief (seq 10, `integrations/hypersaw/brief-arp-randomize.md`, horde
+ADR-321) puts an Arp level on horde's Random page in 1.0. It asks whether
+Arp declares its own randomize (horde passes through, as for Sluice and
+Shriek) or is drawn generically.
+
+**Chosen, by poll:** Arp declares its own. This is a new feature, so it is
+a **freeze exception** (as D-036 was), recorded here.
+
+**Scope, by poll: settings only.**
+- **Two verbs,** matching horde's page: **structure** (order, pattern, rate
+  and mode, restart, latch and the like) and **values** (gate, swing,
+  velocity, the randomness amounts, steps and the like).
+- **Seeded and deterministic.**
+- **Honours horde's chaos amount and locks.**
+- **Off the audio thread,** producing new settings only.
+- **The build-your-own pattern's steps are not drawn.**
+
+**Still to design (the next step, with its own critic):**
+- the exact class of each key;
+- the never-draw set (for example `enabled` and anything that would break a
+  song's timing);
+- the musically safe draw ranges;
+- the API.
+
+**Rejected:**
+- generic drawing by horde, with classes added to `params.json`;
+- answering in a reply only;
+- also generating the user pattern's steps (more reach, more work before the
+  cutoff).
+
+## D-045 — "Ableton" leaves our forward-facing text; history keeps it (RATIFIED by poll, 2026-10-29)
+
+The clean-room rule says we use our own names. "Ableton" appears in:
+- the spec's §4.7 heading and header note;
+- a `params.json` note;
+- the README;
+- the lab's UI text and a code constant;
+- the manifest.
+
+**Chosen, by poll:** replace it there with neutral descriptions ("the
+pattern repeats, shifted"; "piano-style computer keys"). Leave DECISIONS,
+the traces and `docs/prior-art.md` as they are: they record what the human
+said and what was studied.
+
+The spec and `params.json` are protected and pinned, so this poll is the
+human's approval for that wording-only amendment and its re-pin. No
+behaviour changes.
+
+**Rejected:**
+- the non-protected files only;
+- leaving it.
+
+## D-046 — Goldens: the bank patterns now, the presets later (RATIFIED by poll, 2026-10-29)
+
+The roadmap cuts goldens per pattern and per preset at the human's gate.
+
+**Chosen, by poll:**
+- pin each bank pattern's output now, since the sound is signed off (D-037);
+- protect the goldens from then on;
+- cut the preset goldens once the factory presets exist.
+
+**Rejected:** cutting both together after the presets.
+
+## D-047 — Smaller rulings of 2026-10-29: scale names asked of horde; Phase N's rest before public release (RATIFIED by poll, 2026-10-29)
+
+- **Named scales for Arp's own scale (the manual's OPEN item):** ask horde,
+  in our randomize reply, whether Arp's page mirrors horde's named-scale
+  control. The OPEN note stays until then.
+- **Chasing horde:** the same reply reminds horde that the factory presets
+  wait on its answers to our seq 12 (enums by name, `basis`).
+- **Phase N's remaining checks** (prior-art re-scan, patent/IP pass, the EU
+  and WIPO registers): after the readiness notice and before any public
+  release. They do not gate horde's admission.
+- **Housekeeping:** five merged, clean worktrees removed (the human's OK).
