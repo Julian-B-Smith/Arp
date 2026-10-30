@@ -7,7 +7,7 @@
 
 ## What horde copies
 
-Keep the relative layout: `core/include` is the include root (`#include "arp/core.h"`), `core/src/core.cpp` is the one translation unit.
+Keep the relative layout: `core/include` is the include root (`#include "arp/core.h"`). There are two translation units: `core/src/core.cpp` (the note processor) and `core/src/randomize.cpp` (Arp's own randomize, SPEC 15, called by horde's Random panel on its message thread, never by the core; added 2026-10-29, D-044, D-048).
 
 | file | sha256 |
 |---|---|
@@ -17,8 +17,11 @@ Keep the relative layout: `core/include` is the include root (`#include "arp/cor
 | `core/include/arp/draw.h` | ed9060b7d13a854f3ed09d0011a0483136df387982d16efafbe65cd2e90c8985 |
 | `core/include/arp/int128.h` | bb2c26a4cea9e04015c18957bf81a0d76b10f332ba72c86416fa41065112b433 |
 | `core/include/arp/pattern.h` | 1ad8f47861d91587aa6df2b6180d85cfc7d611fc8001769d42547cf1714e3899 |
+| `core/include/arp/randomize.h` | 350c63273c532f2e29dfc0c9861b098ca5e1401bd68764cd34015e54eeb4c120 |
+| `core/include/arp/randomize_data.h` | 295eff4629c5c8ae4b62a7bd7233b1af2170c02cb84168fe60c43bb966eb1e35 |
 | `core/include/arp/types.h` | b45f811cdc241a5bf3ab6d76d4cc9fb8b168cb195870cbfdb452afab6879133b |
 | `core/src/core.cpp` | f4bdb3409d35b0206796d46c03cbe47e13a1a4a177fa6d5246c55f2b1ada1f18 |
+| `core/src/randomize.cpp` | 8e4f195774498d1ce2fa605e5be49bfd40199e2e49375f5a85d0bca2ffaa82c5 |
 
 - **Pinned at commit:** the commit that contains this file. horde records `git log -1 --format=%h -- core/ docs/horde-copy-in.md`
   in its copy-in PR; the sha256 column above is the authority (it is what `tools/core_test.sh` checks), the commit is the label.
@@ -26,6 +29,8 @@ Keep the relative layout: `core/include` is the include root (`#include "arp/cor
   build), everything under `tests/`, `tools/`, `lab/`, `spec/`, `intake/`, `docs/`.
 - `core/include/arp/bank_data.h` is GENERATED from `spec/bank/starter.json` by `tools/gen_bank.py`; horde copies the generated header and never
   regenerates it (Arp's `tools/core_params_check.py` guards the drift on this side).
+- `core/include/arp/randomize_data.h` is GENERATED from `spec/randomize.json` by `tools/gen_randomize.py` in the same way; horde copies it and
+  never regenerates it (`tools/gen_randomize.py --check`, run by `tools/core_params_check.py`, guards the drift).
 
 ## Build notes
 

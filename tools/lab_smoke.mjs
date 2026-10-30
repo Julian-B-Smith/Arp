@@ -27,7 +27,7 @@ let fail = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "PASS" : "FAIL"}  ${msg}`); if (!ok) fail = 1; };
 const plant = (fired, msg) => check(fired, `plant fires: ${msg}`);
 
-const EXPORTS = "return { ArpCore, simHost, ARP_PARAMS, ARP_BANK, ARP_PLANTS, defaultSettings, draw, TPQ };";
+const EXPORTS = "return { ArpCore, simHost, ARP_PARAMS, ARP_BANK, ARP_RANDOMIZE, ARP_PLANTS, defaultSettings, draw, TPQ, arpRandomize, arpRandomizeDefaultLocks, arpSettingsToInts, arpIntsToSettings };";
 const poisonedMath = Object.freeze(Object.assign(Object.create(null),
   Object.fromEntries(Object.getOwnPropertyNames(Math).map(k => [k, Math[k]])),
   { random() { throw new Error("Math.random called inside the lab CORE"); } }));
@@ -57,6 +57,51 @@ plant(banned(core + "\nconst t = performance.now();") && banned(core + "\nsetTim
   plant(!isDeepStrictEqual(m, X.ARP_PARAMS), "embedded-copy check detects a planted default change");
   check(isDeepStrictEqual(specP, X.ARP_PARAMS), "embedded ARP_PARAMS deep-equals spec/params.json");
   check(isDeepStrictEqual(specB, X.ARP_BANK), "embedded ARP_BANK deep-equals spec/bank/starter.json");
+}
+
+// ---- 2b. Randomize (SPEC section 15): the embedded data, and the JS port against the C++ known answers -------------
+// tests/core/randomize_cases.json is dumped by the C++ reference (arp_tests --dump-randomize-cases): each case is the core's own
+// answer, so a port that reproduces all of them draws the same keys with the same values. The lab stays a listening twin; this
+// proves the Randomize panel is the SPEC 15 function and not a look-alike.
+{
+  const specR = JSON.parse(readFileSync(new URL("../spec/randomize.json", import.meta.url), "utf8"));
+  const m = JSON.parse(JSON.stringify(specR)); m.keys[2].taste.up += 1;
+  plant(!isDeepStrictEqual(m, X.ARP_RANDOMIZE), "embedded-copy check detects a planted taste-weight change");
+  check(isDeepStrictEqual(specR, X.ARP_RANDOMIZE), "embedded ARP_RANDOMIZE deep-equals spec/randomize.json");
+
+  const kc = JSON.parse(readFileSync(new URL("../tests/core/randomize_cases.json", import.meta.url), "utf8"));
+  if (kc.format !== "arp-randomize-cases/1" || !Array.isArray(kc.cases) || kc.cases.length === 0) throw new Error("lab_smoke: randomize_cases.json has an unknown format or no cases");
+  const bitsOf = hex => { const b = BigInt("0x" + hex); return Array.from({ length: 50 }, (_, i) => ((b >> BigInt(i)) & 1n) === 1n); };
+  const hexOf = list => list.reduce((a, i) => a | (1n << BigInt(i)), 0n).toString(16).padStart(16, "0");
+  // The cases the port gets wrong, as strings (empty = every case reproduced exactly).
+  const caseMisses = P => {
+    const bad = [];
+    kc.cases.forEach((k, n) => {
+      const r = P.arpRandomize(k.cur, k.home, { verb: k.verb, seed: k.seed, click: k.click, corner: k.corner, chaos: k.chaos, amount: k.amount, mustChange: k.mustChange, locks: bitsOf(k.locks) });
+      const why = !isDeepStrictEqual(r.settings, k.out) ? "settings" : hexOf(r.changed) !== k.changed ? "changed mask" : r.nothingToDraw !== k.nothingToDraw ? "nothingToDraw" : r.emptyPicks !== 0 ? "emptyPicks" : null;
+      if (why) bad.push(`#${n} (${why})`);
+    });
+    return bad;
+  };
+  // Plants: a perturbed port must miss at least one case, or the check is blind. Each is a one-line edit of the CORE source.
+  const edit = (from, to) => { if (core.split(from).length !== 2) throw new Error("lab_smoke: randomize plant anchor not unique: " + from); return build(core.replace(from, to)); };
+  const saltOff = edit("(c.seed ^ d.salt ^", "(c.seed ^ (d.salt + 1) ^"), keepReversed = edit("if (!rzBelow(rzRd(c, key, RZ_KEEP), c.chaos)) return home;", "if (rzBelow(rzRd(c, key, RZ_KEEP), c.chaos)) return home;"),
+    bandWide = edit("for (let v = band[0]; v <= band[1]; v++) cs.add(v - lo);", "for (let v = band[0]; v <= band[1] + 1; v++) cs.add(v - lo);"),
+    mustKey = edit("rzOrderedMove(c, RZ_ID_TRANSPOSITION, cs, cur[rzId.steps], apply)", "rzOrderedMove(c, RZ_KEY[rzId.steps], cs, cur[rzId.steps], apply)");
+  plant(caseMisses(saltOff).length > 0, "known answers detect a draw salt off by one (" + caseMisses(saltOff).length + " cases differ)");
+  plant(caseMisses(keepReversed).length > 0, "known answers detect a reversed keep test (" + caseMisses(keepReversed).length + " cases differ)");
+  plant(caseMisses(bandWide).length > 0, "known answers detect a value band one wider (" + caseMisses(bandWide).length + " cases differ)");
+  plant(caseMisses(mustKey).length > 0, "known answers detect the must-change steps move keyed `steps` instead of `transposition` (" + caseMisses(mustKey).length + " cases differ; the targeted must-change cases)");
+  const miss = caseMisses(X);
+  check(miss.length === 0, `the JS randomize reproduces all ${kc.cases.length} known answers of the C++ core (verbs, locks, must change, chaos 0, raw home)` + (miss.length ? ": " + miss.slice(0, 8).join(", ") : ""));
+
+  // The lab's settings object <-> the 50 ints the function works on (what the panel uses).
+  const rt = S => isDeepStrictEqual(X.arpIntsToSettings(X.arpSettingsToInts(S)), S);
+  const S0 = X.defaultSettings(), S1 = Object.assign(X.defaultSettings(), { order: "pairs", pattern: "user", rate: "3/16", seed: 4000000000, chord_shift3: -7, scale_deg4: true });
+  const ints = X.arpSettingsToInts(S1); ints[2] = (ints[2] + 1) % 16;
+  plant(!isDeepStrictEqual(X.arpIntsToSettings(ints), S1), "settings adapter check detects a changed int");
+  check(X.arpSettingsToInts(S0).length === 50 && rt(S0) && rt(S1), "settings object <-> 50 ints round-trips (defaults and a spread of enums, rate, user pattern, uint32 seed, signed shift)");
+  check(X.arpRandomizeDefaultLocks().filter(Boolean).length === 15, "15 keys are exempt by default (the locks the panel starts from)");
 }
 
 // ---- helpers: cores, the exact driver, normalised event streams ------------------

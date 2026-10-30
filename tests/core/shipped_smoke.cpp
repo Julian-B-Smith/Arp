@@ -1,10 +1,12 @@
 // shipped_smoke.cpp - links the SHIPPED library (core/ target `arp_core`, built WITHOUT ARP_PLANTS) and
 // proves it works as shipped: no plant switches exist in it, and a small session keeps N1.
 // It must not include anything from the plant-enabled test build: `Core` has a different layout there.
+#include <cstdint>
 #include <cstdio>
 #include <vector>
 
 #include "arp/core.h"
+#include "arp/randomize.h"
 
 int main() {
   using namespace arp;
@@ -40,5 +42,21 @@ int main() {
   for (const Event& e : core.reset()) offs += e.type == EventType::NoteOff;
   const bool ok = ons > 50 && ons == offs && core.counters().offsLost == 0;
   std::printf("%s  shipped library: %d NoteOns, %d NoteOffs, no plants compiled in\n", ok ? "PASS" : "FAIL", ons, offs);
-  return ok ? 0 : 1;
+  // SPEC 15: randomize links from the shipped files alone, and returns valid, repeatable settings.
+  Settings s;
+  s.enabled = true;
+  rnd::Request q;
+  q.chaosPm = 1000;
+  q.seed = 7;
+  int valid = 0, same = 0;
+  for (std::uint32_t k = 0; k < 64; ++k) {
+    q.click = k;
+    const rnd::Result a = rnd::randomize(s, q), b = rnd::randomize(s, q);
+    valid += rnd::validSettings(a.settings) && a.emptyPicks == 0;
+    same += a.settings == b.settings;
+    s = a.settings;
+  }
+  const bool rok = valid == 64 && same == 64;
+  std::printf("%s  shipped randomize: 64 chained calls, %d valid, %d repeatable\n", rok ? "PASS" : "FAIL", valid, same);
+  return ok && rok ? 0 : 1;
 }
