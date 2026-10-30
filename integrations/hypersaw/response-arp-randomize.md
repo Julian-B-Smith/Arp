@@ -90,7 +90,7 @@ Result randomize(const Settings& cur, const Settings& home, const Request& rq) n
 
 ## Ask 2: the classes
 
-- **Never drawn (6).** horde cannot unlock these.
+- **Never drawn (5).** horde cannot unlock these.
   - `enabled`: the whole module; off routes input around Arp and ends every
     note.
   - `arp_enabled`: off turns Arp into a chord generator or into silence.
@@ -101,19 +101,24 @@ Result randomize(const Settings& cur, const Settings& home, const Request& rq) n
     (report §4b.5a) put latch under ARCH; **we ask you to leave it out.**
   - `scale_source`: whether Arp follows your song scale or its own. Drawing
     `own` would silently take Arp off the song's key.
-  - `chord_enabled`: it adds or removes the whole `chord` stream, which you
-    route to your own oscillators (Q-H7).
 - **Values (8):** `gate`, `swing`, `step_time_us`, `vel_fixed`, `vel_random`,
   `gate_random`, `random_curve`, `seed`.
-- **Structure (36):** `order`, `pattern`, `rate`, `restart`, `repeats`,
+- **Structure (37):** `order`, `pattern`, `rate`, `restart`, `repeats`,
   `vel_mode`, `quantize`, `scale_root` with `scale_deg0..11` (drawn as one
   unit: a named scale and a root), `steps`, `step_size`, `step_unit`,
-  `chord_unit`, `chord_on1..6`, `chord_shift1..6`.
+  `chord_enabled`, `chord_unit`, `chord_on1..6`, `chord_shift1..6`.
+- **The chord stage's switch is drawn** (our human's ruling, D-048). So **the
+  `chord` stream can appear or disappear on any ARCH click**, and your routing
+  of it to your own oscillators (Q-H7, your ADR-272) should expect that. On
+  our side nothing new happens: at offset 0 of the block, off ends every chord
+  note once and on maps every held key (our SPEC §14, T21). One guard: while
+  `arp_enabled` is off (Arp as a chord generator), a click never turns the
+  stage off, because that would silence the module.
 - **Exempt by default (15 of the structure keys),** your lock that starts on
   (report §4b.5b, ADR-321): `rate`, `quantize`, `scale_root` and
   `scale_deg0..11`. This matches your own exemption list, which names "the
   arp's tempo division" and the scale. For your `random_default` column: these
-  15 are `exempt`; the other 29 structure and value keys are `free`. The 6
+  15 are `exempt`; the other 30 structure and value keys are `free`. The 5
   never-drawn keys are outside `exempt | free`: please treat them like your
   device class, never drawn (RS-4.5).
 - **How your sketch's names map:** "octave range" is `steps` with
