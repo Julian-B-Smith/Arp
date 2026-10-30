@@ -1,6 +1,6 @@
 # Arp — 1.0 specification (RATIFIED 2026-10-23, r2.12)
 
-> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026); E8, E9 and E10 approved 2026-10-23 (D-027); E11 and E12 approved 2026-10-23 (D-028).; velocity and length randomness added 2026-10-27 (D-036, a recorded exception to the freeze); erratum E13 approved 2026-10-27 as option C (D-039).** This is a protected path: any change needs the human's
+> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026); E8, E9 and E10 approved 2026-10-23 (D-027); E11 and E12 approved 2026-10-23 (D-028).; velocity and length randomness added 2026-10-27 (D-036, a recorded exception to the freeze); erratum E13 approved 2026-10-27 as option C (D-039); another product's name removed from the wording 2026-10-29 (D-045, wording only, nothing normative changed).** This is a protected path: any change needs the human's
 > gate and a decision record. Revision history: r1 (2026-10-21) to r2.12 (2026-10-22); four independent reviews
 > (`docs/spec-review-r1..r4.md`).
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -10,7 +10,7 @@
 > stream tag (D-009, horde ADR-270). r2.3 rewrites §6 in horde's scale schema
 > (D-010). r2.4 adds four chord + note order styles, the per-step `pick`, and
 > the user pattern (§4.6) (D-011). r2.5 added `landed` (D-012); r2.7 defers it past 1.0
-> (`docs/deferred/landed.md`) and replaces `octaves` with Ableton-style **steps** (§4.7, D-014).
+> (`docs/deferred/landed.md`) and replaces `octaves` with transposition **steps** (§4.7, D-014).
 > r2.8 adds **time mode** (§2.6), the per-step **step offset** (§4.3) and the **pattern library** (§4.6) (D-016).
 > r2.12: one `quantize` switch governs the arp AND the chord stage; `chord_quantize` removed; the played note snaps too (D-020).
 > r2.11 folds in the fourth independent review (4 HIGH; `docs/spec-review-r4.md`, D-019). Chord notes behave like held notes.
@@ -541,10 +541,10 @@ At every anchor `m := 0` (H8).
 - **The `pick` encoding:** the JSON string `"order"`, `"low"`, `"high"` or
   `"chord"`, or an integer 1–8. Anything else is read as `"order"`.
 
-### 4.7 Transposition steps (Ableton-style; D-014)
-These replace r2.6's `octaves`. They follow Ableton's arpeggiator
-Transposition: the **whole pattern repeats, shifted**, rather than one merged
-range.
+### 4.7 Transposition steps (D-014)
+These replace r2.6's `octaves`. With transposition steps the **whole pattern
+repeats, shifted** by one more `step_size` on each pass, rather than spreading
+over one merged range.
 
 **Settings:**
 - `steps`: 0–8, default 0 (no transposition);
