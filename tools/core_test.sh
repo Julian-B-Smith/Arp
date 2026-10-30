@@ -133,6 +133,77 @@ bench_digest_check "$repo/tests/core/stream_digest_bench.txt" --digest --digest-
 bench_digest_check "$repo/tests/core/stream_digest_random_bench.txt" --digest-random --digest-random-perturb "the note-randomness scenarios, cut from ed943b2"
 [ "$digest_rc" = 0 ] || rc=1
 
+# The bank-pattern goldens (D-046): tests/core/goldens/<id>.txt, one per step pattern of spec/bank/starter.json, what the SHIPPED core plays for it
+# (tests/core/goldens.cpp), cut by tools/core_golden.sh with the commit in each file's header. Both int128 paths must reproduce every file ('#' lines aside).
+# Each detector is preceded by its must-fail plants: one event of ONE pattern perturbed in what is hashed and printed (never in the core) must name that
+# pattern's file and no other - for every pattern in turn; and a committed set with one run line edited, one ev line edited, one file missing, or one provenance line missing must be named.
+golden_dir="$repo/tests/core/goldens"
+golden_rc=0
+gwork="$copy_dir/goldens"
+mkdir -p "$gwork"
+golden_ids="$(python3 -c 'import json, sys; print("\n".join(p["id"] for p in json.load(open(sys.argv[1]))["patterns"]))' "$repo/spec/bank/starter.json" | LC_ALL=C sort)"
+ids_in() { (cd "$1" && for f in *.txt; do [ -f "$f" ] && echo "${f%.txt}"; done) | LC_ALL=C sort; }
+# golden_compare <committed dir> <generated dir> : 0 when the committed set is exactly the bank's ids, each file carries its cut commit, and each matches the
+# generated file outside '#' lines; else one FAIL line per problem, naming the pattern.
+golden_compare() {
+  local want="$1" got="$2" bad=0 id d
+  [ "$(ids_in "$got")" = "$golden_ids" ] || { echo "FAIL  golden: the generator wrote [$(ids_in "$got" | tr '\n' ' ')], spec/bank/starter.json has [$(echo "$golden_ids" | tr '\n' ' ')]"; bad=1; }
+  while read -r id; do
+    [ -f "$want/$id.txt" ] || { echo "FAIL  golden $id: no committed golden for this bank pattern"; bad=1; continue; }
+    grep -qE '^# cut from core/ at commit [0-9a-f]{40} ' "$want/$id.txt" || { echo "FAIL  golden $id: the header does not record the commit it was cut from"; bad=1; }
+    [ -f "$got/$id.txt" ] || continue
+    if ! cmp -s <(grep -v '^#' "$want/$id.txt") <(grep -v '^#' "$got/$id.txt"); then
+      d="$(diff <(grep -v '^#' "$want/$id.txt") <(grep -v '^#' "$got/$id.txt"))"
+      echo "FAIL  golden $id: $(echo "$d" | grep -c '^>') line(s) differ from the committed golden; first: $(echo "$d" | grep -m1 '^<' | cut -c1-150) -> $(echo "$d" | grep -m1 '^>' | cut -c1-150)"; bad=1
+    fi
+  done <<<"$golden_ids"
+  for id in $(ids_in "$want"); do echo "$golden_ids" | grep -qxF "$id" || { echo "FAIL  golden $id: committed, but $id is not a pattern of spec/bank/starter.json"; bad=1; }; done
+  return "$bad"
+}
+# with_header <dir> : the files of <dir> with a provenance line after the first, so a generated set can stand in for a committed one
+with_header() { local f; for f in "$1"/*.txt; do awk 'NR == 2 { print "# cut from core/ at commit 0000000000000000000000000000000000000000 (a plant reference)" } { print }' "$f" >"$f.h" && mv "$f.h" "$f"; done; }
+mkdir -p "$gwork/clean" "$gwork/ref"
+if "$build/arp_goldens" "$gwork/clean" && cp "$gwork/clean"/*.txt "$gwork/ref"/; then with_header "$gwork/ref"; else echo "FAIL  golden: arp_goldens did not run"; golden_rc=1; fi
+# plant 1: one event of one pattern perturbed, for each pattern in turn: the check must name exactly that pattern
+named_ok=0; named_n=0; named_bad=""
+while read -r id; do
+  named_n=$((named_n + 1))
+  rm -rf "$gwork/p" && mkdir -p "$gwork/p" && "$build/arp_goldens" --perturb "$id" "$gwork/p" >/dev/null 2>&1
+  out="$(golden_compare "$gwork/ref" "$gwork/p" 2>&1)"
+  if [ "$(echo "$out" | grep -c '^FAIL')" = 1 ] && echo "$out" | grep -q "^FAIL  golden $id: "; then named_ok=$((named_ok + 1)); else named_bad="$named_bad $id"; fi
+done <<<"$golden_ids"
+if [ "$named_n" -gt 0 ] && [ "$named_ok" = "$named_n" ] && golden_compare "$gwork/ref" "$gwork/clean" >/dev/null; then
+  echo "PASS  golden plant: one event of one pattern changed is named under that pattern alone, for each of the $named_n bank patterns (and the unperturbed run matches itself)"
+else
+  echo "FAIL  golden plant: a perturbed pattern was not named alone (missed:$named_bad)"; golden_rc=1
+fi
+# plants 2-5: the committed set with one run line edited / one excerpt (ev) line edited / one file missing / one provenance line missing
+mid="$(echo "$golden_ids" | sed -n "$(( (named_n + 1) / 2 ))p")"
+for plant in edit edit-ev missing header; do
+  rm -rf "$gwork/m" && mkdir -p "$gwork/m" && cp "$golden_dir"/*.txt "$gwork/m"/ 2>/dev/null
+  case "$plant" in
+    edit) awk '!done && /^run / { sub(/events-hash=./, "events-hash=x"); done = 1 } { print }' "$golden_dir/$mid.txt" >"$gwork/m/$mid.txt"; want="^FAIL  golden $mid: 1 line" ;;
+    edit-ev) awk '!done && /^ev / { sub(/ vel=[0-9]+/, " vel=999"); done = 1 } { print }' "$golden_dir/$mid.txt" >"$gwork/m/$mid.txt"; want="^FAIL  golden $mid: 1 line" ;;
+    missing) rm -f "$gwork/m/$mid.txt"; want="^FAIL  golden $mid: no committed golden" ;;
+    header) grep -v '^# cut from core/' "$golden_dir/$mid.txt" >"$gwork/m/$mid.txt"; want="^FAIL  golden $mid: the header does not record" ;;
+  esac
+  out="$(golden_compare "$gwork/m" "$gwork/clean" 2>&1)"
+  if [ "$(echo "$out" | grep -c '^FAIL')" = 1 ] && echo "$out" | grep -q "$want"; then
+    echo "PASS  golden plant ($plant): $(echo "$out" | sed 's/^FAIL  //' | cut -c1-160)"
+  else
+    echo "FAIL  golden plant ($plant): not named alone (got: $(echo "$out" | head -2 | tr '\n' ' ' | cut -c1-200))"; golden_rc=1
+  fi
+done
+for bin in arp_goldens arp_goldens_soft; do
+  rm -rf "$gwork/$bin" && mkdir -p "$gwork/$bin"
+  if "$build/$bin" "$gwork/$bin" && golden_compare "$golden_dir" "$gwork/$bin"; then
+    echo "PASS  goldens ($bin): $(echo "$golden_ids" | wc -l | tr -d ' ') bank patterns x $(grep -c '^run ' "$gwork/$bin/$mid.txt") runs (3 orders x 3 rates x 2 block sizes, and a swung pair) and an event excerpt each match tests/core/goldens/ (cut from $(sed -n -E 's/^# cut from core\/ at commit ([0-9a-f]{10}).*/\1/p' "$golden_dir/$mid.txt"))"
+  else
+    echo "FAIL  goldens ($bin): the shipped core's output differs from tests/core/goldens/ (a deliberate change needs tools/core_golden.sh cut and its decision)"; golden_rc=1
+  fi
+done
+[ "$golden_rc" = 0 ] || rc=1
+
 # The copy-in list (docs/horde-copy-in.md): the file list audited, then the listed files alone built into the shipped-library smoke.
 # Each detector is preceded by its must-fail plant (the project charter): a plant that does NOT fire is itself a FAIL.
 copy_doc="$repo/docs/horde-copy-in.md"
