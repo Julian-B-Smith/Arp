@@ -1,0 +1,55 @@
+# arp bank-pattern golden v1 (tests/core/goldens.cpp, D-046): step pattern `tied_legato` of spec/bank/starter.json, played by the SHIPPED core (no ARP_PLANTS).
+# cut from core/ at commit c5741de5da639a63caf0f243f5b9486eba74d4a1 by tools/core_golden.sh cut: core/src/core.cpp sha256 f4bdb3409d35b0206796d46c03cbe47e13a1a4a177fa6d5246c55f2b1ada1f18, core/include/arp/bank_data.h sha256 87876a9f7681733500c17e65463f043b1be4f5bda8a77aff5949347c3a4b3723; generator tests/core/goldens.cpp sha256 c06f186232d9820bb2fbd544c13856543b4f3d85a1fad2fdb232ec2a5eed7e5f, tests/core/stream_digest.h sha256 9122f18c999846d68c5da5d2e568264b849780e27730520d176544065f0a2cc9
+# scenario: keys 60/64/67/71 (velocities 100/90/80/70, host ids 1-4) pressed at sample 0, keys 1-3 released at 6.94 s, key 71 held; 120 bpm, rate 1/16 sync, gate 80, seed 20261029; 7.95 s, then reset() mid-note.
+# run lines: order, swing, sample rate, block size, event counts, then 64-bit FNV-1a hashes of every field of every event, of every step record, and of the counters
+#   (tests/core/stream_digest.h). The run's length is fixed in samples, so the two block sizes of one order and rate must read the same.
+# ev lines: an excerpt of the run `up 48000 61` - the first bar (16 steps; this pattern is 8 long), then every event from the release on (sample 333120) through reset().
+#   Columns: sample, type, key, velocity, trigger lane, stream, output ref id (an off names its on by it), tick (-1: none), the step that produced it.
+# Changing ANY line here needs a deliberate re-cut (tools/core_golden.sh cut), recorded with its decision.
+run up swing=500 44100 61 events=64 on=32 off=32 trig=0 events-hash=d6b0d41f3f25e678 steps-hash=ff06343c69b27128 counters-hash=04c3af8d64e73b41
+run up swing=500 44100 4096 events=64 on=32 off=32 trig=0 events-hash=d6b0d41f3f25e678 steps-hash=ff06343c69b27128 counters-hash=04c3af8d64e73b41
+run up swing=500 48000 61 events=64 on=32 off=32 trig=0 events-hash=a1632d19e61a11d0 steps-hash=2f1a5c157f23ce3c counters-hash=04c3af8d64e73b41
+run up swing=500 48000 4096 events=64 on=32 off=32 trig=0 events-hash=a1632d19e61a11d0 steps-hash=2f1a5c157f23ce3c counters-hash=04c3af8d64e73b41
+run up swing=500 96000 61 events=64 on=32 off=32 trig=0 events-hash=ce46bfae3297e7d8 steps-hash=99123d2abb572daf counters-hash=04c3af8d64e73b41
+run up swing=500 96000 4096 events=64 on=32 off=32 trig=0 events-hash=ce46bfae3297e7d8 steps-hash=99123d2abb572daf counters-hash=04c3af8d64e73b41
+run bounce swing=500 44100 61 events=64 on=32 off=32 trig=0 events-hash=074b5be046cfa580 steps-hash=ff06343c69b27128 counters-hash=04c3af8d64e73b41
+run bounce swing=500 44100 4096 events=64 on=32 off=32 trig=0 events-hash=074b5be046cfa580 steps-hash=ff06343c69b27128 counters-hash=04c3af8d64e73b41
+run bounce swing=500 48000 61 events=64 on=32 off=32 trig=0 events-hash=7c97a9cca86e84a8 steps-hash=2f1a5c157f23ce3c counters-hash=04c3af8d64e73b41
+run bounce swing=500 48000 4096 events=64 on=32 off=32 trig=0 events-hash=7c97a9cca86e84a8 steps-hash=2f1a5c157f23ce3c counters-hash=04c3af8d64e73b41
+run bounce swing=500 96000 61 events=64 on=32 off=32 trig=0 events-hash=481502976be605f8 steps-hash=99123d2abb572daf counters-hash=04c3af8d64e73b41
+run bounce swing=500 96000 4096 events=64 on=32 off=32 trig=0 events-hash=481502976be605f8 steps-hash=99123d2abb572daf counters-hash=04c3af8d64e73b41
+run random swing=500 44100 61 events=64 on=32 off=32 trig=0 events-hash=113f9a0c8ca4c7cd steps-hash=ff06343c69b27128 counters-hash=04c3af8d64e73b41
+run random swing=500 44100 4096 events=64 on=32 off=32 trig=0 events-hash=113f9a0c8ca4c7cd steps-hash=ff06343c69b27128 counters-hash=04c3af8d64e73b41
+run random swing=500 48000 61 events=64 on=32 off=32 trig=0 events-hash=20a5ca97bee94d95 steps-hash=2f1a5c157f23ce3c counters-hash=04c3af8d64e73b41
+run random swing=500 48000 4096 events=64 on=32 off=32 trig=0 events-hash=20a5ca97bee94d95 steps-hash=2f1a5c157f23ce3c counters-hash=04c3af8d64e73b41
+run random swing=500 96000 61 events=64 on=32 off=32 trig=0 events-hash=a1c73271ccbefc09 steps-hash=99123d2abb572daf counters-hash=04c3af8d64e73b41
+run random swing=500 96000 4096 events=64 on=32 off=32 trig=0 events-hash=a1c73271ccbefc09 steps-hash=99123d2abb572daf counters-hash=04c3af8d64e73b41
+run up swing=600 48000 61 events=64 on=32 off=32 trig=0 events-hash=3d30799ebab803a9 steps-hash=2f1a5c157f23ce3c counters-hash=04c3af8d64e73b41
+run up swing=600 48000 4096 events=64 on=32 off=32 trig=0 events-hash=3d30799ebab803a9 steps-hash=2f1a5c157f23ce3c counters-hash=04c3af8d64e73b41
+# the first bar
+ev 0 on key=60 vel=100 lane=0 stream=arp ref=0 tick=0 step=0
+ev 10800 off key=0 vel=64 lane=0 stream=arp ref=0 tick=6912 step=0
+ev 12000 on key=64 vel=90 lane=0 stream=arp ref=1 tick=7680 step=2
+ev 22800 off key=0 vel=64 lane=0 stream=arp ref=1 tick=14592 step=0
+ev 24000 on key=67 vel=80 lane=0 stream=arp ref=2 tick=15360 step=4
+ev 28800 off key=0 vel=64 lane=0 stream=arp ref=2 tick=18432 step=0
+ev 30000 on key=71 vel=70 lane=0 stream=arp ref=3 tick=19200 step=5
+ev 46800 off key=0 vel=64 lane=0 stream=arp ref=3 tick=29952 step=0
+ev 48000 on key=60 vel=100 lane=0 stream=arp ref=4 tick=30720 step=8
+ev 58800 off key=0 vel=64 lane=0 stream=arp ref=4 tick=37632 step=0
+ev 60000 on key=64 vel=90 lane=0 stream=arp ref=5 tick=38400 step=10
+ev 70800 off key=0 vel=64 lane=0 stream=arp ref=5 tick=45312 step=0
+ev 72000 on key=67 vel=80 lane=0 stream=arp ref=6 tick=46080 step=12
+ev 76800 off key=0 vel=64 lane=0 stream=arp ref=6 tick=49152 step=0
+ev 78000 on key=71 vel=70 lane=0 stream=arp ref=7 tick=49920 step=13
+ev 94800 off key=0 vel=64 lane=0 stream=arp ref=7 tick=60672 step=0
+# from the release on
+ev 334800 off key=0 vel=64 lane=0 stream=arp ref=27 tick=214272 step=0
+ev 336000 on key=71 vel=70 lane=0 stream=arp ref=28 tick=215040 step=56
+ev 346800 off key=0 vel=64 lane=0 stream=arp ref=28 tick=221952 step=0
+ev 348000 on key=71 vel=70 lane=0 stream=arp ref=29 tick=222720 step=58
+ev 358800 off key=0 vel=64 lane=0 stream=arp ref=29 tick=229632 step=0
+ev 360000 on key=71 vel=70 lane=0 stream=arp ref=30 tick=230400 step=60
+ev 364800 off key=0 vel=64 lane=0 stream=arp ref=30 tick=233472 step=0
+ev 366000 on key=71 vel=70 lane=0 stream=arp ref=31 tick=234240 step=61
+ev 381600 off key=0 vel=64 lane=0 stream=arp ref=31 tick=244992 step=0

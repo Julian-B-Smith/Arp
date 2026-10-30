@@ -65,8 +65,17 @@ add_executable(arp_render render.cpp alloc_hook.cpp)
 target_link_libraries(arp_render PRIVATE arp_core)
 target_compile_options(arp_render PRIVATE ${ARP_WARN})
 
+# The bank-pattern goldens (D-046): the SHIPPED core (no ARP_PLANTS) plays each bank pattern, once per int128 path. tools/core_test.sh runs both and diffs
+# their output against tests/core/goldens/; tools/core_golden.sh cut is the only writer of that directory.
+add_executable(arp_goldens goldens.cpp)
+target_link_libraries(arp_goldens PRIVATE arp_core)
+target_compile_options(arp_goldens PRIVATE ${ARP_WARN})
+add_executable(arp_goldens_soft goldens.cpp)
+target_link_libraries(arp_goldens_soft PRIVATE arp_core_soft)
+target_compile_options(arp_goldens_soft PRIVATE ${ARP_WARN})
+
 # The binaries land directly in the build dir, where tools/core_test.sh and tools/core_params_check.py look.
-set_target_properties(arp_tests arp_tests_fallback arp_shipped_smoke arp_bench arp_bench_soft arp_render PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set_target_properties(arp_tests arp_tests_fallback arp_shipped_smoke arp_bench arp_bench_soft arp_render arp_goldens arp_goldens_soft PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_test(NAME arp_tests COMMAND arp_tests)
 add_test(NAME arp_tests_fallback COMMAND arp_tests_fallback)
