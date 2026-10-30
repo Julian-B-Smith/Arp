@@ -1308,3 +1308,39 @@ The roadmap cuts goldens per pattern and per preset at the human's gate.
   and WIPO registers): after the readiness notice and before any public
   release. They do not gate horde's admission.
 - **Housekeeping:** five merged, clean worktrees removed (the human's OK).
+
+## D-048 — The randomize design's open questions answered; phase 2 approved (RATIFIED by poll, 2026-10-29)
+
+The design (`docs/design/randomize.md`, PR #42; three critic rounds, the
+last a PASS) asked the human twelve questions. The answers, by three polls:
+
+**As recommended:**
+- the rate and the own-scale settings are locked by default. Unlocked, a
+  rate stays in its family (straight, dotted, triplet) and a scale draws a
+  named scale and a root;
+- `latch` is never drawn;
+- chaos 0 follows horde's law: back to home, and no change when home is the
+  current sound;
+- the table lives in a new `spec/randomize.json`, so `params.json`'s hash,
+  every preset's version, stays put;
+- Values re-rolls the seed (the once-only shuffle repeat or skip is
+  accepted, stated for a fixed seed);
+- "repeat forever" never becomes a count, and a count only moves up;
+- the draw never lands on Build-your-own, Trigger pulse or Bar trigger, and
+  a home already on one is kept;
+- phase 2 adds a lab Randomize panel;
+- amount nesting is exact per verb, with Both's two exceptions documented.
+
+**Changed from the recommendation:** the chord stage's on/off switch
+(`chord_enabled`) **can be drawn**, as structure. The design is to work
+through its consequences for horde's routing and the terminals, and to
+propose any guard as a question.
+
+**Phase 2 approved by the same poll:**
+- the protected-spec amendment: a new SPEC §15 and `spec/randomize.json`,
+  re-pinned;
+- the core implementation with RZ1–RZ15 and their plants;
+- the randomize digest added to Linux CI;
+- the lab panel;
+- the final reply to horde. It is shown to the human in the PR before it is
+  filed.
