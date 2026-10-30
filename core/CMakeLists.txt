@@ -32,7 +32,7 @@ else()
 endif()
 
 set(ARP_CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(ARP_CORE_SOURCES ${ARP_CORE_DIR}/src/core.cpp)
+set(ARP_CORE_SOURCES ${ARP_CORE_DIR}/src/core.cpp ${ARP_CORE_DIR}/src/randomize.cpp)
 
 # The SHIPPED library: no ARP_PLANTS, so none of the test-only fault switches exist in it.
 add_library(arp_core STATIC ${ARP_CORE_SOURCES})

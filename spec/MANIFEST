@@ -1,5 +1,7 @@
 # The RATIFIED 1.0 spec (D-022), pinned by sha256; ./verify's spec_gate checks every line and every file under spec/.
 # A deliberate spec change = the human's gate + a decision record + a re-pin of these lines in the same change.
-c23ade9fffe3283d1d3c108c8bfffb15c8d735e4a64afa628f2a3675ca3082ca  spec/SPEC.md
+# Re-pinned 2026-10-29 for SPEC §15 and spec/randomize.json (Arp's own randomize; the human's poll D-048, recorded by the lead).
+97e161e51c2808fd3a163da1f67a4434294e6dfa3d362fa4d28e0b3378563a10  spec/SPEC.md
 effa973ba73e18c8554aed727ce12c16f5805f4cab84e2597987d8bb40dc237c  spec/params.json
 6925aa22be0c9100c09b4ad280e2bda911ccc39c95f911c0acbde304336f8490  spec/bank/starter.json
+2172385d668551577871090d3af941a64a0d0d0226f06116b8c42e1e49de9c31  spec/randomize.json

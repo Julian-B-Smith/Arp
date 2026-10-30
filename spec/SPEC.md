@@ -1,6 +1,6 @@
 # Arp — 1.0 specification (RATIFIED 2026-10-23, r2.12)
 
-> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026); E8, E9 and E10 approved 2026-10-23 (D-027); E11 and E12 approved 2026-10-23 (D-028).; velocity and length randomness added 2026-10-27 (D-036, a recorded exception to the freeze); erratum E13 approved 2026-10-27 as option C (D-039).** This is a protected path: any change needs the human's
+> **Status: RATIFIED by the human, by poll, 2026-10-23 (D-022); errata E1 and E3 approved 2026-10-23 (D-024); E4 and E5 approved 2026-10-23 (D-025); E6 and E7 approved 2026-10-23 (D-026); E8, E9 and E10 approved 2026-10-23 (D-027); E11 and E12 approved 2026-10-23 (D-028).; velocity and length randomness added 2026-10-27 (D-036, a recorded exception to the freeze); erratum E13 approved 2026-10-27 as option C (D-039); Arp's own randomize added 2026-10-29 as §15 with its companion `spec/randomize.json` (D-044, D-048, a recorded exception to the freeze).** This is a protected path: any change needs the human's
 > gate and a decision record. Revision history: r1 (2026-10-21) to r2.12 (2026-10-22); four independent reviews
 > (`docs/spec-review-r1..r4.md`).
 > critic, which found 13 HIGH, 9 MED and 4 LOW issues (verdict: rework). r2
@@ -23,7 +23,7 @@
 >   ROADMAP Phase A gate).
 > - Every rule once marked PROPOSED was settled by the human at ratification
 >   (§12, D-021).
-> - **Normative companions:** `spec/params.json` and `spec/bank/starter.json`.
+> - **Normative companions:** `spec/params.json`, `spec/bank/starter.json` and `spec/randomize.json` (§15).
 > - **Upstream terms:** `intake/`, horde ADR-267 A1 (triggers), DECISIONS
 >   D-000…D-008. The prior-art basis is `docs/prior-art.md`.
 
@@ -828,8 +828,9 @@ table **and clears the pending queue**.
 | T19 | `rate_mode` switches | release-all at offset 0 of that block (T6), then re-anchor |
 | T20 | repeats run out | none: no new steps; sounding notes end by their gates |
 | T21 | chord-stage notes (§14) | each ends exactly once: when its stored source count reaches 0, at a re-map that drops it, at `chord_enabled` off, at the module's `enabled` off (T4), at panic (T7), or at T10; never at a transport edge (T6) or an `arp_enabled` change |
+| T22 | a randomize result arrives (§15) | none of its own: it is an ordinary settings change, adopted as one snapshot; its keys act through the rows they already have (T8, T9, T15, T18, T20, and §14's re-map with T21) |
 
-T3, T8, T9, T12, T14, T15 and T16 are rows on purpose: each must be shown to
+T3, T8, T9, T12, T14, T15, T16 and T22 are rows on purpose: each must be shown to
 produce no extra and no missing terminal (LIBRARY L0001).
 
 ---
@@ -875,6 +876,7 @@ produce no extra and no missing terminal (LIBRARY L0001).
 - **Lanes:** 0 is `random`, 1 is `shuffle`, 2 is `prob`, 3 is velocity
   randomness and 4 is length randomness (§4.9, D-036).
 - No RNG state is carried between steps.
+- §15's randomize draw is a separate function with its own salt and constants, keyed by horde's randomize seed: a stream independent of these lanes.
 
 **D1.** These must all match to give an identical output stream:
 - the same input events at the same absolute samples;
@@ -901,7 +903,7 @@ produce no extra and no missing terminal (LIBRARY L0001).
 | Q3 | with `scale_source = own`, keys follow Arp's own scale, not the global one | ignore the own scale |
 | Q4 | `chord_root` anchors the scale shape on the lowest held key | anchor on the root setting |
 | R1 | rest, miss, tie, trigger-only and explicit-`pick` steps don't advance `m` | advance `m` on rests; advance `m` on explicit picks |
-| N2 | `shuffle` never plays the same key twice in a row (e ≥ 2), and every key once per cycle | skip the boundary swap |
+| N2 | for a fixed seed, `shuffle` never plays the same key twice in a row (e ≥ 2), and every key once per cycle (a seed change, by morph or a randomize re-roll, may repeat or skip one key once in its cycle: D-048 answer 12) | skip the boundary swap |
 | Q5 | with ties toward a previous note above the tie, ties resolve UP; G1 holds with quantize ties in play; `lastQ` resets at release-all | always down; update `lastQ` at emission; never reset `lastQ` |
 | TM1 | time mode: step k sounds at `cdiv((k·step_time_us + swingDelay(k))·sr, 10⁶)` samples after the gesture's key press, whatever the host tempo, position or transport does; identical at every block size and sample rate (in µs) | use the host tempo; anchor at the transport |
 | TM2 | a `step_time_us` change mid-gesture: the next step lands at `max(lastTick + L_new, changeTick)`, then every `L_new`; no gap between grid positions (before swing) longer than `max(L_old, L_new)`, no burst | re-grid on absolute multiples of `L_new`, or `kAbs·L_new` |
@@ -918,6 +920,22 @@ produce no extra and no missing terminal (LIBRARY L0001).
 | C1 | at the event cap, no NoteOn is emitted without its NoteOff | drop the off-reserve |
 | A1 | `process` never allocates (C++ only: an allocation hook) | allocate in `process` |
 | RN1 | note randomness (§4.9): at `vel_random` = `gate_random` = 0 the output is byte-identical to the core without it; otherwise each arp note's change stays within ±amount and equals the formula with `U` from `draw(seed, x, lane, epoch)`; identical at every block size and sample rate; at curve 0 the values are uniform, at 100 clustered (variance about a quarter); chord-stage notes untouched | take `x` from the block instead of the grid; ignore the curve; randomise chord-stage notes |
+| RZ1 | randomize (§15) is deterministic: a pinned digest of 10,000 calls, identical on every platform | carry one mulberry32 stream across keys; mix an address into the draw |
+| RZ2 | randomize draws are position-free: locking one key never changes another key's result | the carried stream |
+| RZ3 | every randomize result is valid (`params.json` ranges) when its input is; no pick meets an empty candidate set or a zero total weight, at every chaos with locks swept | a chord shift of +25; the span filter on a `steps` above 3; a bell centre left out |
+| RZ4 | every locked key equals `cur` | honour locks in Values only |
+| RZ5 | the never-draw keys equal `cur` on every verb, unlocked | draw `latch` |
+| RZ6 | chaos 0 with `home = cur` returns `cur`; with a separate home, every key is `cur`'s or home's | must change at chaos 0; a forced redraw at chaos 0 |
+| RZ7 | amount nesting, per verb, must change off: keys changed at amount a change at b > a to the same values | liveness read from the keys just drawn; an amount-dependent pick |
+| RZ8 | Structure changes only structure keys, Values only value keys (a literal class list); Both = Values after Structure | swing drawn by Structure |
+| RZ9 | a key not live on `cur` is never drawn | step time drawn in sync; the arp's keys drawn with the arp off |
+| RZ10 | distribution: the mean move rises with chaos; flat at 1000 (KS < 0.05); a drawn rate within one rung ≥ 90 % at 350; the root moves both ways round the circle of fifths | ignore chaos; read the σ table backwards; a linear root distance |
+| RZ11 | must change: when due, a key changes unless nothing is movable (reported) | must change off; an ordered move by bell; each group's first move only |
+| RZ12 | musical safety: the span bound for drawn passes, repeats never down and forever kept, rate in its family and band, unlit patterns and degrees-with-quantize-off never drawn into, every value in band ∪ {home} | drop the span filter; repeats below `cur`; light `trigger_pulse` |
+| RZ13 | randomize allocates nothing | allocate a scratch vector |
+| RZ14 | 30 randomized snapshots (Both, chaos 1000) in a core session keep N1, CH1 and G1, and lose no NoteOff | the N1 plant still fires under the fuzz |
+| RZ15 | the generated `randomize_data.h` and the compiled classes and exemptions equal `spec/randomize.json`; its tables regenerate from their laws; key ids collision-free | perturb a taste weight, a band, a σ entry, a chord interval, a key's class |
+| RZ16 | with the arp off and the chord stage on, no click turns the stage off (chaos 0 and a home with the stage off included) | the keep test returns home's off |
 
 ---
 
@@ -1143,4 +1161,108 @@ alone; and N1 covers every chord note.
     is not retried while its count stays above 0.
 18. **Spent (exhausted) steps** leave no step record for the UI's step
     highlight.
+
+---
+
+## 15. Randomize: Arp's own, for horde's Random panel (D-044, D-048)
+
+Added 2026-10-29 as a recorded exception to the freeze (D-044); the human's answers D-048. The design, its reasoning and its three
+reviews: `docs/design/randomize.md`. **Normative data:** `spec/randomize.json` (classes, groups, exemptions, bands, taste weights,
+interval tables, rate families, and the σ, `exp` and step-time tables as integers). **Reference implementation:**
+`core/include/arp/randomize.h`, `core/src/randomize.cpp`. Where this section and the data disagree, fixing them together is a spec change.
+
+### 15.1 What it is
+- **One pure function** `randomize(cur, home, request) → result`. It produces new settings and nothing else. Integers only: no
+  float, no libm, no allocation, no state, bounded work. It never runs in `process`: horde calls it off the audio thread.
+- **The result is an ordinary settings change** (T22). It reaches the core as a snapshot, like a preset or a morph corner, so
+  §9's timing and §7's terminals apply unchanged.
+- **Scope:** settings only. The user pattern's steps (§4.6) are never drawn.
+- **Verbs:** `Structure` (horde's ARCH), `Values` (PARAMS), `Both` (Structure, then Values run on its result at the same click).
+- **Inputs:** `cur` (keys not drawn keep it; it decides liveness and locks); `home` (the bell's centre; clamped into range before
+  use); `seed`, `click`, `corner` (the draw key); `chaos` and `amount` in permille, 0–1000 (larger values read as 1000); `locks`
+  (one bit per key); `mustChange`. **Result:** the settings, a changed mask, `nothingToDraw`, and `emptyPicks` (always 0).
+
+### 15.2 The draw
+    rdraw(seed, click, corner, keyId, idx) = mulberry32( seed ⊕ salt ⊕ imul(click, k_click) ⊕ imul(corner, k_corner) ⊕ imul(keyId, k_key) ⊕ imul(idx + 1, k_idx) )
+- The constants are `randomize.json` `draw`. One output, uint32 arithmetic, no state carried.
+- `keyId` is FNV-1a 32 of a key's `params.json` name, of a group's name (`scale`, `transposition`, `chord`), or of `scale_mask`.
+- `idx`: 0 the amount threshold, 1 the keep test, 2 the pick, 3 must change.
+- `below(r, pm)` is `r < ⌊pm · 2³² / 1000⌋`. A weighted pick takes `t = ⌊r · Σw / 2³²⌋` and returns the first candidate whose
+  running sum exceeds `t`.
+
+### 15.3 Which units a click draws
+A **unit** is a key or a group (§15.6). A unit is drawn when its class matches the verb, it has an unlocked member, it is **live
+on `cur`** (`randomize.json` `live`, and §15.6), and `below(rdraw(unit, 0), amount)`. A key not drawn keeps `cur`'s value.
+Liveness and joint rules read `cur` and the unit's own draws, never another unit's draw from the same click. So, for one verb with
+must change off, the keys changed at amount a are a subset of those changed at any b > a, with the same values (RZ7). Both reads
+liveness from Structure's result, so `vel_fixed` and `seed` may not nest under Both (D-048 answer 11). "The arp is live" means
+`cur.enabled` and `cur.arp_enabled`.
+
+### 15.4 Unordered choices
+At chaos 0, or when `¬below(rdraw(key, 1), chaos)`, the result is home, unless home is not admitted (§15.5), then `cur`.
+Otherwise a taste-weighted pick among the lit values (taste > 0) with `rdraw(key, 2)`. An unlit home is kept by the keep test.
+
+### 15.5 Ordered choices and numbers: the discrete bell
+- Every number is drawn over a **ladder**: every integer of the legal range; for `step_time_us` the table
+  `step_time_ladder_us`; for `rate` home's family (`rate_families`); for `scale_root` the circle of fifths, circular.
+- **Candidates:** the band (`randomize.json`), widened to include the **centre**. The centre is home, except where home is not
+  admitted: `repeats` below `cur` (§15.7), `steps` under a locked `step_size` (§15.6), `chord_enabled` with the arp off (§15.6),
+  and a step size or chord shift whose unit is pinned to `cur`'s, which differs from home's. There it is `cur`'s value. The centre
+  is always a candidate.
+- **Width:** `s8 = ⌊σ[chaos] · n / 2⁸⌋`, `s2 = s8²`, with `σ` the table `sigma_q16` and `n` the full ladder's length. **Weight**
+  of a candidate at distance `d` from the centre: `2¹⁶` at `d = 0`; otherwise `exp_neg_q16[x8]` for `x8 = ⌊d² · 2²⁴ / (2 · s2)⌋`
+  when `s2 > 0` and `x8 < 4096`, else 0. The pick is §15.2's with `rdraw(key, 2)`. At chaos 0 the result is the centre.
+
+### 15.6 Groups
+Each group has one amount threshold and a fixed internal order. Its members' joint rules read only the group's proposals and
+`cur` for locked members. **Chaos 0 draws nothing:** members return to their centre, and no band applies (the span bound included).
+- **Transposition** (`steps`, `step_unit`, `step_size`; live when the arp is). The span bound is 24 semitones or 14 degrees.
+  1. `steps`: the bell over 0–3 ∪ {home}; with `step_size` locked only values whose span with `cur.step_size` is within the bound,
+     plus `cur.steps`.
+  2. Only if `steps > 0`: `step_unit`, unordered, kept at `cur` if it or `step_size` is locked; `degrees` lit only while
+     `cur.quantize ≠ off`.
+  3. Only if `steps > 0` and unlocked: `step_size` from the unit's table (`intervals.transposition`), only intervals within the bound
+     for `steps` ≤ 3 (a `steps` above 3 is home's or `cur`'s own shape: no filter). Forced (no keep test) when the unit flipped from
+     home's or home's size breaks the bound; otherwise unordered. At chaos 0: home's size, or `cur`'s when the unit differs from home's.
+- **Chord** (`chord_enabled`, `chord_on1..6`, `chord_unit`, `chord_shift1..6`; live when `cur.enabled`).
+  0. `chord_enabled`, unordered. **With the arp off it is never turned off:** if `cur` has it on, it stays on; otherwise only
+     on is lit. If the result is off, no other member changes.
+  1. `chord_on1..6`, unordered bools.
+  2. `chord_unit`, unordered, kept at `cur` if it or any `chord_shift` is locked; `degrees` lit only while `cur.quantize ≠ off`.
+  3. Each slot on after step 1, unless locked: its shift from the unit's table (`intervals.chord`), forced when the slot is off in
+     `cur` or the unit flipped from home's; otherwise unordered. At chaos 0: home's shift, or `cur`'s when the unit differs from home's.
+- **Scale** (`quantize`, `scale_root`, `scale_deg0..11`; all exempt by default; live when `cur.enabled` and the arp is live or
+  `cur.chord_enabled` is on).
+  1. `quantize`, unordered.
+  2. Only if `cur.scale_source = own` and `quantize` is not off after step 1, and none of the thirteen own-scale keys is locked:
+     the mask is a named scale (`params.json` `ui_scale_names`, taste `named_scale_taste`, key `scale_mask`; a home mask that
+     matches no name is kept by the keep test), and the root is the circular bell on the circle of fifths.
+
+### 15.7 Keys, locks and exemptions
+- **Classes** are `randomize.json` `keys[].class`: 37 structure, 8 value, 5 never drawn (`enabled`, `arp_enabled`, `rate_mode`,
+  `latch`, `scale_source`). A never-draw key equals `cur` on every verb, whatever the locks say.
+- **Exempt by default** (`keys[].exempt`, 15 keys: `rate`, `quantize`, `scale_root`, `scale_deg0..11`): the locks horde starts
+  from. horde owns the lock state.
+- **Repeats:** live only when `cur.repeats ≠ 0`. The admitted set is `cur.repeats`, every count above it up to 8, and home if home
+  is 0 or above `cur.repeats`.
+- **Seed:** live when the arp is and something reads it (`order` random or shuffle, `vel_random` or `gate_random` above 0, or a
+  pattern in `seed_reading_patterns`). A re-roll: home with probability 1 − chaos, else `rdraw(seed, 2)` itself.
+
+### 15.8 Order and must change
+- **Structure** runs `order`, `pattern`, `rate`, `restart`, `repeats`, `vel_mode`, the scale group, the transposition group, the
+  chord group. **Values** runs `gate`, `swing`, `step_time_us`, `vel_fixed`, `vel_random`, `gate_random`, `random_curve`, `seed`.
+- **Must change** (Structure only, `mustChange`, chaos > 0): if no structure key changed, the movable unit (live, unlocked, with a
+  move that changes a key) with the lowest `rdraw(unit, 0)` moves, with `rdraw(…, 3)`:
+  - an unordered key: by taste among its lit values other than `cur`'s;
+  - `rate` or `repeats`: the nearest admitted rung above or below `cur` in `cur`'s family, the side from the draw's top bit;
+  - transposition: `steps` as an ordered key (the span rule then re-applied to the size); else a different size within the bound;
+    else the unit flipped, with a forced size;
+  - chord: the first on, unlocked shift redrawn; else the first off, unlocked slot turned on; else the last on slot turned off;
+    else the unit flipped with every on shift forced; else `chord_enabled` flipped alone (never off with the arp off);
+  - scale: `quantize`; else a different named scale; else the root one fifth either way.
+  - If no unit is movable, the result is unchanged and `nothingToDraw` is true.
+
+### 15.9 Chaos 0
+With `home = cur`, chaos 0 returns `cur` exactly, for every verb, amount, lock set and must-change setting. With a separate home,
+every drawn member returns to its centre (§15.5) and every other key keeps `cur` (RZ6).
 

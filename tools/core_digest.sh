@@ -28,7 +28,7 @@ if [ -n "$rev" ]; then
   while read -r f; do
     mkdir -p "$core/$(dirname "${f#core/}")"
     git -C "$repo" show "$rev:$f" >"$core/${f#core/}" || { echo "FAIL  core_digest: cannot read $f at $rev"; exit 1; }
-  done < <(git -C "$repo" ls-tree -r --name-only "$rev" core | grep -E '^core/(include/.*\.h|src/core\.cpp)$')
+  done < <(git -C "$repo" ls-tree -r --name-only "$rev" core | grep -E '^core/(include/.*\.h|src/(core|randomize)\.cpp)$')
   origin="core/ at commit $rev"
 else
   core="$repo/core"
@@ -41,6 +41,11 @@ fi
 noRandom=(-DARP_NO_RANDOM)
 random_src=()
 if grep -q velRandom "$core/include/arp/types.h"; then noRandom=(); random_src=("$repo/tests/core/test_random.cpp"); fi
+# A core older than SPEC 15 has no randomize (arp/randomize.h, src/randomize.cpp): its tests are left out with ARP_NO_RANDOMIZE. randomize is a pure
+# function outside process(), so none of its calls enters any stream digest either way.
+noRandomize=(-DARP_NO_RANDOMIZE)
+randomize_src=()
+if [ -f "$core/src/randomize.cpp" ]; then noRandomize=(-DARP_RANDOMIZE_DIGEST_FILE="\"$repo/tests/core/randomize_digest.txt\""); randomize_src=("$repo/tests/core/test_randomize.cpp" "$core/src/randomize.cpp"); fi
 if [ "$mode" = "regen-random" ] && [ "${#noRandom[@]}" -gt 0 ]; then echo "FAIL  core_digest: regen-random needs a core with note randomness (D-036), and $origin has none"; exit 1; fi
 sha() { if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1; else sha256sum "$1" | cut -d' ' -f1; fi; }
 note="generated from $origin: core/src/core.cpp sha256 $(sha "$core/src/core.cpp"), core/include/arp/core.h sha256 $(sha "$core/include/arp/core.h")"
@@ -48,8 +53,8 @@ note="generated from $origin: core/src/core.cpp sha256 $(sha "$core/src/core.cpp
 tests="$repo/tests/core"
 digest="$tests/stream_digest.txt"
 rdigest="$tests/stream_digest_random.txt"
-suite=("$tests"/test_core.cpp "$tests"/test_m1b.cpp "$tests"/test_m2a.cpp "$tests"/test_m2b.cpp "$tests"/test_m3.cpp ${random_src[@]+"${random_src[@]}"} "$tests"/test_evict.cpp "$tests"/test_input.cpp "$tests"/digest_corpus.cpp "$tests"/test_digest.cpp "$tests"/test_int128.cpp "$tests"/alloc_hook.cpp)
-"$cxx" -std=c++20 -O1 -DARP_PLANTS ${noRandom[@]+"${noRandom[@]}"} -DARP_DIGEST_FILE="\"$digest\"" -DARP_RANDOM_DIGEST_FILE="\"$rdigest\"" -I"$core/include" -I"$tests" "${suite[@]}" "$core/src/core.cpp" -o "$work/arp_tests" -pthread || { echo "FAIL  core_digest: the suite does not build against $origin"; exit 1; }
+suite=("$tests"/test_core.cpp "$tests"/test_m1b.cpp "$tests"/test_m2a.cpp "$tests"/test_m2b.cpp "$tests"/test_m3.cpp ${random_src[@]+"${random_src[@]}"} ${randomize_src[@]+"${randomize_src[@]}"} "$tests"/test_evict.cpp "$tests"/test_input.cpp "$tests"/digest_corpus.cpp "$tests"/test_digest.cpp "$tests"/test_int128.cpp "$tests"/alloc_hook.cpp)
+"$cxx" -std=c++20 -O1 -DARP_PLANTS ${noRandom[@]+"${noRandom[@]}"} ${noRandomize[@]+"${noRandomize[@]}"} -DARP_DIGEST_FILE="\"$digest\"" -DARP_RANDOM_DIGEST_FILE="\"$rdigest\"" -I"$core/include" -I"$tests" "${suite[@]}" "$core/src/core.cpp" -o "$work/arp_tests" -pthread || { echo "FAIL  core_digest: the suite does not build against $origin"; exit 1; }
 "$cxx" -std=c++20 -O2 -DNDEBUG ${noRandom[@]+"${noRandom[@]}"} -I"$core/include" -I"$tests" "$tests/bench.cpp" "$tests/alloc_hook.cpp" "$core/src/core.cpp" -o "$work/arp_bench" || { echo "FAIL  core_digest: the benchmark does not build against $origin"; exit 1; }
 
 if [ "$mode" = "regen-random" ]; then

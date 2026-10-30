@@ -188,6 +188,22 @@ def planted_face(params: dict) -> dict:
     return bad
 
 
+def randomize_problems(binary: Path, rnd: dict) -> list:
+    """RZ15 (SPEC 15): the compiled classes and default exemptions (arp_tests --dump-randomize) equal spec/randomize.json's."""
+    out = subprocess.run([str(binary), "--dump-randomize"], capture_output=True, text=True)
+    if out.returncode != 0:
+        return ["%s --dump-randomize exited %d" % (binary, out.returncode)]
+    got = {}
+    for line in out.stdout.splitlines():
+        if line.startswith("rnd.") and "=" in line:
+            k, v = line[4:].split("=", 1)
+            got[k] = v.strip()
+    want = {k["key"]: "%s %d" % (k["class"], 1 if k["exempt"] else 0) for k in rnd["keys"]}
+    problems = ["randomize class/exemption of %s: compiled %r, spec %r" % (k, got.get(k), w) for k, w in want.items() if got.get(k) != w]
+    problems += ["randomize: compiled key %s is not in spec/randomize.json" % k for k in got if k not in want]
+    return problems
+
+
 def main(argv) -> int:
     binary = DEFAULT_BINARY
     if "--binary" in argv:
@@ -235,7 +251,35 @@ def main(argv) -> int:
     face_seen = any("gate" in f for f in face_fired) and any("order" in f for f in face_fired)
     print("%s  plant fires: a setting without a display name and an enum with an unlabelled value are both reported (%s)" % (
         "PASS" if face_seen else "FAIL", "; ".join(face_fired) if face_fired else "nothing reported"))
-    return 0 if (not problems and seen == wants and not bank_problems and bank_fired and not face_problems and face_seen) else 1
+    # Arp's own randomize (SPEC 15, RZ15): the generated header and the JSON's consistency (gen_randomize.py --check, with its own
+    # plants), then the compiled classes and exemptions against the JSON, with a planted control.
+    gen = subprocess.run([sys.executable, str(REPO / "tools" / "gen_randomize.py"), "--check"], capture_output=True, text=True)
+    for line in gen.stdout.splitlines():
+        print("  " + line.strip() if line.startswith("  ") else line)
+    gen_ok = gen.returncode == 0
+    if not gen_ok:
+        print("FAIL  tools/gen_randomize.py --check exited %d" % gen.returncode)
+    rnd = json.loads((REPO / "spec" / "randomize.json").read_text())
+    rnd_problems = randomize_problems(binary, rnd)
+    for p in rnd_problems:
+        print("  FAIL  " + p)
+    print("%s  compiled randomize classes and default exemptions == spec/randomize.json (%d settings)" % ("FAIL" if rnd_problems else "PASS", len(rnd["keys"])))
+    bad_rnd = json.loads(json.dumps(rnd))
+    bad_rnd["keys"][[k["key"] for k in bad_rnd["keys"]].index("latch")]["class"] = "structure"
+    rnd_fired = any("latch" in p for p in randomize_problems(binary, bad_rnd))
+    print("%s  plant fires: latch reclassed as structure in the parsed JSON is reported" % ("PASS" if rnd_fired else "FAIL"))
+    # The lab twin's known answers (tests/core/randomize_cases.json) must be what this core produces now, or the lab smoke checks a stale truth.
+    cases_file = REPO / "tests" / "core" / "randomize_cases.json"
+    dumped_cases = subprocess.run([str(binary), "--dump-randomize-cases"], capture_output=True, text=True).stdout
+    cases_ok = cases_file.exists() and json.loads(cases_file.read_text()) == json.loads(dumped_cases)
+    print("%s  tests/core/randomize_cases.json (the lab twin's known answers) is what the core produces (%s)" % (
+        "PASS" if cases_ok else "FAIL", "300 cases" if cases_ok else "regenerate: build/core/arp_tests --dump-randomize-cases > tests/core/randomize_cases.json"))
+    stale = json.loads(dumped_cases)
+    stale["cases"][0]["out"][2] = (stale["cases"][0]["out"][2] + 1) % 16
+    cases_fired = cases_file.exists() and json.loads(cases_file.read_text()) != stale
+    print("%s  plant fires: a fixture with one changed answer is reported stale" % ("PASS" if cases_fired else "FAIL"))
+    return 0 if (not problems and seen == wants and not bank_problems and bank_fired and not face_problems and face_seen
+                 and gen_ok and not rnd_problems and rnd_fired and cases_ok and cases_fired) else 1
 
 
 if __name__ == "__main__":

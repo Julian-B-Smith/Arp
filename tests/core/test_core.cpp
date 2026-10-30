@@ -31,6 +31,9 @@
 #ifndef ARP_NO_RANDOM   // tools/core_digest.sh builds the suite against cores older than D-036 (no note randomness) to regenerate the digests cut from them
 #include "test_random.h"
 #endif
+#ifndef ARP_NO_RANDOMIZE   // tools/core_digest.sh builds the suite against cores older than SPEC 15 (no randomize) too
+#include "test_randomize.h"
+#endif
 #include "test_digest.h"
 #include "test_input.h"
 #include "test_evict.h"
@@ -1072,6 +1075,16 @@ int main(int argc, char** argv) {
     dumpDefaults();
     return 0;
   }
+#ifndef ARP_NO_RANDOMIZE
+  if (argc > 1 && std::strcmp(argv[1], "--dump-randomize") == 0) {
+    dumpRandomize();
+    return 0;
+  }
+  if (argc > 1 && std::strcmp(argv[1], "--dump-randomize-cases") == 0) {
+    dumpRandomizeCases();
+    return 0;
+  }
+#endif
   if (argc > 1 && std::strcmp(argv[1], "--dump-bank") == 0) {
     dumpBank();
     return 0;
@@ -1101,6 +1114,9 @@ int main(int argc, char** argv) {
   runM2aTests();
   runM2bTests();
   runM3Tests();
+#ifndef ARP_NO_RANDOMIZE
+  runRandomizeTests();   // SPEC 15 (D-044, D-048): Arp's own randomize, RZ1..RZ16; a pure function, so no session of it enters any stream digest
+#endif
 #ifndef ARP_NO_RANDOM
   runRandomTests();   // D-036: its sessions are kept out of the committed stream digest (they did not exist when it was cut); it has a digest of its own
 #endif

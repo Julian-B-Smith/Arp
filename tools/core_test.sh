@@ -51,7 +51,7 @@ copyin_build() {
     mkdir -p "$copy_dir/tree/$(dirname "$path")" && cp "$repo/$path" "$copy_dir/tree/$path"
   done < <(copyin_rows "$doc")
   [ -n "$omit" ] && opt="-O0"
-  "$cxx" -std=c++20 $opt -Wall -Wextra -Werror -I"$copy_dir/tree/core/include" "$copy_dir/tree/core/src/core.cpp" "$repo/tests/core/shipped_smoke.cpp" -o "$copy_dir/smoke" >"$copy_log" 2>&1 || return 1
+  "$cxx" -std=c++20 $opt -Wall -Wextra -Werror -I"$copy_dir/tree/core/include" "$copy_dir/tree"/core/src/*.cpp "$repo/tests/core/shipped_smoke.cpp" -o "$copy_dir/smoke" >"$copy_log" 2>&1 || return 1
   "$copy_dir/smoke" >>"$copy_log" 2>&1
 }
 
