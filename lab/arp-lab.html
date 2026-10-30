@@ -167,7 +167,7 @@
         <label>Import <input type="file" id="libImport" accept=".json,application/json"></label></div>
         <div id="libLists"></div></div></div>
     <div class="card"><h2>Morph (A / B corners)</h2>
-      <div class="q">Copy the current settings into corner A or B, then slide. Continuous settings blend linearly; discrete ones follow SPEC 9 Q-A1.</div>
+      <div class="q">Copy the current settings into corner A or B, then slide. Continuous settings blend linearly; discrete ones follow SPEC 9 Q-A1. <b>While morph is on, the Settings card does not drive the output</b>: change a setting, then copy it into A or B.</div>
       <div class="bar"><button id="copyA">A &larr; current</button><button id="copyB">B &larr; current</button>
         <label><input type="checkbox" id="morphOn"> morph on</label>
         <label><input type="checkbox" id="morphBlend"> stochastic pattern blend <span class="chtag">prototype, D-050</span></label>
@@ -2994,10 +2994,13 @@ class ArpCore {
   // ask about future steps. Provisional rules, each an open question in the design note: every corner's pattern keeps its own position
   // (j = k mod its own length); a look-ahead uses today's weight, so a weight that moves before a looked-ahead step arrives can turn a tie into a
   // played step (the earlier note still ends at its scheduled off: one terminal) or a played step into a tie (the step is silent).
-  _blendPat(kAbs) {
+  _blendCorner(kAbs) {   // 1 = B, 0 = A, -1 = no blend
     const b = this.blend;
-    if (!b) return null;
-    return this._pattern((this._draw(this.active.seed, kAbs, 5) % 1000) < b.wB ? b.B : b.A);
+    return b ? ((this._draw(this.active.seed, kAbs, 5) % 1000) < b.wB ? 1 : 0) : -1;
+  }
+  _blendPat(kAbs) {
+    const c = this._blendCorner(kAbs);
+    return c < 0 ? null : this._pattern(c ? this.blend.B : this.blend.A);
   }
   _draw(seed, x, lane) {
     if (this.lab.plant.timeInDraw) seed = (seed ^ (plantedDrawTicks++)) >>> 0;
@@ -3022,7 +3025,7 @@ class ArpCore {
     }
     const aK = this._rs() === "free" ? 0 : this.anchorK;
     // D-050 PROTOTYPE: under a blend the step data comes from the drawn corner's pattern; the cycle length (repeats) stays the resolved pattern's.
-    const k = kAbs - aK, basePat = this._pattern(a.pattern), bp = this._blendPat(kAbs), pat = bp || basePat, j = mod(k, this._plen(pat));
+    const k = kAbs - aK, basePat = this._pattern(a.pattern), bc = this._blendCorner(kAbs), bp = bc < 0 ? null : this._pattern(bc ? this.blend.B : this.blend.A), pat = bp || basePat, j = mod(k, this._plen(pat));
     const st = this._step(pat, j);
     const H = this._heldArp();
     // on-times anchor at kAbs*L (SPEC 5.1, never k*L); swing parity from kAbs (G3)
@@ -3066,7 +3069,7 @@ class ArpCore {
       trig();
     } else if (fires && st.trig) { kind = "trig"; trig(); }
     else if (P.advanceOnRest) this.m++;
-    this.lastSteps.push({ s: so, kAbs, k, j, mBefore, mAfter: this.m, fires, kind, ord, pick: this._pickOf(st) });   // ord: lets the UI tie a note to its step (accents)
+    this.lastSteps.push({ s: so, kAbs, k, j, mBefore, mAfter: this.m, fires, kind, ord, pick: this._pickOf(st), corner: bc < 0 ? null : bc ? "B" : "A" });   // ord: lets the UI tie a note to its step (accents); corner: D-050 prototype
   }
 
   // SPEC 4.8: C = plays > 0 ? Ls * (P*(steps+1) / gcd(P*(steps+1), plays)) : Ls, for e >= 1 keys of H'. `plays` is a static count (prob is ignored).
@@ -3897,7 +3900,7 @@ function arpIntsToSettings(a) {
     bpm: 120, preroll: false,
     user: defaultUser(),            // "Build your own" (SPEC 4.6): the UI's copy; the core gets it through setUserPattern
   };
-  const eng = { ctx: null, core: new ArpCore(), host: null, sr: 0, t0: 0, next: 0, q: [], hostQ: [], voices: new Map(), timer: 0, master: null,
+  const eng = { ctx: null, core: new ArpCore(), trail: [], host: null, sr: 0, t0: 0, next: 0, q: [], hostQ: [], voices: new Map(), timer: 0, master: null,
     stepQ: [], logLines: [], logDirty: false, playing: false };
   const pressed = new Map();       // key -> live press count (on-screen highlight)
   const controls = {};             // setting key -> { set(value), eff(el) }
@@ -4006,6 +4009,7 @@ function arpIntsToSettings(a) {
     const evs = eng.core.process({ n: BLOCK, transport: eng.host.at(at), settings: effective(), scale: state.scale, in: ins });
     const base = eng.t0 + at / eng.sr;
     for (const s of eng.core.lastSteps) {
+      if (s.corner) { eng.trail.push(s.corner); if (eng.trail.length > 16) eng.trail.shift(); }   // D-050 prototype: which corner each step came from
       eng.stepQ.push({ time: base + s.s / eng.sr, j: s.j, kind: s.kind, pat: eng.core.active.pattern });
       roll.steps.push({ time: base + s.s / eng.sr, j: s.j, kind: s.kind });
       roll.stepOf.set(s.ord, { pat: eng.core.active.pattern, j: s.j });
@@ -4539,9 +4543,10 @@ function arpIntsToSettings(a) {
     $("morphRule").addEventListener("change", ev => { m.rule = ev.target.value; });
     $("morphBlend").addEventListener("change", ev => { m.blend = ev.target.checked; });
     $("demoBlend").addEventListener("click", () => {
-      m.A = Object.assign({}, state.cur, { pattern: "gallop" }); m.B = Object.assign({}, state.cur, { pattern: "octave_leap" });
+      m.A = Object.assign({}, state.cur, { pattern: "three_three_two" }); m.B = Object.assign({}, state.cur, { pattern: "roll_end" });
       state.cur = Object.assign({}, m.A); syncControls(state.cur); m.on = true; m.blend = true; $("morphOn").checked = true; $("morphBlend").checked = true;
-      status("Blend demo: A = gallop, B = octave leap, every step drawn. Hold a chord and slide; the ends play A or B alone.");
+      eng.trail.length = 0;
+      status("Blend demo: A = 3-3-2 (sparse), B = roll end (every step, ratchets at the end). Hold a chord and slide; the ends play A or B alone. With morph on, the Settings card does not drive the output: copy into A or B.");
     });
     $("demoA1").addEventListener("click", () => {
       m.A = Object.assign({}, state.cur, { order: "up", pattern: "none" }); m.B = Object.assign({}, state.cur, { order: "down", pattern: "gallop" });
@@ -4851,7 +4856,7 @@ function arpIntsToSettings(a) {
     const c = eng.core;
     $("coreStatus").textContent = eng.ctx ? "clock " + c.clock + (c.clock === "free" ? (c.freeRunning ? " (running, epoch " + c.epoch + ")" : " (idle)") : "") +
       " | sounding " + c.sounding.length + " | refused " + c.counters.refused + " | dropped keys " + c.counters.keysDropped : "audio not started";
-    if (state.morph.on) $("cornerNow").textContent = "discrete corner now: " + (state.morph.corner ? "B" : "A") + (state.morph.blend ? "; pattern: drawn per step, B " + Math.round(state.morph.w * 100) + "%" : "");
+    if (state.morph.on) $("cornerNow").textContent = "discrete corner now: " + (state.morph.corner ? "B" : "A") + (state.morph.blend ? "; pattern drawn per step, last 16 steps: " + (eng.trail.join("") || "(none yet)") : "");
   }
   function status(msg) { $("status").textContent = msg; }
 
