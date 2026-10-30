@@ -5,7 +5,7 @@
 Purpose: explain Arp, horde's note processor: what it does to the notes you play, every control it has, and how the controls combine, in the words of the panel. Arp is the simple arpeggiator of horde 1.0 together with a pattern bank, patterns you build yourself, a chord stage and seeded randomness.
 
 <!-- The tool is tools/gen_manual_params.py --check (in ./verify fast). Re-date the review when the prose changes. -->
-Last verified: the settings table, the figure and audio placeholders, the status lines and the wording rules (no spec citations or internal names in the prose) are checked by a tool; the accuracy of the prose was reviewed by hand against the ratified behaviour on 2026-10-28 (an independent review, two rounds). Panel paths are marked *(page pending)* until the interface page for Arp exists.
+Last verified: the settings table, the figure and audio placeholders, the status lines and the wording rules (no spec citations or internal names in the prose) are checked by a tool; the accuracy of the prose was reviewed by hand against the ratified behaviour on 2026-10-28 (an independent review, two rounds); the Performance section's input-limit wording was reviewed separately on 2026-10-29. Panel paths are marked *(page pending)* until the interface page for Arp exists.
 
 ## What Arp does
 
@@ -435,14 +435,17 @@ Status: READY-TO-WRITE — SPEC §4.3, §4.7, §5.2, §14, D-037
 
 ## Performance
 
-Status: READY-TO-WRITE — SPEC §1.3, docs/horde-copy-in.md "CPU envelope", D-031, D-038
+Status: READY-TO-WRITE — SPEC §1.3, docs/horde-copy-in.md "CPU envelope", D-031, D-038, D-042
 
-Arp is light. horde sets aside a small share of one core for it, and the heaviest combinations measured stay inside that share: many held keys, rolls of four, the chord stage with all six intervals, the fastest rates at the fastest tempos and both randomness settings at 100. The cost grows with how many notes Arp plays and with how much note traffic reaches it, not with how long it has been running. Arp never allocates memory or waits on anything while it plays.
+Arp is light. horde sets aside a small share of one core for it, and the heaviest combinations measured stay inside that share: many held keys, rolls of four, the chord stage with all six intervals, the fastest rates at the fastest tempos and all three randomness settings at 100. The cost grows with how many notes Arp plays and with how much note traffic reaches it, not with how long it has been running. Arp never allocates memory or waits on anything while it plays.
 
-The heaviest settings take the most of the share, and a very dense stream of incoming notes, such as a whole chord re-struck on every 64th step at a very fast tempo, adds to it. Both are stress cases, not normal playing. Measurements were made on a development Mac with a safety multiplier, not on the slowest machine horde supports.
+The heaviest settings take the most of the share, and a very dense stream of incoming notes adds to it. Both are stress cases, not normal playing.
 
-<!-- docs/horde-copy-in.md "CPU envelope" (slice 2 % of a min-spec core; every settings-only load fits; x4 = horde's min-spec heuristic, not min-spec verified); SPEC §1 (process: no allocation, no locks, no system calls); D-031. Numbers are deliberately not quoted: D-038 says the input-rate figure is re-measured on a quiet machine before the readiness notice. -->
-<!-- OPEN: the final input-rate limit (events per second) horde will quote, and the min-spec verification, are pending (D-038). -->
+**How much note traffic fits:** Arp stays inside its share with up to 1,000 note events a second coming in, counting each press and each release, on every setting, even with **Velocity random**, **Gate random** and **Random curve** at 100. That holds at any sample rate from 44.1 to 192 kHz. A fast player sends about 40 a second, so ordinary playing is a small fraction of this. The figure matters only for something that floods Arp with notes, such as a MIDI clip or a script firing keys far faster than a hand can. The 1,000 is a processor budget, not a cap on notes: above it Arp follows the same rules as ever, including its usual limits such as 32 held keys, and simply uses more of the processor.
+
+The measurements were made on a development Mac with a safety multiplier, not on the slowest machine horde supports. The margin is thin in one corner: with randomness at 100, the heaviest settings and the highest sample rates, Arp is already close to its share before many notes arrive, and within measurement noise of it at 1,000 a second. With randomness off, or with lighter settings, there is more room.
+
+<!-- docs/horde-copy-in.md "CPU envelope" (slice 2 % of a min-spec core; every settings-only load fits; x4 = horde's min-spec heuristic, not min-spec verified); SPEC §1 (process: no allocation, no locks, no system calls); D-031. Input limit: D-042 (docs/horde-copy-in.md "The quoted input limit"): up to 1,000 incoming note events/s (NoteOn plus NoteOff), every setting incl. randomness 100, both int128 paths, 44.1-192 kHz, inside the 2 % slice (x4, not min-spec verified); the margin is thin in the two-word, 192 kHz, randomness-100, heaviest-load corner (~1.97 % of 2 % at 1,000 events/s, within run-to-run noise); a fast player sends about 40 events/s. Blocks 16-512 measured (under 16 not measured). "Every setting" is partly inferred: input cost is assumed to add the same way on loads with no input family of their own (copy-in, "What is measured and what is inferred"). At any rate the core follows the same rules (SPEC §1.3 capacities are fixed, not rate-dependent) and only the CPU grows (docs/horde-copy-in.md CPU envelope, unchanged by D-042); the 32-held-key and per-block output limits still apply. Settings-only numbers (1.79 % / 1.91 %) are deliberately not quoted. -->
 
 ## Settings reference
 
