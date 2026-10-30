@@ -3716,7 +3716,7 @@ function rzMoveUnit(c, u, arp, apply) {
         const all = rzCands(), cs = rzCands();   // a must-change move stays in the band 0..3: it never moves into a shape beyond it
         rzStepsAdmitted(c, all);
         for (const v of all.v) if (v <= band[1]) cs.add(v);
-        const i = rzOrderedMove(c, RZ_KEY[rzId.steps], cs, cur[rzId.steps], apply);
+        const i = rzOrderedMove(c, RZ_ID_TRANSPOSITION, cs, cur[rzId.steps], apply);   // keyed by the group, as SPEC 15.8 says
         if (i >= 0) {
           if (apply) {
             out[rzId.steps] = i;
@@ -4274,7 +4274,7 @@ function arpIntsToSettings(a) {
         h("button", { text: "Structure", title: "horde's ARCH", onclick: () => press(0) }),
         h("button", { text: "Values", title: "horde's PARAMS", onclick: () => press(1) }),
         h("button", { text: "Both", onclick: () => press(2) }),
-        h("label", { title: "if the shape would not change at all, move one unit (Structure only, chaos above 0)" }, must, " must change")),
+        h("label", { title: "if the shape would not change at all, move one unit (Structure and Both, chaos above 0)" }, must, " must change")),
       h("div", { class: "bar" }, slider("chaos", "chaos"), slider("amount", "amount")),
       h("div", { class: "bar" }, h("label", {}, "draw seed ", numberIn("seed", 4294967295, "the draw key's seed (not the arp's own seed setting)")), h("label", {}, "click ", clickIn), h("label", {}, "corner ", corner)),
       h("div", { class: "bar" }, setHome, followHome, homeNote),

@@ -86,10 +86,12 @@ plant(banned(core + "\nconst t = performance.now();") && banned(core + "\nsetTim
   // Plants: a perturbed port must miss at least one case, or the check is blind. Each is a one-line edit of the CORE source.
   const edit = (from, to) => { if (core.split(from).length !== 2) throw new Error("lab_smoke: randomize plant anchor not unique: " + from); return build(core.replace(from, to)); };
   const saltOff = edit("(c.seed ^ d.salt ^", "(c.seed ^ (d.salt + 1) ^"), keepReversed = edit("if (!rzBelow(rzRd(c, key, RZ_KEEP), c.chaos)) return home;", "if (rzBelow(rzRd(c, key, RZ_KEEP), c.chaos)) return home;"),
-    bandWide = edit("for (let v = band[0]; v <= band[1]; v++) cs.add(v - lo);", "for (let v = band[0]; v <= band[1] + 1; v++) cs.add(v - lo);");
+    bandWide = edit("for (let v = band[0]; v <= band[1]; v++) cs.add(v - lo);", "for (let v = band[0]; v <= band[1] + 1; v++) cs.add(v - lo);"),
+    mustKey = edit("rzOrderedMove(c, RZ_ID_TRANSPOSITION, cs, cur[rzId.steps], apply)", "rzOrderedMove(c, RZ_KEY[rzId.steps], cs, cur[rzId.steps], apply)");
   plant(caseMisses(saltOff).length > 0, "known answers detect a draw salt off by one (" + caseMisses(saltOff).length + " cases differ)");
   plant(caseMisses(keepReversed).length > 0, "known answers detect a reversed keep test (" + caseMisses(keepReversed).length + " cases differ)");
   plant(caseMisses(bandWide).length > 0, "known answers detect a value band one wider (" + caseMisses(bandWide).length + " cases differ)");
+  plant(caseMisses(mustKey).length > 0, "known answers detect the must-change steps move keyed `steps` instead of `transposition` (" + caseMisses(mustKey).length + " cases differ; the targeted must-change cases)");
   const miss = caseMisses(X);
   check(miss.length === 0, `the JS randomize reproduces all ${kc.cases.length} known answers of the C++ core (verbs, locks, must change, chaos 0, raw home)` + (miss.length ? ": " + miss.slice(0, 8).join(", ") : ""));
 

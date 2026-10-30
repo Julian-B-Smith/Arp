@@ -273,7 +273,7 @@ def main(argv) -> int:
     dumped_cases = subprocess.run([str(binary), "--dump-randomize-cases"], capture_output=True, text=True).stdout
     cases_ok = cases_file.exists() and json.loads(cases_file.read_text()) == json.loads(dumped_cases)
     print("%s  tests/core/randomize_cases.json (the lab twin's known answers) is what the core produces (%s)" % (
-        "PASS" if cases_ok else "FAIL", "300 cases" if cases_ok else "regenerate: build/core/arp_tests --dump-randomize-cases > tests/core/randomize_cases.json"))
+        "PASS" if cases_ok else "FAIL", ("%d cases" % len(json.loads(dumped_cases)["cases"])) if cases_ok else "regenerate: build/core/arp_tests --dump-randomize-cases > tests/core/randomize_cases.json"))
     stale = json.loads(dumped_cases)
     stale["cases"][0]["out"][2] = (stale["cases"][0]["out"][2] + 1) % 16
     cases_fired = cases_file.exists() and json.loads(cases_file.read_text()) != stale
