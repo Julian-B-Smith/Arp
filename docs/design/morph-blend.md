@@ -5,8 +5,9 @@
 > chose to keep it (D-051). Read alongside SPEC §4.3, §5.2, §9, §10 and horde's
 > seq 14 (`integrations/hypersaw/response-preset-format-and-randomize.md`).
 >
-> **Status: DRAFT.** Nothing here is in `spec/`. §5 lists what the human decides.
-> A critic reviews the answered version before the spec amendment.
+> **Status: ANSWERED DRAFT.** The human answered §5 by poll on 2026-11-02 (D-052).
+> Nothing here is in `spec/`. A critic reviews this version before the spec
+> amendment; §2 and §6 still need horde.
 
 ## 1. What it is
 
@@ -67,20 +68,20 @@ nothing to do until someone gives corners different patterns.
 - **Repeats (§4.8):** `C` comes from the leading corner's pattern, recomputed at
   each step as it already is. Under a blend, "one repeat" is therefore approximate.
 
-## 4. Rules proposed, each put to the human (§5)
+## 4. Rules, each put to the human (§5)
 
 **4.1 Ties.** A tie is honoured by look-ahead (SPEC §5.2), and the draw is a pure
 function of the step, so look-ahead can ask which corner will win each later step.
 The prototype looks ahead with today's weight. If the weight then moves, a step
 the note was tied across can play a new note, or a step can fall silent.
-**Proposed: the note keeps its promise.** The playing step counts `t` tie steps
+**Chosen: the note keeps its promise.** The playing step counts `t` tie steps
 and the core holds them: the next `t` steps are ties whatever is drawn. A tie
 step reached outside a hold acts as a rest, as a tie after a rest already does
 (§5.2). The hold is plain state, so it stays deterministic and block-independent.
 
 **4.2 The draw, for up to four corners.** The prototype's one draw against
 thresholds works for two. With four, a step's corner can jump between two corners
-whose weights did not rise. **Proposed: a race.** Each corner gets its own draw on
+whose weights did not rise. **Chosen: a race.** Each corner gets its own draw on
 lane 5, turned into an exponential time `E` by a fixed integer table, and the
 lowest `E / weight` wins, compared by cross-multiplying, so no float and no
 division. Ties go to the lower corner. Raising a corner's weight can then only
@@ -90,20 +91,20 @@ temperature 1, applied per step. Cost: four draws per step instead of one.
 
 **4.3 User patterns.** The core holds one active user pattern (§4.6), but horde
 lets each corner carry its own (seq 8, ADR-169). A blend can need them all at
-once. **Proposed: four preallocated slots,** `setUserPattern` gaining a corner.
+once. **Chosen: four preallocated slots,** `setUserPattern` gaining a corner.
 That changes a public interface.
 
 **4.4 The curve.** A corner's chance equals its weight, a straight line. A curve
 would need a new setting, which §2 avoids. Provisional unless listening says
 otherwise.
 
-## 5. Questions for the human
+## 5. The human's answers (D-052, each as proposed)
 
-Put by poll; the answers are recorded in D-051's successor.
-1. Is horde's per-parameter menu the on/off switch (§2), or does Arp get its own?
-2. Ties: the note keeps its promise (§4.1), or the prototype's looser rule?
-3. The draw: the race (§4.2), or one draw against thresholds?
-4. User patterns: four slots (§4.3), or one shared?
+1. **On/off:** horde's per-parameter menu is the switch (§2); Arp adds no setting.
+   If horde disagrees, this returns to the human.
+2. **Ties:** the note keeps its promise (§4.1).
+3. **The draw:** the race (§4.2).
+4. **User patterns:** four slots, one per corner (§4.3).
 
 ## 6. For horde (a brief, shown to the human before it is filed)
 

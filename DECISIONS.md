@@ -1419,3 +1419,19 @@ provisional rule for each, labelled as such, and the design note asks.
   page; the human keeps, changes or drops each; then the preset goldens are cut.
 - **The blend stays in 1.0** (D-050 stands), after the human heard it. The design
   note (`docs/design/morph-blend.md`) comes next.
+
+## D-052 — The blend's four design rules (RATIFIED by poll, 2026-11-02)
+
+Answered on `docs/design/morph-blend.md`, each as recommended:
+- **On/off:** horde's per-parameter morph menu is the switch: Blend and the stepped
+  hybrid draw per step; Quantum and Exempt send one pattern, today's behaviour.
+  Arp adds no setting, so `spec/params.json` and `module_version` do not change.
+  **Conditional on horde agreeing;** if they do not, it returns to the human.
+- **Ties:** the note keeps its promise. The playing step holds its `t` tie steps
+  whatever is drawn; a tie step outside a hold acts as a rest.
+- **The draw:** a race among corners, on lane 5, integer only. Raising a corner's
+  weight can only move steps to that corner.
+- **User patterns:** four preallocated slots, one per corner; `setUserPattern`
+  gains a corner (an approved public-interface change).
+
+The chance stays a straight line in the weight, unless listening says otherwise.
