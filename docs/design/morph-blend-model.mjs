@@ -82,6 +82,25 @@ for (const [name, c] of cases) {
   for (let k = 0; k < 100000; k++) { const a = pick(stack(before, k), 11, k), b = pick(stack(after, k), 11, k); if (a !== b) { moved++; if (!stack([{ w: 1, pat: P.roll_end }], k).some(([key]) => key === b)) bad++; } }
   ck(moved > 0 && bad === 0, `raising one corner moves steps only to that corner's step (${moved} moved, ${bad} elsewhere)`);
 }
+{ // Layers, the stored form (revision 3): shares rounded ONCE at layer level, per-step shares summed raw. Live IS flatten, so equality is by construction; test it, nested, with awkward weights.
+  const same2 = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const round = rows => { const tot = rows.reduce((x, r) => x + r.v, 0), out = rows.map(r => ({ ...r, share: Math.floor(r.v * SCALE / tot), rem: (r.v * SCALE) % tot })); let left = SCALE - out.reduce((x, r) => x + r.share, 0); [...out].sort((a, b) => b.rem - a.rem || (a.id < b.id ? -1 : 1)).slice(0, left).forEach(r => r.share++); return out.map(({ id, pat, share }) => ({ id, pat, share })).filter(r => r.share > 0); };
+  // A setting is { w, layers }; a plain pattern is one layer at SCALE. Identical layers merge.
+  const flat = settings => { const m = new Map(); for (const { w, layers } of settings) { if (!w) continue; for (const l of layers) { const e = m.get(l.id) || { id: l.id, pat: l.pat, v: 0 }; e.v += w * l.share; m.set(l.id, e); } } return round([...m.values()].sort((a, b) => a.id < b.id ? -1 : 1)); };
+  const altsOf = (layers, k) => { const m = new Map(); for (const l of layers) { const [[key]] = l.pat.steps[k % l.pat.len]; m.set(key, (m.get(key) || 0) + l.share); } return [...m.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1); };
+  const play = (layers, n, seed) => { const o = []; for (let k = 0; k < n; k++) o.push(pick(altsOf(layers, k), seed, k + 1000)); return o; };
+  const L = (id, pat) => [{ id, pat, share: SCALE }];
+  const cs = [["awkward 2", [[333, L("332", P.three_three_two)], [667, L("roll", P.roll_end)]]], ["awkward 4, lengths 7,16,15,5", [[137, L("u7", u7)], [251, L("u16", u16)], [389, L("u15", u15)], [223, L("u5", u5)]]], ["glided-looking", [[291, L("gallop", P.gallop)], [709, L("tied", P.tied_legato)]]]];
+  for (const [name, c] of cs) { const set = c.map(([w, layers]) => ({ w, layers })), f = flat(set), again = flat([{ w: 977, layers: f }]);
+    ck(same2(play(f, N, 7), play(again, N, 7)) && JSON.stringify(f.map(x => [x.id, x.share])) === JSON.stringify(again.map(x => [x.id, x.share])), `layers, ${name}: saving a saved blend changes nothing (idempotent)`); }
+  const A = flat([{ w: 137, layers: L("332", P.three_three_two) }, { w: 863, layers: L("roll", P.roll_end) }]), B = flat([{ w: 419, layers: A }, { w: 581, layers: L("u7", u7) }]), C = flat([{ w: 1, layers: B }]);
+  ck(same2(play(B, N, 3), play(C, N, 3)), "layers, nested: a blend of a saved blend saves exactly");
+  ck(B.length === 3 && B.reduce((x, l) => x + l.share, 0) === SCALE, "layers, nested: three layers, shares sum to exactly one million");
+  const plant = [...A.map(l => ({ ...l, share: l.share + 1 }))]; let d = 0; { const a = play(A, 200000, 3), b = play(plant, 200000, 3); a.forEach((x, i) => { if (x !== b[i]) d++; }); }
+  const plantKeyed = play(A.map(l => ({ ...l, pat: { ...l.pat, steps: l.pat.steps.map(s => s.map(([key, w]) => [key + "!", w])) } })), N, 3).map(x => x.slice(0, -1)); let e = 0; { const a = play(A, N, 3); a.forEach((x, i) => { if (x !== plantKeyed[i]) e++; }); }
+  ck(e > 0, `layers, plant: content keyed differently differs on ${e} of ${N} steps`);
+  console.log(`INFO a 1-in-a-million share error changed ${d} of 200000 steps here: rare, not impossible (the critic estimates about 1 in 10^7), so exactness still comes from rounding once, not from this being small`);
+}
 { // sizes: every pair of lengths a user or the bank can hold
   let maxPair = 0, ex; for (let a = 1; a <= 16; a++) for (let b = 1; b <= 16; b++) { const l = lcm(a, b); if (l > maxPair) { maxPair = l; ex = [a, b]; } }
   const lens = bank.patterns.map(p => p.steps.length); const bankL = lens.reduce(lcm, 1);

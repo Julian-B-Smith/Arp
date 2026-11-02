@@ -1465,3 +1465,21 @@ follows the draw, the rule the human heard; a flattened pattern has no source to
 §4.3's weak form. "Nothing in horde's text covers this" was wrong: horde's 1.0 bar has a
 MUST row and its format text says the pattern is discrete, so the brief asks to amend them.
 The critic's REWORK of revision 1 is applied in `docs/design/morph-blend.md` revision 2.
+
+## D-054 — The critic's three rulings, and compact storage (RATIFIED by poll, 2026-11-02)
+
+The critic's re-check of revision 2 was REWORK. Each answer as recommended:
+- **Repeats:** a repeat lasts as long as the longest pattern in the blend, and the count
+  never shrinks until the next gesture. This replaces D-053's combined count, which had a
+  hole: leaving a corner could shrink it and stop the arp at once.
+- **Storage:** a compact form, 5 bytes a step. Any position between four plain corners then
+  fits 2 KiB, if the budget counts the whole record (1,963 B measured; horde is asked).
+  "Save anyway and say so" stands, now only for blends of saved blends.
+- **Arp's other discrete keys:** follow horde's per-key pick, with related settings flipping
+  together as groups (scale, transposition, chord, rate). **This replaces D-021's single
+  leading-corner rule** and needs horde's agreement.
+- **Ties skew the shares,** accepted: a corner's chance equals its weight before ties. This
+  qualifies D-050's "a corner's chance is its morph weight".
+
+**Found on the way:** today's `/1` text with one busy user pattern is about 2,630 B with its
+record, already over RS-6.12's 2 KiB, blend or no blend.
