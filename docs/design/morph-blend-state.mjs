@@ -26,3 +26,15 @@ console.log("blob".padEnd(34), "JSON".padStart(7), "compact".padStart(8), "recor
 for (const [name, ns] of [["1 busy layer, 16", [16]], ["2 busy layers, 15 + 16", [15, 16]], ["4 busy layers, 16 each, distinct", [16, 16, 16, 16]], ["4 busy layers, 16,15,13,11", [16, 15, 13, 11]], ["8 busy layers, 16 each", Array(8).fill(16)], ["16 busy layers, 16 each", Array(16).fill(16)]]) {
   const l = mk(ns), c = compactBlob(l).length; console.log(name.padEnd(34), String(jsonBlob(l).length).padStart(7), String(c).padStart(8), String(rec(compactBlob(l)).length).padStart(18)); }
 for (const ids of [["three_three_two", "roll_end"], ["gallop", "roll_end", "tied_legato", "sparse_chance"]]) console.log(`bank only, ${ids.length}:`.padEnd(34), "".padStart(7), String(bankBlob(ids).length).padStart(8), String(rec(bankBlob(ids)).length).padStart(18));
+// Widest legal values, since defaults flatter the figure. Which fields the budget counts is horde's answer, so three readings are printed.
+const widest = (asFloat) => { const v = {}, ba = {}, ab = {}, na = {};
+  for (const p of P) { const k = "arp." + p.key, hi = p.max ?? p.default, lo = p.min ?? 0;
+    if (p.kind === "continuous") { const big = Math.max(Math.abs(hi), Math.abs(lo)); v[k] = asFloat ? big - 1 / 3 : big; ba[k] = 0; }
+    else if (p.type === "enum" || Array.isArray(p.values) || typeof p.values === "string") { const opts = Array.isArray(p.values) ? p.values.map(String) : ["three_three_two", "sparse_chance", "bar_trigger"]; na[k] = opts.reduce((x, y) => y.length > x.length ? y : x, String(p.default)); }
+    else ab[k] = typeof p.default === "boolean" ? 1 : (lo < 0 ? lo : hi); }
+  return { v, ba, ab, na }; };
+const blob4 = compactBlob(mk([16, 16, 16, 16]));
+for (const [name, f] of [["integer continuous values", false], ["float continuous values", true]]) { const { v, ba, ab, na } = widest(f);
+  const corner = JSON.stringify({ origin_id: "arp.user.0000", module_version: "0".repeat(64), preset: { scope: "arp", values: v, basis: ba, absolute: ab }, names: na, blobs: { "arp.userPattern": blob4 } });
+  const file = JSON.stringify({ format: "horde.module-preset/1", module: "arp", name: "Saved position", origin_id: "arp.user.0000", module_version: "0".repeat(64), preset: { scope: "arp", values: v, basis: ba, absolute: ab }, names: na, blobs: { "arp.userPattern": blob4 } });
+  console.log(`widest values, 4 busy layers, ${name}: corner record ${corner.length} B; with file fields ${file.length} B; budget 2,048 B`); }

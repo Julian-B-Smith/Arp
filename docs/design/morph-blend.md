@@ -4,7 +4,7 @@
 > a critic's two REWORKs and the human's contract: aside from brief crossfades and FX
 > tails, every position on the morph grid can be saved as its own corner preset.
 >
-> **Status: DRAFT, waiting on horde and a critic's last check.** Nothing here is in
+> **Status: DESIGN, reviewed by a critic (three rounds; the last HIGH applied here), waiting on horde.** Nothing here is in
 > `spec/`. horde's rows are read from its origin/main at `4b2fdae`. The scripts
 > `docs/design/morph-blend-model.mjs` and `-state.mjs` are scratch evidence, not gates:
 > they test which step is chosen and how big the state is, not the core, ties or audio.
@@ -65,13 +65,17 @@ Consequences:
 | 4 busy, distinct, the most four plain corners hold | 4,885 B | 549 B | 1,963 B |
 | 8 busy, only by blending saved blends | 9,688 B | 1,061 B | 2,483 B |
 
-- **Budget.** RS-6.12 gives 2,048 B per corner, provisional. **Any position between four
-  plain corners fits, if the budget counts this record: a hypothesis the brief asks.** Today's
-  `/1` text with one busy pattern is about 2,630 B and is already over; `/2` fixes that too.
-- **Over the budget or the layer cap (D-054):** only reachable by blending saved blends.
-  Capture drops the smallest shares, rescales, and returns `approximate`, so the state can
-  never exceed the budget at creation (ADR-351 ruling 2) and the player is told. A single
-  layer always fits (166 B), so there is always something valid to return.
+- **Budget.** RS-6.12 gives 2,048 B per corner, provisional. The table uses default values.
+  **With every setting at its widest and four busy layers:** 1,957 B as a corner record with
+  integers, 2,029 B with file fields; 2,054 B and 2,126 B if horde stores floats. So a position
+  between four plain corners fits only narrowly, and may not, depending on what horde counts and
+  how it stores values; the brief asks. Today's `/1` text with one busy pattern is about 2,630 B
+  and is already over; `/2` fixes that too.
+- **Over the budget or the layer cap (D-054):** normally reachable only by blending saved blends.
+  Capture takes a byte limit from horde, since it cannot see the rest of the record. It drops the
+  smallest shares, rescales, and returns `approximate`, so the state can never exceed the budget
+  at creation (ADR-351 ruling 2) and the player is told. A single layer always fits (166 B), so
+  there is always something valid to return. A tight budget could trigger this on a plain position too.
 - **Why not a step table:** its length is the lengths' least common multiple, about 1.2 MB
   in the worst case tried, and a table must be cut to fit where layers need not.
 - **Format rules, for the spec:**
@@ -81,7 +85,8 @@ Consequences:
   - shares must be positive and sum to one million; a layer cannot itself be layered;
   - layers are in canonical order, so save, load, save is byte-identical (RS-6.11);
   - a new writer and parser join the copy-in list, since the core has no text format today.
-- **The face.** A flattened pattern shows its sources and shares. It is **not editable step
+- **The face.** A flattened pattern shows its bank patterns by name, unnamed user layers by number,
+  and each share; storing user-layer names would cost bytes the budget does not have. It is **not editable step
   by step in 1.0**; the public `UserPattern` struct gains a layered form, and the lab's
   editor shows such a pattern read-only.
 - **Exact means:** puck held still, same seed and settings, same start: the saved corner plays
@@ -132,10 +137,14 @@ sounding steps: 36 to 64 at 50/50 for `tied_legato` against `none`. Accepted by 
 - **A pattern's `step_size` and `step_unit` travel with its steps;** the global transposition
   settings do not blend.
 - **Repeats (D-054):** a repeat lasts as long as the longest pattern in the blend: `C` is the
-  largest of the layers' own `C`. Once a gesture has seen two or more settings, `C` keeps its
-  high-water mark until the next gesture start, so moving the puck cannot stop the arp early and
-  a tiny touch of another corner cannot multiply the length. O(layers); one pattern counts exactly
-  as today; live and saved agree. `none` against `three_three_two` over 3 keys gives 8.
+  largest of the layers' own `C`. With two or more layers **after merging**, whether live or saved,
+  `C` keeps its high-water mark, so a saved blend counts as the live position does. The mark folds
+  in at evaluated steps only, is tested as `max(highWater, lastC)`, and clears wherever
+  `repeatSteps` resets, including a key-adding revive, so no stale count outlives a restart. One
+  pattern counts exactly as today. `none` against `three_three_two` over 3 keys gives 8. So moving
+  the puck between patterns cannot stop the arp early and a tiny touch of another corner cannot
+  multiply the length. **Not covered:** corners holding different `repeats` values, since a flip of
+  `repeats` itself can still stop it, as today.
 - **Timing:** we ask horde to split Arp's `process` at the resolver's boundaries while its events
   flow, covering all 50 keys with no new event type, as the test harness does with `cuts`. Output
   is then block-size independent for the same event stream (horde's DT-2). Sample-rate identity
@@ -161,6 +170,7 @@ shrinks within a gesture; a related group never lands on a combination no corner
 
 - **What is not proven.** The model tests selection only. "Saved equals live" with ties, holds and
   repeats rests on reasoning (both run one state machine) until the §5 gate exists.
+- **The budget's margin.** See §3: at most 19 B spare with integer values and file fields.
 - **CPU.** The tightest quoted case is about 1.97 % x4 against 2 % (D-042), inside the
   noise. Measure with D-039's alternated A/B and a blend bench family; include per-block
   cost, which dominates at block 16 and 192 kHz. The worst step is a capped look-ahead over many layers, so the peak matters as well as the average.

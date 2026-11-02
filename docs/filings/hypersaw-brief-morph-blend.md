@@ -17,9 +17,11 @@ cites: your SPEC-ENGINE Appendix D (MO-3, MO-7, MO-8, MO-10, MO-11, MO-13 to MO-
 
 **In short:** our human wants the arp's patterns to blend stochastically under your Blend
 and Stepped laws, and to flip under Quantum, by following `morph.law`. Each step plays one
-pattern's step, with chance equal to that pattern's weight. Any position can be saved as a
-corner, because a blend flattens into one pattern. Almost all of it uses what you have
-built. We need seven answers, and we ask for them by 2026-11-13 so that 1.0 stays possible.
+pattern's step, with chance equal to that pattern's weight before ties (ties skew the
+sounding steps, and our human accepts that). Any position can be saved as a corner, because
+a blend flattens into one pattern. It reuses your `SettingSet` and laws, but it does ask for
+resolver work: a new group, group flips, a corner on the one-value path and split processing.
+We need seven answers, and we ask for them by 2026-11-13 so that 1.0 stays possible.
 If it cannot fit, Arp ships today's one-value behaviour and the blend follows after 1.0.
 
 ## What each law would do
@@ -36,7 +38,8 @@ Arp adds no setting and no switch. A default patch flips, since `morph.law` defa
 ## Seven questions (ball: HYPERSAW)
 
 1. **A one-key structural group, `arp/pattern`?** MO-14 has no note-processor entry, so this also
-   touches IF-12's group list, PA-7's check and MO-20's fixed order. Two corners hold the same
+   touches IF-12's group list and corner input (its corners hold only `v` and ratios texts, so
+   comparing blobs needs them there), PA-7's check and MO-20's fixed order. Two corners hold the same
    setting when the pattern name and the blob's **raw bytes** match. We do not ask you to parse it
    (ADR-294): byte-different duplicates are harmless, because Arp merges by content, and Arp writes
    canonical bytes. A rhythm cannot crossfade and Arp renders no second instance, so a set here costs
@@ -60,23 +63,29 @@ Arp adds no setting and no switch. A default patch flips, since `morph.law` defa
    would change `module_version` (ADR-294), so our factory presets wait for this answer. If you can hold
    the class on your side, nothing changes on ours.
 5. **"Save current sound to snapshot" (ADR-321) under Blend and Stepped, and the budget.**
-   - You would call an Arp function, off the audio thread, with each corner's pattern and the set's
-     weights. It returns one `arp-user-pattern/2` text for `blobs["arp.userPattern"]`, `pattern = user`,
+   - You would call an Arp function, off the audio thread, with each corner's pattern, the set's
+     weights and a byte limit, since it cannot see the rest of your record. It returns one `arp-user-pattern/2` text for `blobs["arp.userPattern"]`, `pattern = user`,
      and an `approximate` flag to show the player. You store it verbatim, as today.
-   - **What does RS-6.12's 2 KiB count: the whole corner record, or only the module's state?** A record
-     with 50 keys and no blob measures 1,380 B. In our new compact form, a blend of four busy user patterns
-     brings it to 1,963 B, which is the most any position between four plain corners holds. Your format's
-     `/1` text with one busy user pattern is already about 2,630 B. So we will write `/2`, with `/1` still loading.
-   - **Blends of saved blends can go over.** Then capture drops the smallest shares, so no state over budget
-     is ever created (ADR-351 ruling 2), and it says so. **Our real maximum, for your re-derivation:** 1,963 B
-     without nesting. 8 layers would need 2,483 B, and 16 would need 3,507 B.
+   - **What does RS-6.12's 2 KiB count: the whole corner record, or only the module's state? And
+     does a corner store Arp's integers as integers?** With every setting at its widest and a blend
+     of four busy user patterns, the most any position between four plain corners holds, a record
+     measures 1,957 B with integers, or 2,029 B with the file's fields. If values are stored as
+     floats, it is 2,054 B, or 2,126 B with the file's fields.
+   - **Our real maximum, for your re-derivation (ADR-351):** about 2,130 B without nesting, which is
+     tight against 2,048 B. Blends of saved blends need more: 8 layers about 2,500 B and 16 layers about
+     3,500 B, on default values. Over the limit, capture drops the smallest shares, so no state over
+     budget is created (ADR-351 ruling 2), and it says so. **We ask for 4 KiB,** Shriek's figure, so
+     that a plain position is never cut and nesting is rarely cut.
+   - Our `/1` text with one busy user pattern is already about 2,630 B with its record, blend or no
+     blend, so we will write a compact `/2`, with `/1` still loading.
 6. **Arp's other discrete keys.** Our continuous keys follow your law as any Morphable key. We propose
    the others be one value under every law, following your per-key pick, except that **related keys flip
    together** as groups, so a group never lands on a combination no corner holds:
    - the scale (`quantize`, `scale_source`, `scale_root`, `scale_deg0..11`);
    - transposition (`steps`, `step_size`, `step_unit`);
    - the chord stage (`chord_unit`, `chord_on1..6`, `chord_shift1..6`, `chord_enabled`);
-   - rate (`rate_mode`, `rate`).
+   - rate (`rate_mode`, `rate`). `step_time_us` is continuous, so it stays outside, but under Quantum
+     `rate_mode = time` can land with another corner's step time. Should it join the group?
    You rejected Quantum flipping per group for your own keys (ADR-324), so this is a real question: is it
    acceptable here, and how should a group be declared? Our SPEC §9's leading-corner rule, 0.05 hysteresis,
    is superseded by your MO-7 and MO-8, and we would amend it.
@@ -88,4 +97,16 @@ Arp adds no setting and no switch. A default patch flips, since `morph.law` defa
 
 The draw, the flattening, ties, repeats and every invariant: `docs/design/morph-blend.md` at
 this filing. The draw is seeded by Arp's own `seed`, so a saved blend sounds the same in any
-patch. **Ball: HYPERSAW** for the seven questions.
+patch, unless `seed` is Exempt there.
+
+**What you would absorb at copy-in:**
+- `setUserPattern` gains a corner, and `process` gains the set;
+- a new parser and writer join the copy-in list, since the core has no text format today;
+- memory rises above today's 95 KiB, by an amount we will measure;
+- CPU is the real risk: the tightest quoted case is about 1.97 % x4 against your 2 % slice (D-042). We
+  will measure it with an alternated A/B and report it. It is not yet known to fit, and if it does not,
+  the blend does not ship in 1.0.
+
+Nothing here is built yet: the design is reviewed, and the spec waits for your answers.
+
+**Ball: HYPERSAW** for the seven questions.
