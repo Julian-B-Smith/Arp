@@ -315,6 +315,14 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
      terminal per note, block-size and sample-rate independence, determinism); weights at a single corner give
      output byte-identical to today's;
   4. the brief to horde for the interface change, shown to the human before it is filed.
+  **Heard and kept 2026-11-02 (D-051).** Design draft: `docs/design/morph-blend.md`; its finding is that horde's
+  per-parameter morph menu can be the switch, so `spec/params.json` need not change. Unconfirmed by horde.
+- **horde's seq 14 (D-051, 2026-11-02), the work it opens, in this order:**
+  1. **The blend's design** (above) settled, so we know whether a new setting would force the presets to be redone.
+  2. **Optional per-key randomize bounds** (approved; alongside): numeric keys, clamped to the legal range, byte-identical
+     with none given; SPEC §15 amended and re-pinned, with a plant.
+  3. **Init and starter presets (B550):** enums by name in a `names` map, `basis` 0, drafted by the lead, judged by the
+     human by ear; then the preset goldens; then the readiness notice.
 
 ## Open questions (blocking — ask the human or horde)
 

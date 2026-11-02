@@ -1395,3 +1395,27 @@ so Arp sees one pattern and never the other corners or the weights.
 
 **What is not decided here:** every rule in (3). The lab prototype picks a
 provisional rule for each, labelled as such, and the design note asks.
+
+## D-051 — horde's seq 14 folded in; the order of the remaining M3 work (RATIFIED by poll, 2026-11-02)
+
+**horde's answers (seq 14, horde ADR-351):**
+- **Enums by name only:** a `names` map beside the `Preset` in horde's corner
+  record holds the 11 enum keys, and they are not also in `absolute`. An unknown
+  name is a refused load.
+- **`basis`:** 0 for the 7 continuous keys of a factory preset.
+- **Arp's own scale** uses the same named control as the song scale, on our 18
+  names; a mask matching no name reads "custom". The control is horde's.
+- **Randomize bounds:** horde asks for the optional per-key bounds (ADR-318).
+- **Automation when an enum list grows:** open at horde (B604). Our literal lists
+  stay append-only.
+
+**Chosen, by poll (each the recommended option):**
+- **Order:** settle the blend first, then write the presets once. The bounds go
+  alongside.
+- **Bounds approved:** optional per numeric key, clamped to the legal range; with
+  none given the output is byte-identical. This approves the interface change and
+  the SPEC §15 amendment. Edge cases come back to the human.
+- **Starter presets:** the lead drafts a small set from the bank, on a listening
+  page; the human keeps, changes or drops each; then the preset goldens are cut.
+- **The blend stays in 1.0** (D-050 stands), after the human heard it. The design
+  note (`docs/design/morph-blend.md`) comes next.
