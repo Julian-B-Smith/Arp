@@ -1435,3 +1435,33 @@ Answered on `docs/design/morph-blend.md`, each as recommended:
   gains a corner (an approved public-interface change).
 
 The chance stays a straight line in the weight, unless listening says otherwise.
+
+## D-053 — The save-any-position contract: flattened patterns; the arp follows horde's morph law (RATIFIED by poll, 2026-11-02)
+
+**The human's contract:** aside from brief crossfades and FX tails, every position on the
+morph grid can be saved as its own corner preset. The blend must honour it, and the human
+asked for a mix that flattens into one pattern and blends again by the same process.
+
+**Chosen, by poll and in the human's words:**
+- **A flattened pattern, stored as layers** (each source with its share; bank patterns by
+  id, user patterns by value), rather than a step table. Over the limit: save anyway, drop
+  the smallest shares, and say so.
+- **"Separate rules for blend and quantum and stepped mode (or just count this as the same
+  for stepped and blend) so that arp can follow the global morph setting."** Blend and
+  Stepped draw; Quantum and Exempt play one corner's whole pattern. This replaces D-052's
+  "the menu is the switch", which misread horde: the menu can only turn it off, and
+  `morph.law` defaults to Quantum.
+- **Arp's own `seed` drives the draw,** so a saved blend sounds the same in any patch. If
+  corners hold different seeds, crossing the flip redraws once (accepted). SPEC §15.7 is
+  amended to match.
+- **One order stream,** and **repeats count over the whole blend** so that moving the puck
+  cannot stop the arp early.
+
+**Amends D-052:** the race's draws are keyed by step content, not by corner. A corner-keyed
+draw cannot save exactly (11,182 of 20,000 steps differ, scratch model). The look-ahead
+follows the draw, the rule the human heard; a flattened pattern has no source to read.
+
+**Corrected claims:** "moving toward a corner only adds that corner's steps" holds only in
+§4.3's weak form. "Nothing in horde's text covers this" was wrong: horde's 1.0 bar has a
+MUST row and its format text says the pattern is discrete, so the brief asks to amend them.
+The critic's REWORK of revision 1 is applied in `docs/design/morph-blend.md` revision 2.
