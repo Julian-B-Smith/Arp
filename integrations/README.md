@@ -39,6 +39,7 @@ move; `status:` is lifecycle; neither does the other's job.
 | HYPERSAW (repo `horde`) | `integrations/arp/notice-chord-stream.md` | seq 5: the `chord` stream (D-018), Q-H7; FYI time mode, library, own scale, freeze. **Filed 2026-10-22** as horde PR #1194; ball HYPERSAW, respond-by 2026-11-13 |
 | autonomous | `integrations/arp/brief.md` | brief `arp-001`: register Arp in the ecosystem tracks. **Filed 2026-10-21** as autonomous PR #60 (path-only); ball autonomous, respond-by 2026-11-04 |
 | HYPERSAW (repo `horde`) | `integrations/arp/notice-m3.md` | seq 7: answers their seq-6 chord question ((b): the played note is `chord`); asks Q-H6, Q-H8, Q-H9, Q-H10 for M3. **Filed 2026-10-24** as horde PR #1214 (path-only); ball HYPERSAW, respond-by 2026-11-13 |
+| HYPERSAW (repo `horde`) | `integrations/arp/brief-morph-blend.md` | seq 15: the pattern follows horde's morph law, every morph position stays saveable (D-050, D-053, D-054); seven questions. **Filed 2026-11-02** as horde PR #1343; ball HYPERSAW, respond-by 2026-11-13 |
 | FOUNDATIONS | — | not filed: modules inside horde reach FOUNDATIONS through horde (D-029) |
 
 Working copies are kept in `docs/filings/`; the copy in the correspondent's tree is the record (once their resident merges the PR).
