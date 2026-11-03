@@ -467,8 +467,8 @@ void testPresetLoad() {
 }
 
 // ====================================================================== 4. the pattern-bank selection (and the order style) as a morph target
-// horde RESOLVES a morph and hands Arp integer snapshots (SPEC 9); the harness model below is the same rule as test_m2b.cpp's MorphModel (pinned there by its
-// own known answers): a discrete setting takes the leading corner, which must lead by MORE than 0.05 to take over; ties go to the lower corner.
+// horde RESOLVES a morph and hands Arp integer snapshots (SPEC 9); the harness model below is the same stand-in as test_m2b.cpp's MorphModel (pinned there by its
+// own known answers), not horde's per-key pick (D-055): a discrete setting takes the leading corner, which must lead by MORE than 0.05 to take over; ties go to the lower corner.
 struct MorphModel {
   Settings A, B;
   int cur = 0;

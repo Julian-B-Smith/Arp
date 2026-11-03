@@ -2,7 +2,8 @@
 # A deliberate spec change = the human's gate + a decision record + a re-pin of these lines in the same change.
 # Re-pinned 2026-10-29 for SPEC §15 and spec/randomize.json (Arp's own randomize; the human's poll D-048, recorded by the lead),
 # merged with main's D-045 wording re-pin of SPEC.md and params.json.
-3aa4f421e9aeccefc9d6b8e86f42ff3a5acd8428a82ed32ce64dd260af249fd4  spec/SPEC.md
+# Re-pinned 2026-11-03 for SPEC §4.9, §6, §9, §12: horde's per-key morph pick and Arp's four flip groups (the human's polls, D-055, D-056).
+25a2ade5f0a874133725b21b4e5675047b989bcd8a2bd67a1305906911175365  spec/SPEC.md
 2274b790085b34531c68a7d94710f6bd32b7197ac700215ad2f9e54ac6d2cdfd  spec/params.json
 6925aa22be0c9100c09b4ad280e2bda911ccc39c95f911c0acbde304336f8490  spec/bank/starter.json
 b9bf451c0633355b825b7f72e98988594f29a0cca9bed175cacf53da8cc2c015  spec/randomize.json

@@ -4,8 +4,9 @@
 > a critic's two REWORKs and the human's contract: aside from brief crossfades and FX
 > tails, every position on the morph grid can be saved as its own corner preset.
 >
-> **Status: DESIGN, reviewed by a critic (three rounds; the last HIGH applied here), waiting on horde.** Nothing here is in
-> `spec/`. horde's rows are read from its origin/main at `4b2fdae`. The scripts
+> **Status: DESIGN, reviewed by a critic (three rounds), answered by horde 2026-11-03 (seq 16,
+> ADR-357; D-055).** Ships in 1.0 only if our A/B fits 2 % and horde's CPU pass and morph are done.
+> Built behind a compile-time flag, off by default. Only §9's key rule is in `spec/`; the blend is not. horde's rows are read from its origin/main at `4b2fdae`. The scripts
 > `docs/design/morph-blend-model.mjs` and `-state.mjs` are scratch evidence, not gates:
 > they test which step is chosen and how big the state is, not the core, ties or audio.
 
@@ -37,14 +38,15 @@ Consequences:
   pattern. A Quantum flip between two flattened patterns swaps one distribution for another.
 - **Same pattern on every corner** (horde's default, RS-6.3) gives one setting, so no draw.
 - **Count** (Two or Four, MO-11, MO-17) needs no code here: Arp draws over the set that arrives.
-- **The corner on the one-value path.** IF-12 sends a one-value key as a `Param`, with no
-  corner, so `pattern = user` cannot name which corner's user pattern it means. The brief
-  asks for a one-entry set with its id, or a corner beside the value.
+- **Always a set (seq 16).** horde sends `arp/pattern` as a set under every law: Quantum, Exempt
+  and morph off send one entry at weight 1 with the corner's id, so `pattern = user` always
+  names a corner. A corner's blob is published off-thread before any set can name its edited value.
 - **Arp's other discrete settings (D-054):** one value under every law, following horde's
   key-by-key pick, except that **related settings flip together** as groups, so a group
   never lands on a combination no corner holds: the scale, transposition, chord and rate
-  groups (§15.6 already joins some of these). This replaces D-021's single leading-corner
-  rule, by the human's ruling, and needs horde's agreement. SPEC §6 and §9 are amended to match.
+  groups (§15.6 already joins some of these). `arp_enabled` flips with the chord group, or a pad
+  region could be silent with neither corner silent (D-056). A degree landing with `quantize` off is accepted. This replaces D-021's single leading-corner
+  rule, by the human's ruling, and horde agreed, for Arp only (ADR-357). SPEC §6 and §9 are amended (D-055). `step_time_us` stays out of the rate group.
 - **Continuous settings** follow horde's law too: blended under Blend, the pick's value
   under Quantum (MO-7). They are not a change on our side.
 
@@ -65,12 +67,11 @@ Consequences:
 | 4 busy, distinct, the most four plain corners hold | 4,885 B | 549 B | 1,963 B |
 | 8 busy, only by blending saved blends | 9,688 B | 1,061 B | 2,483 B |
 
-- **Budget.** RS-6.12 gives 2,048 B per corner, provisional. The table uses default values.
-  **With every setting at its widest and four busy layers:** 1,957 B as a corner record with
-  integers, 2,029 B with file fields; 2,054 B and 2,126 B if horde stores floats. So a position
-  between four plain corners fits only narrowly, and may not, depending on what horde counts and
-  how it stores values; the brief asks. Today's `/1` text with one busy pattern is about 2,630 B
-  and is already over; `/2` fixes that too.
+- **Budget.** RS-6.12 gives 2,048 B per corner, provisional; plan on 4 KiB, ruled with B603. The
+  table uses default values. horde counts the whole corner record and stores integers as integers
+  (seq 16), so with every setting at its widest: no blob 1,372 B, four busy layers **1,955 B**, 8 layers
+  2,475 B, 16 layers 3,499 B. A position between four plain corners fits even at 2 KiB. Today's `/1` text, with its record: one busy pattern 2,887 B, and every
+  field written out 3,431 B. Both are over 2 KiB and within the planned 4 KiB, so that plan matters if the blend misses 1.0.
 - **Over the budget or the layer cap (D-054):** normally reachable only by blending saved blends.
   Capture takes a byte limit from horde, since it cannot see the rest of the record. It drops the
   smallest shares, rescales, and returns `approximate`, so the state can never exceed the budget
@@ -170,9 +171,9 @@ shrinks within a gesture; a related group never lands on a combination no corner
 
 - **What is not proven.** The model tests selection only. "Saved equals live" with ties, holds and
   repeats rests on reasoning (both run one state machine) until the §5 gate exists.
-- **The budget's margin.** See §3: at most 19 B spare with integer values and file fields.
+- **horde's date.** The second ship condition, horde's CPU pass and morph, has no date. The work here can be good and still miss 1.0.
 - **CPU.** The tightest quoted case is about 1.97 % x4 against 2 % (D-042), inside the
-  noise. Measure with D-039's alternated A/B and a blend bench family; include per-block
+  noise. Measure with D-041's alternated A/B and a blend bench family; include per-block
   cost, which dominates at block 16 and 192 kHz. The worst step is a capped look-ahead over many layers, so the peak matters as well as the average.
 - **Cutoff, 2026-12-11.** This is a new format, a capture call, core work and a change to
   horde's resolver and 1.0 bar. **Fallback, losing nothing:** Arp ships the one-value
@@ -181,5 +182,5 @@ shrinks within a gesture; a related group never lands on a combination no corner
 
 ## 7. For horde: the brief (`docs/filings/hypersaw-brief-morph-blend.md`)
 
-Seven questions: the group, how the set and the corner reach Arp, the two texts to amend, a
+Filed as seq 15, answered as seq 16. Seven questions: the group, how the set and the corner reach Arp, the two texts to amend, a
 declared morph class, capture and what the budget counts, the other keys and their groups, and the face.

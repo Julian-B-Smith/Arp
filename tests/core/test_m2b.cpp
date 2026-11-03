@@ -6,10 +6,10 @@
 // 8 kHz and 120 bpm throughout unless a check says otherwise: 1 beat = 4000 samples = 15360 ticks, a 1/16 step = 1000 samples =
 // 3840 ticks, a 4/4 bar = 16000 samples = 61440 ticks.
 //
-// About the morph: horde RESOLVES a morph (SPEC 9: discrete settings take the leading corner with 0.05 hysteresis, continuous ones
-// blend) and hands Arp integer snapshots, so the core has no morph code and no interface for one. The `MorphModel` below is a
-// HARNESS model of horde's rule, used to generate morph-driven snapshots; its own known answers pin the threshold, the hysteresis, the
-// tie and the blend so the sessions cannot drift from the spec. What the CORE owes (and these checks test) is the landing of the
+// About the morph: horde RESOLVES a morph (SPEC 9) and hands Arp integer snapshots, so the core has no morph code and no interface
+// for one. The `MorphModel` below is a HARNESS stand-in for horde: the leading corner with 0.05 hysteresis, SPEC 9's rule until D-055
+// replaced it with horde's per-key pick. The core only sees values change, so the stand-in still tests what the core owes. It is used to generate morph-driven snapshots; its own known answers pin the threshold, the hysteresis, the
+// tie and the blend so the sessions cannot drift from that stand-in. What the CORE owes (and these checks test) is the landing of the
 // resulting changes: T8 / T9, Q-A2, and one terminal per note over every discrete switch.
 #include "test_m2b.h"
 
@@ -457,7 +457,7 @@ struct MorphModel {
 };
 
 void testMorphModel() {
-  std::puts("Morph (SPEC 9, Q-A1): the harness model of horde's rule, pinned to the spec's numbers");
+  std::puts("Morph: the harness stand-in for horde's rule (the pre-D-055 SPEC 9), pinned to its numbers");
   Settings a, b;
   a.gate = 40; b.gate = 120; a.order = Order::Up; b.order = Order::Down; a.swing = 500; b.swing = 750; a.velFixed = 1; b.velFixed = 2;
   // discrete: a corner switch needs the leading corner's weight to exceed the current one's by MORE than 0.05; ties go to the lower corner

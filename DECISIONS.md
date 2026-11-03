@@ -1483,3 +1483,39 @@ The critic's re-check of revision 2 was REWORK. Each answer as recommended:
 
 **Found on the way:** today's `/1` text with one busy user pattern is about 2,630 B with its
 record, already over RS-6.12's 2 KiB, blend or no blend.
+
+## D-055 — horde's seq 16 folded in; a build flag; SPEC §9 amended; the blend's CPU first (RATIFIED by poll, 2026-11-03)
+
+**horde's answer (seq 16, horde ADR-357): yes, with a check before it ships.** All seven
+questions answered as we asked, except that 4 KiB is a planning figure, ruled with every
+module's in horde's B603 (replies due 2026-11-20). The blend ships in 1.0 only if our measured
+A/B fits the 2 % slice **and** horde's CPU pass and the morph are done, for which horde has no
+date. Otherwise Arp ships the one-value behaviour, the blend follows after 1.0, and saved Blend
+patches get a migration. The go or no-go is the human's.
+
+**Chosen, by poll:**
+- **Order: the blend's CPU first** (not the recommendation, which was presets and bounds first).
+  Enough of the blend is built to measure it; then the presets and bounds. The cost was stated:
+  the presets and bounds start later, against the 2026-12-11 cutoff.
+- **"Behind your own switch" reads as a build flag, not a setting.** Compiled in only when turned
+  on, off until the go or no-go. `spec/params.json`, `module_version` and the presets are unaffected.
+  This is our reading of horde's words; our reply asks them to confirm it.
+- **SPEC §9 amended now** (with §6 and §12): horde's per-key pick and latch replace D-021's single
+  leading corner, and four groups flip together. Arp's duties and output for given settings do not
+  change, since horde resolves these values. `spec/params.json`'s note keeps the old wording, because
+  editing it would change `module_version`; §9 says it outranks that note.
+
+## D-056 — Arp on flips with the chord group; degrees accepted; a flag-on build in verify (RATIFIED by poll, 2026-11-03)
+
+A critic of D-055's amendment found that per-group flips make new states reachable. Each answer as recommended:
+- **`arp_enabled` flips with the chord group,** so the arp and the chord stage are never both off unless a corner
+  holds that. Otherwise part of the pad would play nothing with neither corner silent, a state randomize already
+  refuses (§15.6). This extends the group horde agreed; our reply asks them to add it.
+- **Accepted:** a degree unit landing with `quantize` off, where a degree plays as one semitone. Notes still play.
+- **`./verify` gains a flag-on core build and suite** with the CPU step (a protected change, approved here). The
+  flag-off suite and digests stay as they are.
+
+**Corrected:** the "about 2,630 B" for today's `/1` format, in D-054, the design and the draft reply, was added up from
+two figures, not measured. Measured, with its record: 2,887 B for one busy pattern, 3,431 B with every field written
+out. D-055's "the go or no-go is the human's" comes from horde's ROADMAP, B610.
+
