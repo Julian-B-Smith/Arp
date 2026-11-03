@@ -1365,3 +1365,121 @@ recommended:
   flips too often.
 - **Listening:** the lab's Randomize panel is tuned by ear after #43 merges,
   and any weight changes come as a follow-up.
+
+## D-050 — Stochastic pattern blending under morph: a freeze exception for 1.0 (RATIFIED by poll, 2026-10-30)
+
+The human asked for "an element of stochastic blending to the morph between
+arp patterns". Today horde's morph resolves `pattern` like any discrete
+setting: the leading corner's value, with 0.05 hysteresis (SPEC §9, D-021),
+so Arp sees one pattern and never the other corners or the weights.
+
+**Chosen, by poll (each the recommended option unless noted):**
+- **When: unfreeze for 1.0** (not the recommendation, which was to record it
+  for after 1.0). A **freeze exception**, as D-036 and D-044 were. The cost
+  was stated before the choice: a spec amendment, a change to horde's
+  interface, core + lab + tests, all before the 2026-12-11 cutoff, with the
+  factory presets and the readiness notice still ahead.
+- **Granularity: every step.** Each step independently plays one corner's
+  pattern step, by a seeded draw; a corner's chance is its morph weight.
+- **Scope: step patterns only.** The order style, rate and every other
+  discrete setting still switch the ordinary way (D-021).
+- **Weights: horde's corners drive it.** Up to four patterns. horde sends
+  every corner's pattern settings and the four weights; this is an interface
+  change, briefed to horde once the design is settled.
+- **Order of work:** (1) this decision and a ROADMAP item; (2) a "stochastic
+  blend" morph rule in the lab, to hear it before anything is specced;
+  (3) a design note with the open questions put to the human (ties across
+  corners, patterns of different lengths, which settings travel with a
+  pattern, the user pattern, the draw lane); (4) a SPEC amendment for the
+  human to ratify; (5) core, invariant tests with plants, the brief to horde.
+
+**What is not decided here:** every rule in (3). The lab prototype picks a
+provisional rule for each, labelled as such, and the design note asks.
+
+## D-051 — horde's seq 14 folded in; the order of the remaining M3 work (RATIFIED by poll, 2026-11-02)
+
+**horde's answers (seq 14, horde ADR-351):**
+- **Enums by name only:** a `names` map beside the `Preset` in horde's corner
+  record holds the 11 enum keys, and they are not also in `absolute`. An unknown
+  name is a refused load.
+- **`basis`:** 0 for the 7 continuous keys of a factory preset.
+- **Arp's own scale** uses the same named control as the song scale, on our 18
+  names; a mask matching no name reads "custom". The control is horde's.
+- **Randomize bounds:** horde asks for the optional per-key bounds (ADR-318).
+- **Automation when an enum list grows:** open at horde (B604). Our literal lists
+  stay append-only.
+
+**Chosen, by poll (each the recommended option):**
+- **Order:** settle the blend first, then write the presets once. The bounds go
+  alongside.
+- **Bounds approved:** optional per numeric key, clamped to the legal range; with
+  none given the output is byte-identical. This approves the interface change and
+  the SPEC §15 amendment. Edge cases come back to the human.
+- **Starter presets:** the lead drafts a small set from the bank, on a listening
+  page; the human keeps, changes or drops each; then the preset goldens are cut.
+- **The blend stays in 1.0** (D-050 stands), after the human heard it. The design
+  note (`docs/design/morph-blend.md`) comes next.
+
+## D-052 — The blend's four design rules (RATIFIED by poll, 2026-11-02)
+
+Answered on `docs/design/morph-blend.md`, each as recommended:
+- **On/off:** horde's per-parameter morph menu is the switch: Blend and the stepped
+  hybrid draw per step; Quantum and Exempt send one pattern, today's behaviour.
+  Arp adds no setting, so `spec/params.json` and `module_version` do not change.
+  **Conditional on horde agreeing;** if they do not, it returns to the human.
+- **Ties:** the note keeps its promise. The playing step holds its `t` tie steps
+  whatever is drawn; a tie step outside a hold acts as a rest.
+- **The draw:** a race among corners, on lane 5, integer only. Raising a corner's
+  weight can only move steps to that corner.
+- **User patterns:** four preallocated slots, one per corner; `setUserPattern`
+  gains a corner (an approved public-interface change).
+
+The chance stays a straight line in the weight, unless listening says otherwise.
+
+## D-053 — The save-any-position contract: flattened patterns; the arp follows horde's morph law (RATIFIED by poll, 2026-11-02)
+
+**The human's contract:** aside from brief crossfades and FX tails, every position on the
+morph grid can be saved as its own corner preset. The blend must honour it, and the human
+asked for a mix that flattens into one pattern and blends again by the same process.
+
+**Chosen, by poll and in the human's words:**
+- **A flattened pattern, stored as layers** (each source with its share; bank patterns by
+  id, user patterns by value), rather than a step table. Over the limit: save anyway, drop
+  the smallest shares, and say so.
+- **"Separate rules for blend and quantum and stepped mode (or just count this as the same
+  for stepped and blend) so that arp can follow the global morph setting."** Blend and
+  Stepped draw; Quantum and Exempt play one corner's whole pattern. This replaces D-052's
+  "the menu is the switch", which misread horde: the menu can only turn it off, and
+  `morph.law` defaults to Quantum.
+- **Arp's own `seed` drives the draw,** so a saved blend sounds the same in any patch. If
+  corners hold different seeds, crossing the flip redraws once (accepted). SPEC §15.7 is
+  amended to match.
+- **One order stream,** and **repeats count over the whole blend** so that moving the puck
+  cannot stop the arp early.
+
+**Amends D-052:** the race's draws are keyed by step content, not by corner. A corner-keyed
+draw cannot save exactly (11,182 of 20,000 steps differ, scratch model). The look-ahead
+follows the draw, the rule the human heard; a flattened pattern has no source to read.
+
+**Corrected claims:** "moving toward a corner only adds that corner's steps" holds only in
+§4.3's weak form. "Nothing in horde's text covers this" was wrong: horde's 1.0 bar has a
+MUST row and its format text says the pattern is discrete, so the brief asks to amend them.
+The critic's REWORK of revision 1 is applied in `docs/design/morph-blend.md` revision 2.
+
+## D-054 — The critic's three rulings, and compact storage (RATIFIED by poll, 2026-11-02)
+
+The critic's re-check of revision 2 was REWORK. Each answer as recommended:
+- **Repeats:** a repeat lasts as long as the longest pattern in the blend, and the count
+  never shrinks until the next gesture. This replaces D-053's combined count, which had a
+  hole: leaving a corner could shrink it and stop the arp at once.
+- **Storage:** a compact form, 5 bytes a step. Any position between four plain corners then
+  fits 2 KiB, if the budget counts the whole record (1,963 B measured; horde is asked).
+  "Save anyway and say so" stands, now only for blends of saved blends.
+- **Arp's other discrete keys:** follow horde's per-key pick, with related settings flipping
+  together as groups (scale, transposition, chord, rate). **This replaces D-021's single
+  leading-corner rule** and needs horde's agreement.
+- **Ties skew the shares,** accepted: a corner's chance equals its weight before ties. This
+  qualifies D-050's "a corner's chance is its morph weight".
+
+**Found on the way:** today's `/1` text with one busy user pattern is about 2,630 B with its
+record, already over RS-6.12's 2 KiB, blend or no blend.

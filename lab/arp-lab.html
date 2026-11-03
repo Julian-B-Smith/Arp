@@ -167,12 +167,14 @@
         <label>Import <input type="file" id="libImport" accept=".json,application/json"></label></div>
         <div id="libLists"></div></div></div>
     <div class="card"><h2>Morph (A / B corners)</h2>
-      <div class="q">Copy the current settings into corner A or B, then slide. Continuous settings blend linearly; discrete ones follow SPEC 9 Q-A1.</div>
+      <div class="q">Copy the current settings into corner A or B, then slide. Continuous settings blend linearly; discrete ones follow SPEC 9 Q-A1. <b>While morph is on, the Settings card does not drive the output</b>: change a setting, then copy it into A or B.</div>
       <div class="bar"><button id="copyA">A &larr; current</button><button id="copyB">B &larr; current</button>
         <label><input type="checkbox" id="morphOn"> morph on</label>
+        <label><input type="checkbox" id="morphBlend"> stochastic pattern blend <span class="chtag">prototype, D-050</span></label>
         <label>Q-A1 rule <select id="morphRule"><option value="hyst">largest weight + 0.05 hysteresis (spec)</option><option value="plain">largest weight, no hysteresis</option><option value="from0">B as soon as the slider leaves A</option></select></label></div>
       <div class="bar"><label>A <input type="range" id="morphW" min="0" max="100" value="50" style="width:260px"> B</label><span id="morphWv">B 50% / A 50%</span><span id="cornerNow" class="eff"></span></div>
-      <div class="bar"><button id="demoA1">load Q-A1 demo</button><button id="demoA2">load Q-A2 demo</button></div>
+      <div class="q">Stochastic pattern blend (prototype, not in the spec): each step plays A's or B's step pattern, B with chance = B's weight. Only the step pattern blends; the order style and every other discrete setting still switch per Q-A1. Provisional: each pattern keeps its own position; ties look ahead with the current weight.</div>
+      <div class="bar"><button id="demoA1">load Q-A1 demo</button><button id="demoA2">load Q-A2 demo</button><button id="demoBlend">load blend demo</button></div>
     </div>
     <div class="card"><h2>Listen and decide: pre-roll</h2>
       <div class="bar">
@@ -2410,6 +2412,10 @@ class ArpCore {
     this.stepDefaults = this.bank.step_defaults || ARP_BANK.step_defaults;
     // lab.opts are the lab's listening toggles (Q-A5), not spec behaviour changes.
     this.lab = { plant: {}, opts: { playPreroll: true } };
+    // PROTOTYPE, not in the spec (D-050): stochastic pattern blending under morph. null (the default) is the spec's behaviour, byte-identical.
+    // Set by the adapter per block to { A, B, wB }: two pattern ids and B's weight in permille. Each step then plays A's or B's step data,
+    // drawn on lane 5 (a lane the spec does not have yet). Every other setting, `pattern` itself included, still resolves per SPEC 9.
+    this.blend = null;
     for (const p of ARP_PLANTS) this.lab.plant[p] = false;
     this.sr = 0;
     this._dropped = false; this._doubled = false;   // plant bookkeeping; survives reset() so a plant fires once per instance
@@ -2984,6 +2990,18 @@ class ArpCore {
   _pattern(id) { return id === "user" ? this._up.slots[this._up.r] : this.patMap.get(id) || this.patMap.get("none"); }
   _plen(pat) { return pat.n !== undefined ? pat.n : pat.steps.length; }   // the user pattern's 16-step buffer is longer than its length
   _step(pat, j) { return Object.assign({}, this.stepDefaults, pat.steps[mod(j, this._plen(pat))]); }
+  // D-050 PROTOTYPE. The pattern step kAbs plays under a blend: a pure function of (seed, kAbs) and the CURRENT weight, so the tie look-ahead can
+  // ask about future steps. Provisional rules, each an open question in the design note: every corner's pattern keeps its own position
+  // (j = k mod its own length); a look-ahead uses today's weight, so a weight that moves before a looked-ahead step arrives can turn a tie into a
+  // played step (the earlier note still ends at its scheduled off: one terminal) or a played step into a tie (the step is silent).
+  _blendCorner(kAbs) {   // 1 = B, 0 = A, -1 = no blend
+    const b = this.blend;
+    return b ? ((this._draw(this.active.seed, kAbs, 5) % 1000) < b.wB ? 1 : 0) : -1;
+  }
+  _blendPat(kAbs) {
+    const c = this._blendCorner(kAbs);
+    return c < 0 ? null : this._pattern(c ? this.blend.B : this.blend.A);
+  }
   _draw(seed, x, lane) {
     if (this.lab.plant.timeInDraw) seed = (seed ^ (plantedDrawTicks++)) >>> 0;
     return draw(seed, x, lane, this.epoch);
@@ -3006,7 +3024,8 @@ class ArpCore {
       if (b !== this.lastBar) { this.lastBar = b; this.anchorK = cdiv(this.barPhase + b * this.barTicks, L); this.m = 0; }
     }
     const aK = this._rs() === "free" ? 0 : this.anchorK;
-    const k = kAbs - aK, pat = this._pattern(a.pattern), j = mod(k, this._plen(pat));
+    // D-050 PROTOTYPE: under a blend the step data comes from the drawn corner's pattern; the cycle length (repeats) stays the resolved pattern's.
+    const k = kAbs - aK, basePat = this._pattern(a.pattern), bc = this._blendCorner(kAbs), bp = bc < 0 ? null : this._pattern(bc ? this.blend.B : this.blend.A), pat = bp || basePat, j = mod(k, this._plen(pat));
     const st = this._step(pat, j);
     const H = this._heldArp();
     // on-times anchor at kAbs*L (SPEC 5.1, never k*L); swing parity from kAbs (G3)
@@ -3026,7 +3045,7 @@ class ArpCore {
     // r2.11: once spent the arp is `exhausted`, a LATCHED flag (cleared by a gesture start, a key-adding NoteOn, T6/T7 with keys held (E12), T10; a morph of repeats, steps or pattern never
     // revives it). Spent steps still consumed the once-guard in _visit, as silent rests, so a later gesture sees no burst of overdue steps. P comes from H'.
     // C is also set the moment H' becomes non-empty (_updateCycle, E11), so a chord tapped and released between two steps has its own cycle length.
-    if (H.length) this.lastC = this._cycleLength(pat, H.length);   // worked out whenever keys are held, whatever `repeats` is, so a later repeats morph never reads an older gesture's cycle length
+    if (H.length) this.lastC = this._cycleLength(basePat, H.length);   // worked out whenever keys are held, whatever `repeats` is, so a later repeats morph never reads an older gesture's cycle length
     if (a.repeats > 0 && (H.length || (this.lastC !== null && !P.repeatsPauseWhileEmpty)) && !P.repeatsNeverStop && (!this.exhausted || P.morphRevives)) {
       this.exhausted = this.repeatSteps >= a.repeats * this.lastC;   // (plant morphRevives re-evaluates this every step, so raising `repeats` revives the arp)
     }
@@ -3045,12 +3064,12 @@ class ArpCore {
     if (st.tie && !P.tieAtTieStep) { kind = "tie"; trig(); }   // the tie was honoured by look-ahead at the playing step
     else if (st.on && fires && H.length) {
       kind = "play";
-      this._play(kAbs, j, pat, st, H, onT, ord, fires);
+      this._play(kAbs, j, pat, st, H, onT, ord, fires, bp ? (o => this._step(this._blendPat(kAbs + o), k + o)) : null);
       if (this._pickOf(st) === "order" || P.pickAdvancesM) this.m++;   // SPEC 4.3: only `order` picks consume the order stream, even when every key was dropped
       trig();
     } else if (fires && st.trig) { kind = "trig"; trig(); }
     else if (P.advanceOnRest) this.m++;
-    this.lastSteps.push({ s: so, kAbs, k, j, mBefore, mAfter: this.m, fires, kind, ord, pick: this._pickOf(st) });   // ord: lets the UI tie a note to its step (accents)
+    this.lastSteps.push({ s: so, kAbs, k, j, mBefore, mAfter: this.m, fires, kind, ord, pick: this._pickOf(st), corner: bc < 0 ? null : bc ? "B" : "A" });   // ord: lets the UI tie a note to its step (accents); corner: D-050 prototype
   }
 
   // SPEC 4.8: C = plays > 0 ? Ls * (P*(steps+1) / gcd(P*(steps+1), plays)) : Ls, for e >= 1 keys of H'. `plays` is a static count (prob is ignored).
@@ -3070,7 +3089,7 @@ class ArpCore {
   // The step's pick as the core obeys it. Plant ignorePick: every pick is read as `order` (U1's control).
   _pickOf(st) { return this.lab.plant.ignorePick ? "order" : normPick(st.pick); }
 
-  _play(kAbs, j, pat, st, H, onT, ord, fires) {
+  _play(kAbs, j, pat, st, H, onT, ord, fires, look) {
     const P = this.lab.plant, a = this.active, S = this.incoming, L = this.L, D = this.D;
     // Plant transposeMerged: the r2.6 merged-octaves range (copies of H at 0..steps shifts, one sorted list) instead of repeated passes (X1).
     const merged = P.transposeMerged && a.steps > 0;
@@ -3128,8 +3147,10 @@ class ArpCore {
       seen.set(x.q, o); out.push(o);
     }
     // ties by look-ahead (SPEC 5.2): consecutive tie steps after this one, cyclic, ignoring prob
-    let t = 0; const plen = this._plen(pat);
-    if (!P.tieAtTieStep) while (t < plen - 1 && this._step(pat, j + 1 + t).tie) t++;
+    // D-050 PROTOTYPE: under a blend, `look` reads each later step from its own drawn corner; 63 caps the run (no pattern exceeds 64 steps).
+    const at = look || (o => this._step(pat, j + o));
+    let t = 0; const tMax = look ? 63 : this._plen(pat) - 1;
+    if (!P.tieAtTieStep) while (t < tMax && at(1 + t).tie) t++;
     if (t > 0) this.rows.T12++;
     const on0 = onT(kAbs), span = onT(kAbs + 1) - on0, r = clamp(st.ratchet | 0, 1, 4);
     // SPEC 4.4 / 5.2 / 4.9 (D-036): note randomness; continuous settings, read now. At 0 no draw is made. Draw position: the grid's kAbs, the sub-note, the note's index.
@@ -3142,7 +3163,7 @@ class ArpCore {
       if (tied) {   // the LAST sub-note runs on to the end of the last tied step
         const x = kAbs + t, sp = onT(x + 1) - onT(x);
         tailOn = onT(x);
-        tail0 = Math.max(1, fdiv(sp * S.gate * this._step(pat, j + t).gate, 10000));
+        tail0 = Math.max(1, fdiv(sp * S.gate * at(t).gate, 10000));
       }
       for (const o of out) {
         let vel = o.vel, len = len0, tail = tail0;
@@ -3874,12 +3895,12 @@ function arpIntsToSettings(a) {
   // ---- state ---------------------------------------------------------------
   const state = {
     cur: Object.assign(defaultSettings(), { enabled: true }),
-    morph: { on: false, A: null, B: null, w: 0.5, rule: "hyst", corner: 0 },
+    morph: { on: false, A: null, B: null, w: 0.5, rule: "hyst", corner: 0, blend: false },
     scale: { root: 0, mask: 0xAB5 },
     bpm: 120, preroll: false,
     user: defaultUser(),            // "Build your own" (SPEC 4.6): the UI's copy; the core gets it through setUserPattern
   };
-  const eng = { ctx: null, core: new ArpCore(), host: null, sr: 0, t0: 0, next: 0, q: [], hostQ: [], voices: new Map(), timer: 0, master: null,
+  const eng = { ctx: null, core: new ArpCore(), trail: [], host: null, sr: 0, t0: 0, next: 0, q: [], hostQ: [], voices: new Map(), timer: 0, master: null,
     stepQ: [], logLines: [], logDirty: false, playing: false };
   const pressed = new Map();       // key -> live press count (on-screen highlight)
   const controls = {};             // setting key -> { set(value), eff(el) }
@@ -3913,6 +3934,11 @@ function arpIntsToSettings(a) {
     const lead = wB > wA ? 1 : 0, leadW = lead ? wB : wA, curW = m.corner ? wB : wA;
     if (lead !== m.corner && leadW - curW > 0.05) m.corner = lead;
     return m.corner;
+  }
+  // D-050 PROTOTYPE: the blend input for the core, or null (the spec's behaviour). Two corners here; horde has four.
+  function blendInput() {
+    const m = state.morph;
+    return m.on && m.blend && m.A && m.B ? { A: m.A.pattern, B: m.B.pattern, wB: Math.round(m.w * 1000) } : null;
   }
   function effective() {
     const m = state.morph;
@@ -3979,9 +4005,11 @@ function arpIntsToSettings(a) {
     const at = eng.next;
     for (const ch of eng.hostQ.splice(0)) eng.host.set(at, ch);
     const ins = eng.q.splice(0);
+    eng.core.blend = blendInput();
     const evs = eng.core.process({ n: BLOCK, transport: eng.host.at(at), settings: effective(), scale: state.scale, in: ins });
     const base = eng.t0 + at / eng.sr;
     for (const s of eng.core.lastSteps) {
+      if (s.corner) { eng.trail.push(s.corner); if (eng.trail.length > 16) eng.trail.shift(); }   // D-050 prototype: which corner each step came from
       eng.stepQ.push({ time: base + s.s / eng.sr, j: s.j, kind: s.kind, pat: eng.core.active.pattern });
       roll.steps.push({ time: base + s.s / eng.sr, j: s.j, kind: s.kind });
       roll.stepOf.set(s.ord, { pat: eng.core.active.pattern, j: s.j });
@@ -4513,6 +4541,13 @@ function arpIntsToSettings(a) {
     $("morphOn").addEventListener("change", ev => { m.on = ev.target.checked; if (m.on) { if (!m.A) m.A = Object.assign({}, state.cur); if (!m.B) m.B = Object.assign({}, state.cur); } });
     $("morphW").addEventListener("input", ev => { m.w = Number(ev.target.value) / 100; $("morphWv").textContent = "B " + Math.round(m.w * 100) + "% / A " + Math.round((1 - m.w) * 100) + "%"; });
     $("morphRule").addEventListener("change", ev => { m.rule = ev.target.value; });
+    $("morphBlend").addEventListener("change", ev => { m.blend = ev.target.checked; });
+    $("demoBlend").addEventListener("click", () => {
+      m.A = Object.assign({}, state.cur, { pattern: "three_three_two" }); m.B = Object.assign({}, state.cur, { pattern: "roll_end" });
+      state.cur = Object.assign({}, m.A); syncControls(state.cur); m.on = true; m.blend = true; $("morphOn").checked = true; $("morphBlend").checked = true;
+      eng.trail.length = 0;
+      status("Blend demo: A = 3-3-2 (sparse), B = roll end (every step, ratchets at the end). Hold a chord and slide; the ends play A or B alone. With morph on, the Settings card does not drive the output: copy into A or B.");
+    });
     $("demoA1").addEventListener("click", () => {
       m.A = Object.assign({}, state.cur, { order: "up", pattern: "none" }); m.B = Object.assign({}, state.cur, { order: "down", pattern: "gallop" });
       state.cur = Object.assign({}, m.A); syncControls(state.cur); m.on = true; $("morphOn").checked = true; status("Q-A1 demo: A = up/plain, B = down/gallop. Slide across the middle with a chord held.");
@@ -4821,7 +4856,7 @@ function arpIntsToSettings(a) {
     const c = eng.core;
     $("coreStatus").textContent = eng.ctx ? "clock " + c.clock + (c.clock === "free" ? (c.freeRunning ? " (running, epoch " + c.epoch + ")" : " (idle)") : "") +
       " | sounding " + c.sounding.length + " | refused " + c.counters.refused + " | dropped keys " + c.counters.keysDropped : "audio not started";
-    if (state.morph.on) $("cornerNow").textContent = "discrete corner now: " + (state.morph.corner ? "B" : "A");
+    if (state.morph.on) $("cornerNow").textContent = "discrete corner now: " + (state.morph.corner ? "B" : "A") + (state.morph.blend ? "; pattern drawn per step, last 16 steps: " + (eng.trail.join("") || "(none yet)") : "");
   }
   function status(msg) { $("status").textContent = msg; }
 

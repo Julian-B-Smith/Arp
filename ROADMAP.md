@@ -304,6 +304,31 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
     note, the README, the lab, the manifest; spec re-pinned; no behaviour change.
   - **Bank-pattern goldens** cut and protected (D-046); the preset goldens follow the presets.
   - **The manual:** fill in the input-rate OPEN note with D-042's 1,000.
+- **Stochastic pattern blending under morph (D-050, 2026-10-30, a freeze exception for 1.0).** Each step plays one
+  morph corner's step pattern, drawn with chance = that corner's weight; horde's four corners drive it; step patterns
+  only. **Acceptance criteria (proposed; the design comes first):**
+  1. the lab: a "stochastic blend" morph rule on the A/B card, its provisional rules labelled, heard by the human;
+  2. a design note (`docs/design/morph-blend.md`) whose open questions (ties across corners, patterns of different
+     lengths, which settings travel with a pattern, the user pattern, the draw lane, the interface) are answered by
+     the human, reviewed by a critic with no HIGH open;
+  3. a SPEC amendment ratified by the human and re-pinned; the core with invariant tests and must-fail plants (one
+     terminal per note, block-size and sample-rate independence, determinism); weights at a single corner give
+     output byte-identical to today's;
+  4. the brief to horde for the interface change, shown to the human before it is filed.
+  **Heard and kept 2026-11-02 (D-051).** Design draft: `docs/design/morph-blend.md`; its finding is that horde's
+  per-parameter morph menu can be the switch, so `spec/params.json` need not change. Unconfirmed by horde.
+  **Superseded 2026-11-02 (D-053, D-054):** the arp follows `morph.law`, one rule per law, with flattened patterns stored as
+  compact layers so that every morph position stays saveable. Revision 3 reviewed by a critic, its findings applied.
+  **Brief filed 2026-11-02 (seq 15, horde PR #1343, respond-by 2026-11-13), ahead of the spec amendment.** Criterion 3 (spec,
+  core, gates) waits on horde's answers. **Fallback:** Arp ships the one-value behaviour, and the blend follows after 1.0.
+  Criterion 1's prototype still uses a two-corner, position-free draw and differs from the design; the core is the target.
+- **horde's seq 14 (D-051, 2026-11-02), the work it opens, in this order:**
+  1. **The blend's design** (above) settled, so we know whether a new setting would force the presets to be redone.
+     Design done; horde's question 4 (a declared morph class) is what the presets still wait on.
+  2. **Optional per-key randomize bounds** (approved; alongside): numeric keys, clamped to the legal range, byte-identical
+     with none given; SPEC §15 amended and re-pinned, with a plant.
+  3. **Init and starter presets (B550):** enums by name in a `names` map, `basis` 0, drafted by the lead, judged by the
+     human by ear; then the preset goldens; then the readiness notice.
 
 ## Open questions (blocking — ask the human or horde)
 
