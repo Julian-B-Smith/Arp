@@ -322,9 +322,14 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   **Brief filed 2026-11-02 (seq 15, horde PR #1343, respond-by 2026-11-13), ahead of the spec amendment.** Criterion 3 (spec,
   core, gates) waits on horde's answers. **Fallback:** Arp ships the one-value behaviour, and the blend follows after 1.0.
   Criterion 1's prototype still uses a two-corner, position-free draw and differs from the design; the core is the target.
+- **horde's seq 16 (D-055, 2026-11-03): yes, with a check before it ships.** Ships in 1.0 only if our A/B fits 2 % and horde's CPU
+  pass and morph are done (no date from horde); the human's go or no-go. **Order, the human's:** the blend's CPU first, behind a
+  build flag; then presets and bounds. Owed to horde: the A/B, the memory figure, the design as it lands, budget figures by 2026-11-20
+  (B603). **Acceptance for the CPU step:** the core's blend behind a flag that defaults off; flag off byte-identical (the digests);
+  an idle alternated A/B per D-039 and L0004 on a blend bench family, on both int128 paths; the figure reported to the human and horde.
 - **horde's seq 14 (D-051, 2026-11-02), the work it opens, in this order:**
   1. **The blend's design** (above) settled, so we know whether a new setting would force the presets to be redone.
-     Design done; horde's question 4 (a declared morph class) is what the presets still wait on.
+     Done: horde keeps `discrete`, so the presets wait on nothing but this order (D-055).
   2. **Optional per-key randomize bounds** (approved; alongside): numeric keys, clamped to the legal range, byte-identical
      with none given; SPEC §15 amended and re-pinned, with a plant.
   3. **Init and starter presets (B550):** enums by name in a `names` map, `basis` 0, drafted by the lead, judged by the

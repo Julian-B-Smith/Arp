@@ -1483,3 +1483,24 @@ The critic's re-check of revision 2 was REWORK. Each answer as recommended:
 
 **Found on the way:** today's `/1` text with one busy user pattern is about 2,630 B with its
 record, already over RS-6.12's 2 KiB, blend or no blend.
+
+## D-055 — horde's seq 16 folded in; a build flag; SPEC §9 amended; the blend's CPU first (RATIFIED by poll, 2026-11-03)
+
+**horde's answer (seq 16, horde ADR-357): yes, with a check before it ships.** All seven
+questions answered as we asked, except that 4 KiB is a planning figure, ruled with every
+module's in horde's B603 (replies due 2026-11-20). The blend ships in 1.0 only if our measured
+A/B fits the 2 % slice **and** horde's CPU pass and the morph are done, for which horde has no
+date. Otherwise Arp ships the one-value behaviour, the blend follows after 1.0, and saved Blend
+patches get a migration. The go or no-go is the human's.
+
+**Chosen, by poll:**
+- **Order: the blend's CPU first** (not the recommendation, which was presets and bounds first).
+  Enough of the blend is built to measure it; then the presets and bounds. The cost was stated:
+  the presets and bounds start later, against the 2026-12-11 cutoff.
+- **"Behind your own switch" reads as a build flag, not a setting.** Compiled in only when turned
+  on, off until the go or no-go. `spec/params.json`, `module_version` and the presets are unaffected.
+  This is our reading of horde's words; our reply asks them to confirm it.
+- **SPEC §9 amended now** (with §6 and §12): horde's per-key pick and latch replace D-021's single
+  leading corner, and four groups flip together. Arp's duties and output for given settings do not
+  change, since horde resolves these values. `spec/params.json`'s note keeps the old wording, because
+  editing it would change `module_version`; §9 says it outranks that note.

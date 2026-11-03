@@ -760,7 +760,7 @@ horde's shape: `scaleRoot` (0–11) and `scaleDeg0..11`, legacy host ids
 
 All of these are discrete settings and morph targets, so they apply at the
 next step (§9). `quantize`, `scale_source`, `scale_root` and `scale_deg0..11`
-form one **morph group**, resolved by a single leading-corner decision. A
+form one **morph group**, which flips on one draw (§9, D-055). A
 morph between two scales therefore never passes through an unintended
 hybrid, such as C major's root with A minor's degrees (r2 M2).
 
@@ -852,13 +852,22 @@ produce no extra and no missing terminal (LIBRARY L0001).
   (time mode; it changes smoothly per §2.6).
 - **Discrete settings:** all the rest. All of them are morph targets
   (D-000 Open 5).
-- **Q-A1, SETTLED (D-021).** horde resolves a discrete setting to the value of the
-  corner with the largest weight, **with hysteresis**: it switches only when
-  the leading corner's weight exceeds the current value's corner weight by
-  0.05. Ties go to the lower corner index. Arp applies any change from the
-  next evaluated step. A change of `rate` applies at the next step of the
-  **old** rate. With a long rate (2/1) that can lag up to 8 beats. That lag
-  is accepted and audible in the lab.
+- **Q-A1, SETTLED (D-021), AMENDED (D-055, horde ADR-357).** horde resolves each discrete
+  setting to **one value**, by its morph law: the key's own seeded pick and latch, a band of
+  0.1 (horde SPEC-ENGINE Appendix D, MO-7 and MO-8). This replaces the single leading corner
+  with 0.05 hysteresis, and `spec/params.json`'s `note` still states the old rule: §9 outranks
+  it, and the file stays unchanged so that `module_version` holds (horde seq 16).
+  - **Four groups flip together,** each on one draw, so that a group never lands on a
+    combination no corner holds:
+    - the scale: `quantize`, `scale_source`, `scale_root`, `scale_deg0..11`;
+    - transposition: `steps`, `step_size`, `step_unit`;
+    - the chord stage: `chord_enabled`, `chord_unit`, `chord_on1..6`, `chord_shift1..6`;
+    - rate: `rate_mode`, `rate`. `step_time_us` stays out: it is continuous, and another
+      corner's time is still a valid rate.
+  - Every other discrete setting, `pattern` among them, flips on its own draw.
+  - What Arp owes is unchanged. It receives one value and applies any change from the next
+    evaluated step. A change of `rate` applies at the next step of the **old** rate. With a
+    long rate (2/1) that can lag up to 8 beats. That lag is accepted and audible in the lab.
 - **Q-A2, SETTLED (D-021).** A change of `restart` takes effect from the next
   evaluated step:
   - into `bar` or `free`: the anchor is recomputed per §4.5, and `m := 0`;
@@ -942,7 +951,7 @@ produce no extra and no missing terminal (LIBRARY L0001).
 ## 12. Settled at ratification (D-021, 2026-10-23)
 
 The listening and technical questions are all settled, by the human's poll:
-- **Q-A1** (the discrete morph rule with 0.05 hysteresis, §9);
+- **Q-A1** (the discrete morph rule, §9; its 0.05 hysteresis amended by D-055);
 - **Q-A2** (restart under morph, §9);
 - **Q-A3** (the bank: all 16 order styles and all 11 step patterns ship;
   factory presets are curated at M3);

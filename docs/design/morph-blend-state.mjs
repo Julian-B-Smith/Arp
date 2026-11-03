@@ -34,6 +34,9 @@ const widest = (asFloat) => { const v = {}, ba = {}, ab = {}, na = {};
     else ab[k] = typeof p.default === "boolean" ? 1 : (lo < 0 ? lo : hi); }
   return { v, ba, ab, na }; };
 const blob4 = compactBlob(mk([16, 16, 16, 16]));
+{ const { v, ba, ab, na } = widest(false);   // horde seq 16: the budget counts the whole corner record, and integers stay integers
+  for (const n of [0, 1, 4, 8, 16]) { const blobs = n ? { "arp.userPattern": compactBlob(mk(Array(n).fill(16))) } : {};
+    console.log(`widest values, integers, corner record, ${n} busy layers: ${JSON.stringify({ origin_id: "arp.user.0000", module_version: "0".repeat(64), preset: { scope: "arp", values: v, basis: ba, absolute: ab }, names: na, blobs }).length} B`); } }
 for (const [name, f] of [["integer continuous values", false], ["float continuous values", true]]) { const { v, ba, ab, na } = widest(f);
   const corner = JSON.stringify({ origin_id: "arp.user.0000", module_version: "0".repeat(64), preset: { scope: "arp", values: v, basis: ba, absolute: ab }, names: na, blobs: { "arp.userPattern": blob4 } });
   const file = JSON.stringify({ format: "horde.module-preset/1", module: "arp", name: "Saved position", origin_id: "arp.user.0000", module_version: "0".repeat(64), preset: { scope: "arp", values: v, basis: ba, absolute: ab }, names: na, blobs: { "arp.userPattern": blob4 } });

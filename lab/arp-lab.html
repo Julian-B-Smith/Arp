@@ -167,11 +167,11 @@
         <label>Import <input type="file" id="libImport" accept=".json,application/json"></label></div>
         <div id="libLists"></div></div></div>
     <div class="card"><h2>Morph (A / B corners)</h2>
-      <div class="q">Copy the current settings into corner A or B, then slide. Continuous settings blend linearly; discrete ones follow SPEC 9 Q-A1. <b>While morph is on, the Settings card does not drive the output</b>: change a setting, then copy it into A or B.</div>
+      <div class="q">Copy the current settings into corner A or B, then slide. Continuous settings blend linearly; discrete ones switch by the rule below, a two-corner stand-in for horde's per-key pick (SPEC 9, D-055). <b>While morph is on, the Settings card does not drive the output</b>: change a setting, then copy it into A or B.</div>
       <div class="bar"><button id="copyA">A &larr; current</button><button id="copyB">B &larr; current</button>
         <label><input type="checkbox" id="morphOn"> morph on</label>
         <label><input type="checkbox" id="morphBlend"> stochastic pattern blend <span class="chtag">prototype, D-050</span></label>
-        <label>Q-A1 rule <select id="morphRule"><option value="hyst">largest weight + 0.05 hysteresis (spec)</option><option value="plain">largest weight, no hysteresis</option><option value="from0">B as soon as the slider leaves A</option></select></label></div>
+        <label>Q-A1 rule <select id="morphRule"><option value="hyst">largest weight + 0.05 hysteresis (the stand-in)</option><option value="plain">largest weight, no hysteresis</option><option value="from0">B as soon as the slider leaves A</option></select></label></div>
       <div class="bar"><label>A <input type="range" id="morphW" min="0" max="100" value="50" style="width:260px"> B</label><span id="morphWv">B 50% / A 50%</span><span id="cornerNow" class="eff"></span></div>
       <div class="q">Stochastic pattern blend (prototype, not in the spec): each step plays A's or B's step pattern, B with chance = B's weight. Only the step pattern blends; the order style and every other discrete setting still switch per Q-A1. Provisional: each pattern keeps its own position; ties look ahead with the current weight.</div>
       <div class="bar"><button id="demoA1">load Q-A1 demo</button><button id="demoA2">load Q-A2 demo</button><button id="demoBlend">load blend demo</button></div>
@@ -3926,7 +3926,7 @@ function arpIntsToSettings(a) {
     if (state.cur.pattern === "user") renderGrid();
   }
 
-  // ---- morph (SPEC 9; Q-A1 PROPOSED: largest weight, 0.05 hysteresis, ties to the lower corner) ----
+  // ---- morph (a stand-in for horde's per-key pick, SPEC 9, D-055: largest weight, 0.05 hysteresis, ties to the lower corner) ----
   function pickCorner() {
     const m = state.morph, wA = 1 - m.w, wB = m.w;
     if (m.rule === "from0") return m.w > 0 ? 1 : 0;

@@ -408,13 +408,13 @@ While the DAW is stopped, each new chord starts a new run of random choices, so 
 
 ## Arp and morph
 
-Status: READY-TO-WRITE — SPEC §9, D-021
+Status: READY-TO-WRITE — SPEC §9, D-021, D-055
 
-Every Arp setting can be a target of horde's morph. **Gate**, **Swing**, **Fixed velocity**, **Velocity random**, **Gate random**, **Random curve** and **Step time** blend smoothly between corners. Every other setting switches at a point on the way, to the corner that clearly leads. Most take effect from the next step and never cut a sounding note. A few act at the moment they change and can end or re-voice notes that are sounding: **Arp module**, **Arp on** (which ends the arp's notes), **Rate mode** (which ends the arp's notes and starts the pattern again), **Latch**, and **Chord** with its unit, intervals and the scale settings (which re-voice the chord's notes). Morphing the choice of **Pattern** to `Build your own` works like any choice. A morph never revives an arp that has run out of **Repeats**.
+Every Arp setting can be a target of horde's morph. In **Blend** and **Stepped**, **Gate**, **Swing**, **Fixed velocity**, **Velocity random**, **Gate random**, **Random curve** and **Step time** blend smoothly between corners; in **Quantum**, horde's default, each changes at its own point on the way. Every other setting always switches at a point on the way. Related settings switch together: the scale settings, the transposition settings, the chord settings, and **Rate mode** with **Rate**. Most take effect from the next step and never cut a sounding note. A few act at the moment they change and can end or re-voice notes that are sounding: **Arp module**, **Arp on** (which ends the arp's notes), **Rate mode** (which ends the arp's notes and starts the pattern again), **Latch**, and **Chord** with its unit, intervals and the scale settings (which re-voice the chord's notes). Morphing the choice of **Pattern** to `Build your own` works like any choice. A morph never revives an arp that has run out of **Repeats**.
 
 The table at the end says, for each setting, whether it blends or switches.
 
-<!-- SPEC §9 (continuous vs discrete settings; Q-A1: the leading corner must exceed the current by 0.05, so it does not flutter at the half-way point; applies from the next evaluated step), T8/T9, §4.8 (morphs of repeats, steps or pattern never revive). T4/T5 (Arp module), §13.14 / §14 (Arp on, Chord and the chord settings, the scale settings for the chord stage: offset 0), T19 / §2.6 (Rate mode), §13 item 12 (Latch). -->
+<!-- SPEC §9 (continuous vs discrete settings; Q-A1 amended by D-055: horde's per-key pick and latch, four groups flip together; applies from the next evaluated step), T8/T9, §4.8 (morphs of repeats, steps or pattern never revive). T4/T5 (Arp module), §13.14 / §14 (Arp on, Chord and the chord settings, the scale settings for the chord stage: offset 0), T19 / §2.6 (Rate mode), §13 item 12 (Latch). -->
 
 ## Tips
 
