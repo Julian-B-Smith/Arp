@@ -661,7 +661,7 @@ lane: lane 3 for velocity, lane 4 for length.
   value up to the amount is equally likely; toward 100 most land near the
   setting, with the occasional big one. The range never exceeds ±1000.
 - `vel_random`, `gate_random` and `random_curve` are continuous settings
-  (§9): they blend under morph and apply from the next evaluated step.
+  (§9): they follow horde's morph law and apply from the next evaluated step.
 
 ## 5. Note timing
 
@@ -848,25 +848,33 @@ produce no extra and no missing terminal (LIBRARY L0001).
 ## 9. Settings, morph and timing of changes
 - All settings arrive as **integers** (`params.json`). horde rounds morph
   blends to the nearest integer before the snapshot.
-- **Continuous settings:** `gate` (1–200 %), `swing` (500–750 ‰, latched per step pair, §5.1), `vel_fixed`, `vel_random`, `gate_random`, `random_curve` (§4.9), and `step_time_us`
+- **Continuous settings** follow horde's morph law: blended under Blend, moving in steps under
+  Stepped, and the key's pick under Quantum, horde's default (MO-5, MO-7, MO-9, MO-10). They are
+  `gate` (1–200 %), `swing` (500–750 ‰, latched per step pair, §5.1), `vel_fixed`, `vel_random`, `gate_random`, `random_curve` (§4.9), and `step_time_us`
   (time mode; it changes smoothly per §2.6).
 - **Discrete settings:** all the rest. All of them are morph targets
   (D-000 Open 5).
 - **Q-A1, SETTLED (D-021), AMENDED (D-055, horde ADR-357).** horde resolves each discrete
-  setting to **one value**, by its morph law: the key's own seeded pick and latch, a band of
-  0.1 (horde SPEC-ENGINE Appendix D, MO-7 and MO-8). This replaces the single leading corner
+  setting to **one value**, by its morph law: the key's own seeded pick and latch, a margin in score that is
+  a band of 0.1 of the pad where the draw terms are equal (horde SPEC-ENGINE Appendix D, MO-7, MO-8,
+  at the stepped position under Stepped). An Exempt key holds one value (MO-12). This replaces the single leading corner
   with 0.05 hysteresis, and `spec/params.json`'s `note` still states the old rule: §9 outranks
   it, and the file stays unchanged so that `module_version` holds (horde seq 16).
   - **Four groups flip together,** each on one draw, so that a group never lands on a
     combination no corner holds:
     - the scale: `quantize`, `scale_source`, `scale_root`, `scale_deg0..11`;
     - transposition: `steps`, `step_size`, `step_unit`;
-    - the chord stage: `chord_enabled`, `chord_unit`, `chord_on1..6`, `chord_shift1..6`;
+    - the chord stage: `arp_enabled`, `chord_enabled`, `chord_unit`, `chord_on1..6`,
+      `chord_shift1..6`. `arp_enabled` is here so that the arp and the chord stage are never both
+      off unless a corner holds that (D-056);
     - rate: `rate_mode`, `rate`. `step_time_us` stays out: it is continuous, and another
       corner's time is still a valid rate.
   - Every other discrete setting, `pattern` among them, flips on its own draw.
+  - **Accepted across groups (D-056):** a degree unit can land with `quantize` off, where a degree
+    is one semitone (§4.7, §14). Notes still play.
   - What Arp owes is unchanged. It receives one value and applies any change from the next
-    evaluated step. A change of `rate` applies at the next step of the **old** rate. With a
+    evaluated step, except the settings §2.6, §13 (`latch`, `arp_enabled`, the chord settings) and
+    §14 apply at offset 0, and `enabled` below. A change of `rate` applies at the next step of the **old** rate. With a
     long rate (2/1) that can lag up to 8 beats. That lag is accepted and audible in the lab.
 - **Q-A2, SETTLED (D-021).** A change of `restart` takes effect from the next
   evaluated step:

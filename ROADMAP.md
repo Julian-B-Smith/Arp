@@ -324,9 +324,18 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
   Criterion 1's prototype still uses a two-corner, position-free draw and differs from the design; the core is the target.
 - **horde's seq 16 (D-055, 2026-11-03): yes, with a check before it ships.** Ships in 1.0 only if our A/B fits 2 % and horde's CPU
   pass and morph are done (no date from horde); the human's go or no-go. **Order, the human's:** the blend's CPU first, behind a
-  build flag; then presets and bounds. Owed to horde: the A/B, the memory figure, the design as it lands, budget figures by 2026-11-20
-  (B603). **Acceptance for the CPU step:** the core's blend behind a flag that defaults off; flag off byte-identical (the digests);
-  an idle alternated A/B per D-039 and L0004 on a blend bench family, on both int128 paths; the figure reported to the human and horde.
+  build flag; then presets and bounds. Owed to horde: the A/B, the memory figure, the design as it lands. Budget figures: in our seq 17.
+  **Acceptance for the CPU step:**
+  1. the core's blend behind a compile-time flag that defaults off, holding every part that costs real-time CPU or memory: the set input,
+     the operator, the race, look-ahead over the draw, the hold, repeats and the corner slots. Capture and the `/2` text are off the
+     audio thread and may follow;
+  2. flag off: the digests and goldens byte-identical; the copy-in hashes updated for the new source;
+  3. a flag-on build and suite in `./verify` (approved, D-056), with must-fail plants for what it covers;
+  4. a bench family: the worst load in `docs/horde-copy-in.md` with 4 and 16 busy layers, over the existing rates and block sizes, plus a
+     tie-heavy case for the look-ahead's peak;
+  5. the method of D-041 and L0004: the alternated A/B's ratio, plus absolute figures from an idle machine, on both int128 paths;
+  6. **the verdict:** absolute x4 at or under 2 %, reported with the peak, and the memory above 95 KiB, to the human and horde;
+  7. one N1/G1 session with staggered per-group flips, so the rule SPEC §9 now states is exercised.
 - **horde's seq 14 (D-051, 2026-11-02), the work it opens, in this order:**
   1. **The blend's design** (above) settled, so we know whether a new setting would force the presets to be redone.
      Done: horde keeps `discrete`, so the presets wait on nothing but this order (D-055).
@@ -350,7 +359,7 @@ Scoped at the post-1.0 gate with the human: where the step sequencer begins
 - **Q-H5 — Stream-scoped pedal: ANSWERED (D-034):** horde's pedal holds `direct` voices only, once the stream
   behaviour is built (their RC-6.7).
 - **Q-A5 — Whether pre-roll plays: SETTLED 2026-10-23 by poll (D-021).**
-- **Q-A1 — The morph threshold rule for discrete settings: SETTLED 2026-10-23 by poll (D-021).**
+- **Q-A1 — The morph threshold rule for discrete settings: SETTLED 2026-10-23 by poll (D-021); AMENDED 2026-11-03 (D-055, D-056).**
 - **Q-A2 — Restart × morph: SETTLED 2026-10-23 by poll (D-021).**
 - **Q-A3 — The starter bank's entries: SETTLED 2026-10-23 by poll (D-021).**
 - **Q-A4 — Phase 0 extras:** CLOSED 2026-10-21 by poll (D-006). All four

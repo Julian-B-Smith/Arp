@@ -584,7 +584,7 @@ randomize never edits a key it does not draw.
   does.
 - With morph off and that corner audible, the next block's snapshot carries the
   new settings. With morph on, horde's morph blends the continuous keys and
-  flips each discrete key at the leading corner with 0.05 hysteresis (§9).
+  flips each discrete key at the leading corner with 0.05 hysteresis (§9; since D-055, by horde's per-key pick).
 - Arp then applies them as it applies any settings change:
   - a discrete key from the next evaluated step (T8); `rate` at the next step
     of the old rate, re-anchoring (T15); `restart` per Q-A2; a `repeats` change

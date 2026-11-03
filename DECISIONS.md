@@ -1504,3 +1504,18 @@ patches get a migration. The go or no-go is the human's.
   leading corner, and four groups flip together. Arp's duties and output for given settings do not
   change, since horde resolves these values. `spec/params.json`'s note keeps the old wording, because
   editing it would change `module_version`; §9 says it outranks that note.
+
+## D-056 — Arp on flips with the chord group; degrees accepted; a flag-on build in verify (RATIFIED by poll, 2026-11-03)
+
+A critic of D-055's amendment found that per-group flips make new states reachable. Each answer as recommended:
+- **`arp_enabled` flips with the chord group,** so the arp and the chord stage are never both off unless a corner
+  holds that. Otherwise part of the pad would play nothing with neither corner silent, a state randomize already
+  refuses (§15.6). This extends the group horde agreed; our reply asks them to add it.
+- **Accepted:** a degree unit landing with `quantize` off, where a degree plays as one semitone. Notes still play.
+- **`./verify` gains a flag-on core build and suite** with the CPU step (a protected change, approved here). The
+  flag-off suite and digests stay as they are.
+
+**Corrected:** the "about 2,630 B" for today's `/1` format, in D-054, the design and the draft reply, was added up from
+two figures, not measured. Measured, with its record: 2,887 B for one busy pattern, 3,431 B with every field written
+out. D-055's "the go or no-go is the human's" comes from horde's ROADMAP, B610.
+

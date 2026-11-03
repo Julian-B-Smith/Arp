@@ -44,7 +44,8 @@ Consequences:
 - **Arp's other discrete settings (D-054):** one value under every law, following horde's
   key-by-key pick, except that **related settings flip together** as groups, so a group
   never lands on a combination no corner holds: the scale, transposition, chord and rate
-  groups (§15.6 already joins some of these). This replaces D-021's single leading-corner
+  groups (§15.6 already joins some of these). `arp_enabled` flips with the chord group, or a pad
+  region could be silent with neither corner silent (D-056). A degree landing with `quantize` off is accepted. This replaces D-021's single leading-corner
   rule, by the human's ruling, and horde agreed, for Arp only (ADR-357). SPEC §6 and §9 are amended (D-055). `step_time_us` stays out of the rate group.
 - **Continuous settings** follow horde's law too: blended under Blend, the pick's value
   under Quantum (MO-7). They are not a change on our side.
@@ -68,9 +69,9 @@ Consequences:
 
 - **Budget.** RS-6.12 gives 2,048 B per corner, provisional; plan on 4 KiB, ruled with B603. The
   table uses default values. horde counts the whole corner record and stores integers as integers
-  (seq 16), so with every setting at its widest: no blob 1,374 B, four busy layers **1,957 B**, 8 layers
-  2,477 B, 16 layers 3,501 B. A position between four plain corners fits even at 2 KiB. Today's `/1` text with one busy pattern is about 2,630 B
-  and is already over; `/2` fixes that too.
+  (seq 16), so with every setting at its widest: no blob 1,372 B, four busy layers **1,955 B**, 8 layers
+  2,475 B, 16 layers 3,499 B. A position between four plain corners fits even at 2 KiB. Today's `/1` text, with its record: one busy pattern 2,887 B, and every
+  field written out 3,431 B. Both are over 2 KiB and within the planned 4 KiB, so that plan matters if the blend misses 1.0.
 - **Over the budget or the layer cap (D-054):** normally reachable only by blending saved blends.
   Capture takes a byte limit from horde, since it cannot see the rest of the record. It drops the
   smallest shares, rescales, and returns `approximate`, so the state can never exceed the budget
@@ -172,7 +173,7 @@ shrinks within a gesture; a related group never lands on a combination no corner
   repeats rests on reasoning (both run one state machine) until the §5 gate exists.
 - **horde's date.** The second ship condition, horde's CPU pass and morph, has no date. The work here can be good and still miss 1.0.
 - **CPU.** The tightest quoted case is about 1.97 % x4 against 2 % (D-042), inside the
-  noise. Measure with D-039's alternated A/B and a blend bench family; include per-block
+  noise. Measure with D-041's alternated A/B and a blend bench family; include per-block
   cost, which dominates at block 16 and 192 kHz. The worst step is a capped look-ahead over many layers, so the peak matters as well as the average.
 - **Cutoff, 2026-12-11.** This is a new format, a capture call, core work and a change to
   horde's resolver and 1.0 bar. **Fallback, losing nothing:** Arp ships the one-value

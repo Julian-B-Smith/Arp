@@ -21,18 +21,23 @@ const bankBlob = (ids) => JSON.stringify({ format: "arp-user-pattern/2", l: ids.
 const shares = n => Array.from({ length: n }, (_, i) => 1000000 / n | 0);
 const mk = ns => ns.map((n, i) => ({ share: shares(ns.length)[i], steps: busy(n, i + 1) }));
 console.log(`keys: ${nV} continuous (values + basis), ${nA} in absolute, ${nE} in names; total ${nV + nA + nE}`);
-const base = rec(null).length; console.log(`corner record, no blob: ${base} B; left of 2,048 B: ${2048 - base} B  (assumes the budget counts this whole record: a hypothesis)`);
+const base = rec(null).length; console.log(`corner record, no blob: ${base} B; left of 2,048 B: ${2048 - base} B  (with file fields; default values)`);
 console.log("blob".padEnd(34), "JSON".padStart(7), "compact".padStart(8), "record w/ compact".padStart(18));
 for (const [name, ns] of [["1 busy layer, 16", [16]], ["2 busy layers, 15 + 16", [15, 16]], ["4 busy layers, 16 each, distinct", [16, 16, 16, 16]], ["4 busy layers, 16,15,13,11", [16, 15, 13, 11]], ["8 busy layers, 16 each", Array(8).fill(16)], ["16 busy layers, 16 each", Array(16).fill(16)]]) {
   const l = mk(ns), c = compactBlob(l).length; console.log(name.padEnd(34), String(jsonBlob(l).length).padStart(7), String(c).padStart(8), String(rec(compactBlob(l)).length).padStart(18)); }
 for (const ids of [["three_three_two", "roll_end"], ["gallop", "roll_end", "tied_legato", "sparse_chance"]]) console.log(`bank only, ${ids.length}:`.padEnd(34), "".padStart(7), String(bankBlob(ids).length).padStart(8), String(rec(bankBlob(ids)).length).padStart(18));
 // Widest legal values, since defaults flatter the figure. Which fields the budget counts is horde's answer, so three readings are printed.
+const longestName = p => { if (p.key === "rate") return "3/32"; if (p.key === "pattern") return "three_three_two"; return (Array.isArray(p.values) ? p.values.map(String) : [String(p.default)]).reduce((x, y) => y.length > x.length ? y : x, String(p.default)); };
 const widest = (asFloat) => { const v = {}, ba = {}, ab = {}, na = {};
   for (const p of P) { const k = "arp." + p.key, hi = p.max ?? p.default, lo = p.min ?? 0;
     if (p.kind === "continuous") { const big = Math.max(Math.abs(hi), Math.abs(lo)); v[k] = asFloat ? big - 1 / 3 : big; ba[k] = 0; }
-    else if (p.type === "enum" || Array.isArray(p.values) || typeof p.values === "string") { const opts = Array.isArray(p.values) ? p.values.map(String) : ["three_three_two", "sparse_chance", "bar_trigger"]; na[k] = opts.reduce((x, y) => y.length > x.length ? y : x, String(p.default)); }
-    else ab[k] = typeof p.default === "boolean" ? 1 : (lo < 0 ? lo : hi); }
+    else if (p.type === "enum" || Array.isArray(p.values) || typeof p.values === "string") na[k] = longestName(p);
+    else ab[k] = p.key === "seed" ? 4294967295 : typeof p.default === "boolean" ? 1 : (lo < 0 ? lo : hi); }
   return { v, ba, ab, na }; };
+// A real /1 text: the format today's core and lab read (SPEC 4.6). JSON-escaped inside the record, as the /2 rows are.
+const v1 = (steps, name) => JSON.stringify({ format: "arp-user-pattern/1", name, length: steps.length, step_size: -48, step_unit: "semitones", steps });
+{ const { v, ba, ab, na } = widest(false), rec2 = blob => JSON.stringify({ origin_id: "arp.user.0000", module_version: "0".repeat(64), preset: { scope: "arp", values: v, basis: ba, absolute: ab }, names: na, blobs: { "arp.userPattern": blob } });
+  console.log(`today's /1 format, widest values, integers: one busy pattern ${rec2(v1(busy(16, 1).map(sparse), "Saved pattern")).length} B; every field explicit on all 16 steps ${rec2(v1(busy(16, 1), "Saved pattern")).length} B`); }
 const blob4 = compactBlob(mk([16, 16, 16, 16]));
 { const { v, ba, ab, na } = widest(false);   // horde seq 16: the budget counts the whole corner record, and integers stay integers
   for (const n of [0, 1, 4, 8, 16]) { const blobs = n ? { "arp.userPattern": compactBlob(mk(Array(n).fill(16))) } : {};

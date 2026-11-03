@@ -173,7 +173,7 @@
         <label><input type="checkbox" id="morphBlend"> stochastic pattern blend <span class="chtag">prototype, D-050</span></label>
         <label>Q-A1 rule <select id="morphRule"><option value="hyst">largest weight + 0.05 hysteresis (the stand-in)</option><option value="plain">largest weight, no hysteresis</option><option value="from0">B as soon as the slider leaves A</option></select></label></div>
       <div class="bar"><label>A <input type="range" id="morphW" min="0" max="100" value="50" style="width:260px"> B</label><span id="morphWv">B 50% / A 50%</span><span id="cornerNow" class="eff"></span></div>
-      <div class="q">Stochastic pattern blend (prototype, not in the spec): each step plays A's or B's step pattern, B with chance = B's weight. Only the step pattern blends; the order style and every other discrete setting still switch per Q-A1. Provisional: each pattern keeps its own position; ties look ahead with the current weight.</div>
+      <div class="q">Stochastic pattern blend (prototype, not in the spec): each step plays A's or B's step pattern, B with chance = B's weight. Only the step pattern blends; the order style and every other discrete setting still switch by the rule above. Provisional: each pattern keeps its own position; ties look ahead with the current weight.</div>
       <div class="bar"><button id="demoA1">load Q-A1 demo</button><button id="demoA2">load Q-A2 demo</button><button id="demoBlend">load blend demo</button></div>
     </div>
     <div class="card"><h2>Listen and decide: pre-roll</h2>
